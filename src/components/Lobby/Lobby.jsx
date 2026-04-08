@@ -43,7 +43,8 @@ export default function Lobby() {
   const playerName = profile?.name || user?.displayName || 'Player'
   const playerColor = profile?.color || '#6366f1'
 
-  const roomId = searchParams.get('room') || (modeParam ? `lobby_${modeParam}_main` : 'lobby_main')
+  const rawRoom = searchParams.get('room') || (modeParam ? `lobby_${modeParam}_main` : 'lobby_main')
+  const roomId = rawRoom.replace(/[.#$[\]/\s:?&=]/g, '_').slice(0, 80)
   const [lobby, setLobby] = useState(null)
   const [players, setPlayers] = useState([])
   const [isHost, setIsHost] = useState(false)

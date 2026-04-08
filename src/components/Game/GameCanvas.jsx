@@ -8,6 +8,8 @@ import useProgressStore from '../../store/useProgressStore'
 import useQuestStore from '../../store/useQuestStore'
 import useBattlePassStore from '../../store/useBattlePassStore'
 import { fbSaveProgress, fbSaveBattlePass, fbSaveQuests, fbUpdateLeaderboard } from '../../firebase/syncService'
+import { ref, set } from 'firebase/database'
+import { db } from '../../firebase/config'
 import GameUI from './GameUI'
 import ChatSystem from '../Chat/ChatSystem'
 import toast from 'react-hot-toast'
@@ -26,6 +28,7 @@ export default function GameCanvas({ onLevelUp }) {
   const startTimeRef = useRef(Date.now())
   const splitCountRef = useRef(0)
   const sessionXPRef = useRef(0)
+  const [clickedPlayer, setClickedPlayer] = useState(null)
 
   const roomId = searchParams.get('room') || 'main_ffa'
   const playerName = searchParams.get('name') || profile?.name || 'Player'
@@ -127,6 +130,51 @@ export default function GameCanvas({ onLevelUp }) {
     }
   }, [])
 
+  const handleCanvasClick = useCallback((e) => {
+    const engine = engineRef.current
+    if (!engine || !user?.uid) return
+    const canvas = canvasRef.current
+    const rect = canvas.getBoundingClientRect()
+    const sx = e.clientX - rect.left
+    const sy = e.clientY - rect.top
+    const cam = engine.camera
+    const zoom = cam.zoom
+    const wx = (sx - canvas.width / 2) / zoom + cam.x
+    const wy = (sy - canvas.height / 2) / zoom + cam.y
+    for (const [id, p] of Object.entries(engine.otherPlayers || {})) {
+      const cells = p.cells?.length ? p.cells : [{ x: p.x, y: p.y, mass: p.mass || 20 }]
+      for (const c of cells) {
+        const r = Math.sqrt(c.mass || 20) * 4.5
+        const dx = wx - c.x, dy = wy - c.y
+        if (dx * dx + dy * dy <= r * r) {
+          setClickedPlayer({ id, name: p.name, color: p.color })
+          return
+        }
+      }
+    }
+    setClickedPlayer(null)
+  }, [user])
+
+  const handleAddFriend = async (targetId, targetName, targetColor) => {
+    if (!user?.uid || user.uid.startsWith('guest_')) {
+      toast.error('Arkadaş eklemek için giriş yapmalısın')
+      return
+    }
+    try {
+      await set(ref(db, `users/${targetId}/friendRequests/${user.uid}`), {
+        name: profile?.name || 'Player',
+        color: profile?.color || '#6366f1',
+        uid: user.uid,
+        status: 'pending',
+        sentAt: Date.now()
+      })
+      toast.success(`${targetName}'e arkadaşlık isteği gönderildi! 👥`)
+      setClickedPlayer(null)
+    } catch {
+      toast.error('İstek gönderilemedi')
+    }
+  }
+
   const handleSplit = () => engineRef.current?.touchSplit()
   const handleEject = () => engineRef.current?.touchEject()
   const handleLeave = () => {
@@ -153,7 +201,30 @@ export default function GameCanvas({ onLevelUp }) {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" onClick={handleCanvasClick} />
+
+      {clickedPlayer && (
+        <div className="absolute top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl p-5 flex flex-col items-center gap-3 shadow-2xl"
+          style={{ background: 'rgba(6,6,20,0.97)', border: `2px solid ${clickedPlayer.color}55`, minWidth: 200 }}>
+          <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-black text-white"
+            style={{ background: clickedPlayer.color, boxShadow: `0 0 20px ${clickedPlayer.color}88` }}>
+            {clickedPlayer.name?.[0] || '?'}
+          </div>
+          <div className="text-white font-black text-lg">{clickedPlayer.name}</div>
+          <button
+            className="w-full py-2 rounded-xl font-bold text-white text-sm"
+            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+            onClick={() => handleAddFriend(clickedPlayer.id, clickedPlayer.name, clickedPlayer.color)}>
+            👥 Arkadaş Ekle
+          </button>
+          <button
+            className="w-full py-2 rounded-xl font-bold text-sm"
+            style={{ background: 'rgba(255,255,255,0.07)', color: '#9ca3af' }}
+            onClick={() => setClickedPlayer(null)}>
+            Kapat
+          </button>
+        </div>
+      )}
 
       <GameUI
         engineRef={engineRef}

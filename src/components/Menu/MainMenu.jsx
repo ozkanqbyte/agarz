@@ -568,8 +568,14 @@ function LobbyTab({ theme, panelStyle, onCreateLobby, navigate, playerName }) {
   }, [])
 
   const handleJoinCode = () => {
-    if (!lobbyCode.trim()) { return }
-    const code = lobbyCode.trim().replace('priv_', '')
+    if (!lobbyCode.trim()) return
+    let code = lobbyCode.trim()
+    try {
+      const url = new URL(code)
+      const roomParam = url.searchParams.get('room')
+      if (roomParam) code = roomParam
+    } catch {}
+    code = code.replace(/^priv_/, '').replace(/[.#$[\]/\s:?&=]/g, '_').slice(0, 80)
     navigate(`/lobby?room=priv_${code}`)
   }
 
@@ -653,7 +659,30 @@ function LobbyTab({ theme, panelStyle, onCreateLobby, navigate, playerName }) {
   )
 }
 
+const SKIN_LIST = [
+  { id: 'default', name: 'Varsayılan', icon: '⚪', premium: false },
+  { id: 'fire', name: 'Ateş', icon: '🔥', premium: false },
+  { id: 'ice', name: 'Buz', icon: '❄️', premium: false },
+  { id: 'galaxy', name: 'Galaksi', icon: '🌌', premium: true },
+  { id: 'neon', name: 'Neon', icon: '💫', premium: true },
+  { id: 'gold', name: 'Altın', icon: '✨', premium: true },
+  { id: 'dragon', name: 'Ejderha', icon: '🐉', premium: true },
+  { id: 'crown', name: 'Taç', icon: '👑', premium: true },
+  { id: 'demon', name: 'Şeytan', icon: '😈', premium: true },
+  { id: 'angel', name: 'Melek', icon: '😇', premium: true },
+  { id: 'rainbow', name: 'Gökkuşağı', icon: '🌈', premium: true },
+  { id: 'dark', name: 'Karanlık', icon: '🌑', premium: true },
+]
+
+const COLOR_OPTIONS = ['#6366f1','#8b5cf6','#ec4899','#06b6d4','#10b981','#f59e0b','#ef4444','#3b82f6','#14b8a6','#f97316','#a855f7','#84cc16']
+
 function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
+  const { updateProfile } = useAuthStore()
+  const { ownedSkins, ownedPackage } = usePremiumStore()
+  const [editName, setEditName] = useState(profile?.name || '')
+  const [saving, setSaving] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+
   const stats = [
     { icon: '⭐', label: 'Seviye', value: profile?.level || 1 },
     { icon: '✨', label: 'XP', value: (profile?.xp || 0).toLocaleString() },
@@ -663,20 +692,78 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
     { icon: '💰', label: 'Toplam Kütle', value: (profile?.stats?.totalMass || 0).toLocaleString() },
   ]
 
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) return
+    setSaving(true)
+    await updateProfile({ name: editName.trim().slice(0, 20) })
+    setSaving(false)
+    setEditMode(false)
+    toast.success('Profil güncellendi! ✅')
+  }
+
+  const handleSelectSkin = async (skinId) => {
+    const skin = SKIN_LIST.find(s => s.id === skinId)
+    if (!skin) return
+    if (skin.premium && ownedPackage === 'free' && !ownedSkins.includes(skinId)) {
+      toast.error('Bu skin için Premium gerekli! 💎')
+      setShowShop(true)
+      return
+    }
+    await updateProfile({ skin: skinId })
+    toast.success(`${skin.name} skin seçildi! ${skin.icon}`)
+  }
+
+  const handleSelectColor = async (color) => {
+    await updateProfile({ color })
+    toast.success('Renk güncellendi!')
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="rounded-2xl p-6 flex flex-col items-center text-center" style={panelStyle}>
         <motion.div
           animate={{ boxShadow: [`0 0 20px rgba(${theme.glowColor},0.4)`, `0 0 40px rgba(${theme.glowColor},0.7)`, `0 0 20px rgba(${theme.glowColor},0.4)`] }}
           transition={{ duration: 2, repeat: Infinity }}
-          className="w-24 h-24 rounded-full flex items-center justify-center text-4xl mb-4"
-          style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})` }}>
-          {profile?.isGod ? '👑' : '🫧'}
+          className="w-24 h-24 rounded-full flex items-center justify-center text-4xl mb-4 cursor-pointer"
+          style={{ background: profile?.color || `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})` }}
+          onClick={() => setEditMode(m => !m)}>
+          {profile?.isGod ? '👑' : (SKIN_LIST.find(s => s.id === profile?.skin)?.icon || '🫧')}
         </motion.div>
-        <div className="text-white font-black text-xl mb-1">{profile?.name}</div>
-        <div className="text-gray-400 text-sm mb-2">{user?.email || 'Misafir'}</div>
+
+        {editMode ? (
+          <div className="w-full space-y-2">
+            <input
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              maxLength={20}
+              className="w-full px-3 py-2 rounded-xl text-white font-bold text-center text-sm"
+              style={{ background: 'rgba(255,255,255,0.08)', border: `1px solid rgba(${theme.glowColor},0.4)`, outline: 'none' }}
+              placeholder="İsim gir..."
+            />
+            <motion.button onClick={handleSaveProfile} disabled={saving}
+              whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+              className="w-full py-2 rounded-xl font-black text-sm text-white"
+              style={{ background: `linear-gradient(135deg,${theme.gradientA},${theme.gradientB})` }}>
+              {saving ? '...' : '✅ Kaydet'}
+            </motion.button>
+            <motion.button onClick={() => setEditMode(false)}
+              className="w-full py-1.5 rounded-xl font-bold text-xs"
+              style={{ color: '#9ca3af', background: 'rgba(255,255,255,0.04)' }}>
+              İptal
+            </motion.button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="text-white font-black text-xl">{profile?.name}</div>
+              <button onClick={() => setEditMode(true)} className="text-gray-400 text-xs hover:text-white">✏️</button>
+            </div>
+            <div className="text-gray-400 text-sm mb-2">{user?.email || 'Misafir'}</div>
+          </>
+        )}
+
         {profile?.isGod && (
-          <div className="px-3 py-1 rounded-full text-xs font-black mb-2"
+          <div className="px-3 py-1 rounded-full text-xs font-black mb-2 mt-1"
             style={{ background: 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#000' }}>
             ⚡ GOD MODE
           </div>
@@ -699,6 +786,17 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
           </div>
           <div className="text-xs text-gray-500 mt-1 text-right">{(profile?.xp || 0) % 1000}/1000 XP</div>
         </div>
+
+        <div className="mt-4 w-full">
+          <div className="text-xs text-gray-400 mb-2 text-left">🎨 Renk Seç</div>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {COLOR_OPTIONS.map(c => (
+              <button key={c} onClick={() => handleSelectColor(c)}
+                className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+                style={{ background: c, boxShadow: profile?.color === c ? `0 0 10px ${c}` : 'none', outline: profile?.color === c ? `2px solid white` : 'none' }} />
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="lg:col-span-2 space-y-4">
@@ -713,6 +811,34 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
               <div className="text-gray-500 text-xs">{s.label}</div>
             </motion.div>
           ))}
+        </div>
+
+        <div className="rounded-2xl p-5" style={panelStyle}>
+          <div className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center justify-between" style={{ color: theme.uiAccent }}>
+            <span>🎭 Skinler</span>
+            <span className="text-gray-500 normal-case font-normal">{SKIN_LIST.filter(s => !s.premium || ownedSkins.includes(s.id)).length}/{SKIN_LIST.length} sahip</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {SKIN_LIST.map(skin => {
+              const owned = !skin.premium || ownedSkins.includes(skin.id) || ownedPackage !== 'free'
+              const selected = profile?.skin === skin.id || (!profile?.skin && skin.id === 'default')
+              return (
+                <motion.button key={skin.id} onClick={() => handleSelectSkin(skin.id)}
+                  whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                  className="rounded-xl p-2 flex flex-col items-center gap-1 relative"
+                  style={{
+                    background: selected ? `rgba(${theme.glowColor},0.2)` : 'rgba(255,255,255,0.04)',
+                    border: selected ? `2px solid rgba(${theme.glowColor},0.8)` : '2px solid transparent',
+                    opacity: owned ? 1 : 0.5
+                  }}>
+                  <div className="text-2xl">{skin.icon}</div>
+                  <div className="text-xs text-white font-bold truncate w-full text-center">{skin.name}</div>
+                  {!owned && <div className="absolute top-1 right-1 text-xs">🔒</div>}
+                  {skin.premium && <div className="absolute top-1 left-1 text-xs">💎</div>}
+                </motion.button>
+              )
+            })}
+          </div>
         </div>
 
         <div className="rounded-2xl p-5" style={panelStyle}>
@@ -743,32 +869,6 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
           style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5' }}>
           🚪 Çıkış Yap
         </motion.button>
-
-        <div className="rounded-2xl p-5" style={panelStyle}>
-          <div className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: theme.uiAccent }}>
-            🔗 Arkadaşını Davet Et
-          </div>
-          <div className="text-gray-400 text-sm mb-3">
-            Her başarılı davet için <span style={{ color: theme.uiAccent }}>50 coin</span> kazan!
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 px-3 py-2 rounded-xl text-xs font-mono text-gray-300 truncate"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              {`https://agarz.io/join?ref=${user?.uid?.slice(0, 8) || 'guest123'}`}
-            </div>
-            <motion.button
-              onClick={() => {
-                navigator.clipboard?.writeText(`https://agarz.io/join?ref=${user?.uid?.slice(0, 8) || 'guest123'}`)
-                  .catch(() => {})
-                toast.success('Davet linki kopyalandı! 🔗')
-              }}
-              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-              className="px-3 py-2 rounded-xl text-sm font-bold"
-              style={{ background: `rgba(${theme.glowColor},0.2)`, border: `1px solid rgba(${theme.glowColor},0.4)`, color: theme.uiAccent }}>
-              Kopyala
-            </motion.button>
-          </div>
-        </div>
       </div>
     </div>
   )

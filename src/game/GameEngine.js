@@ -2020,19 +2020,38 @@ export class GameEngine {
     }
 
     if (dr > 14) {
+      const mass = Math.floor((radius / 4.5) ** 2)
+      const hasClan = clan && dr > 22
+      const hasMass = dr > 22
+      const lineCount = 1 + (hasClan ? 1 : 0) + (hasMass ? 1 : 0)
       const fs = clamp(dr * 0.38, 9, 30)
+      const lineH = fs * 0.9
+      const totalH = lineCount * lineH
+      const startY = y - totalH / 2 + lineH / 2
+      let lineIdx = 0
+
       ctx.font = `bold ${fs}px "Exo 2", sans-serif`
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       ctx.shadowBlur = 5; ctx.shadowColor = 'rgba(0,0,0,0.9)'
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3
-      ctx.strokeText(isGod ? '👑 '+name : name, x+1, y - (clan ? fs*0.45 : 0)+1)
+      const nameY = startY + lineIdx * lineH
+      ctx.strokeText(isGod ? '👑 '+name : name, x+1, nameY+1)
       ctx.fillStyle = 'white'
-      ctx.fillText(isGod ? '👑 '+name : name, x, y - (clan ? fs*0.45 : 0))
-      if (clan && dr > 22) {
+      ctx.fillText(isGod ? '👑 '+name : name, x, nameY)
+      lineIdx++
+
+      if (hasClan) {
         const cs = clamp(dr*0.22, 7, 16)
         ctx.font = `bold ${cs}px "Exo 2", sans-serif`
         ctx.fillStyle = 'rgba(255,255,255,0.75)'
-        ctx.fillText(`[${clan}]`, x, y + fs*0.55)
+        ctx.fillText(`[${clan}]`, x, startY + lineIdx * lineH)
+        lineIdx++
+      }
+      if (hasMass) {
+        const ms = clamp(dr * 0.22, 7, 14)
+        ctx.font = `bold ${ms}px "Exo 2", sans-serif`
+        ctx.fillStyle = 'rgba(255,255,255,0.55)'
+        ctx.fillText(`${mass}`, x, startY + lineIdx * lineH)
       }
       ctx.shadowBlur = 0
     }
