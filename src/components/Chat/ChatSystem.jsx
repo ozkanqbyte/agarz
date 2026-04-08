@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ref, push, onValue, off } from 'firebase/database'
+import { ref, push, onValue, off, query, orderByChild, limitToLast } from 'firebase/database'
 import { db } from '../../firebase/config'
 import useAuthStore from '../../store/useAuthStore'
 import useGameStore from '../../store/useGameStore'
@@ -25,8 +25,12 @@ export default function ChatSystem({ roomId }) {
   const { currentTheme } = useGameStore()
   const theme = getTheme(currentTheme)
 
+  const safeRoomId = (roomId || 'main').replace(/[.#$[\]/\s:?&=]/g, '_').slice(0, 80)
+
   const addMessage = useCallback((msg) => {
     setMessages(prev => {
+      const seen = new Set(prev.map(m => m.id))
+      if (msg.id && seen.has(msg.id)) return prev
       const next = [...prev, msg]
       return next.slice(-MAX_MESSAGES)
     })
@@ -34,29 +38,33 @@ export default function ChatSystem({ roomId }) {
   }, [open])
 
   useEffect(() => {
-    if (channel !== 'room') return
-
-    const onMsg = (msg) => addMessage(msg)
-    socketClient.on('chat:message', onMsg)
-    return () => socketClient.off('chat:message', onMsg)
-  }, [channel, addMessage])
-
-  useEffect(() => {
-    if (channel === 'room') return
     setMessages([])
-    const path = channel === 'global' ? 'chat/global' : `chat/clan/${profile?.clan || 'none'}`
-    const chatRef = ref(db, path)
-    const unsubscribe = onValue(chatRef, (snap) => {
+    let path
+    if (channel === 'room') path = `chat/rooms/${safeRoomId}`
+    else if (channel === 'global') path = 'chat/global'
+    else path = `chat/clan/${profile?.clan || 'none'}`
+
+    const chatRef = query(ref(db, path), orderByChild('ts'), limitToLast(MAX_MESSAGES))
+    const unsub = onValue(chatRef, (snap) => {
       if (!snap.exists()) { setMessages([]); return }
       const data = snap.val()
       const msgs = Object.entries(data)
         .map(([id, m]) => ({ id, ...m }))
         .sort((a, b) => (a.ts || 0) - (b.ts || 0))
-        .slice(-MAX_MESSAGES)
       setMessages(msgs)
-    })
+    }, (err) => { console.warn('Chat listen error:', err) })
     return () => off(chatRef)
-  }, [channel, profile?.clan])
+  }, [channel, safeRoomId, profile?.clan])
+
+  useEffect(() => {
+    if (channel !== 'room') return
+    const onMsg = (msg) => {
+      const msgWithId = { ...msg, id: msg.id || (msg.ts + '_' + msg.playerId) }
+      addMessage(msgWithId)
+    }
+    socketClient.on('chat:message', onMsg)
+    return () => socketClient.off('chat:message', onMsg)
+  }, [channel, addMessage])
 
   useEffect(() => {
     if (open) {
@@ -70,20 +78,31 @@ export default function ChatSystem({ roomId }) {
     const text = (emojiText || input).trim()
     if (!text) return
 
+    const msg = {
+      text: text.slice(0, 200),
+      name: profile?.name || user?.displayName || 'Player',
+      uid: user?.uid || 'guest',
+      color: profile?.color || '#6366f1',
+      isGod: profile?.isGod || false,
+      isPremium: !!(profile?.premium && profile.premium !== 'free'),
+      ts: Date.now()
+    }
+
     if (channel === 'room') {
-      socketClient.sendChat(text, !!emojiText)
+      if (socketClient.connected) {
+        socketClient.sendChat(text, !!emojiText)
+      }
+      const path = `chat/rooms/${safeRoomId}`
+      try {
+        await push(ref(db, path), msg)
+      } catch {}
     } else {
       const path = channel === 'global' ? 'chat/global' : `chat/clan/${profile?.clan || 'none'}`
-      await push(ref(db, path), {
-        text: text.slice(0, 200),
-        name: profile?.name || user?.displayName || 'Player',
-        uid: user?.uid || 'guest',
-        color: profile?.color || '#6366f1',
-        isGod: profile?.isGod || false,
-        isPremium: !!(profile?.premium && profile.premium !== 'free'),
-        ts: Date.now()
-      })
+      try {
+        await push(ref(db, path), msg)
+      } catch {}
     }
+
     if (!emojiText) setInput('')
     setShowEmoji(false)
   }
@@ -123,7 +142,7 @@ export default function ChatSystem({ roomId }) {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-green-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse"/>
-                  {socketClient.connected ? `${socketClient.ping}ms` : 'Offline'}
+                  {socketClient.connected ? `${socketClient.ping}ms` : 'Firebase'}
                 </span>
                 <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-white">✕</button>
               </div>

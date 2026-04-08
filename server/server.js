@@ -165,11 +165,12 @@ class GameRoom {
       if (d < 1) continue
       const nx = dx / d, ny = dy / d
       const move = Math.min(baseSpeed * dt, d)
-      cell.x = clamp(cell.x + nx * move, cell.radius, WORLD_SIZE - cell.radius)
-      cell.y = clamp(cell.y + ny * move, cell.radius, WORLD_SIZE - cell.radius)
+      const r = massToRadius(cell.mass)
+      cell.x = clamp(cell.x + nx * move, r, WORLD_SIZE - r)
+      cell.y = clamp(cell.y + ny * move, r, WORLD_SIZE - r)
       if (cell.splitVx) {
-        cell.x += cell.splitVx * dt * 60
-        cell.y += cell.splitVy * dt * 60
+        cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
+        cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
         cell.splitVx *= 0.86
         cell.splitVy *= 0.86
         if (Math.abs(cell.splitVx) < 0.05) { cell.splitVx = 0; cell.splitVy = 0 }

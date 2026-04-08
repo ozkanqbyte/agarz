@@ -575,7 +575,7 @@ function LobbyTab({ theme, panelStyle, onCreateLobby, navigate, playerName }) {
       const roomParam = url.searchParams.get('room')
       if (roomParam) code = roomParam
     } catch {}
-    code = code.replace(/^priv_/, '').replace(/[.#$[\]/\s:?&=]/g, '_').slice(0, 80)
+    code = code.replace(/^priv_/, '').replace(/[.#$[\]/\s:?&=]/g, '_').toLowerCase().slice(0, 80)
     navigate(`/lobby?room=priv_${code}`)
   }
 

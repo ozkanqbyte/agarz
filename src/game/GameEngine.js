@@ -470,17 +470,21 @@ export class GameEngine {
         for (const p of data.players) {
           if (p.id === this.playerId) {
             if (p.cs && p.cs.length) {
-              if (this.cells.length === p.cs.length) {
+              const validCs = p.cs.filter(c => isFinite(c.x) && isFinite(c.y) && isFinite(c.m) && c.m > 0)
+              if (!validCs.length) break
+              if (this.cells.length === validCs.length) {
                 for (let i = 0; i < this.cells.length; i++) {
-                  this.cells[i].x = lerp(this.cells[i].x, p.cs[i].x, 0.25)
-                  this.cells[i].y = lerp(this.cells[i].y, p.cs[i].y, 0.25)
-                  this.cells[i].mass = lerp(this.cells[i].mass, p.cs[i].m, 0.3)
+                  this.cells[i].x = lerp(this.cells[i].x, validCs[i].x, 0.25)
+                  this.cells[i].y = lerp(this.cells[i].y, validCs[i].y, 0.25)
+                  this.cells[i].mass = lerp(this.cells[i].mass, validCs[i].m, 0.3)
+                  this.cells[i].radius = massToRadius(this.cells[i].mass)
                 }
-              } else if (this.cells.length !== p.cs.length) {
-                const newCells = p.cs.map((c, i) => {
+              } else {
+                const newCells = validCs.map((c, i) => {
                   const existing = this.cells[i]
                   if (existing) {
                     existing.mass = c.m
+                    existing.radius = massToRadius(c.m)
                     return existing
                   }
                   const cell = new Cell(c.x, c.y, c.m, this.playerColor)

@@ -44,6 +44,8 @@ export default function ClanSystem() {
         const found = data.find(c => c.tag === profile.clan || c.id === profile.clan)
         setMyClan(found || null)
       }
+    }, (err) => {
+      console.warn('Clan read error:', err?.code)
     })
     return () => unsub()
   }, [profile?.clan])
@@ -75,24 +77,36 @@ export default function ClanSystem() {
       open: true,
       minLevel: 1
     }
-    await set(ref(db, `clans/${clanId}`), clanData)
-    await updateProfile({ clan: newClanTag.toUpperCase() })
-    toast.success('Klan oluşturuldu! ⚔️')
-    setCreating(false)
+    try {
+      await set(ref(db, `clans/${clanId}`), clanData)
+      await updateProfile({ clan: newClanTag.toUpperCase() })
+      toast.success('Klan oluşturuldu! ⚔️')
+      setCreating(false)
+    } catch (e) {
+      if (e?.code === 'PERMISSION_DENIED') {
+        toast.error('Firebase izni gerekli. Firebase Console → Realtime Database → Rules → Publish yapın.')
+      } else {
+        toast.error('Klan oluşturulamadı: ' + (e?.message || 'Hata'))
+      }
+    }
     setLoading(false)
   }
 
   const joinClan = async (clan) => {
     if (profile?.clan) { toast.error('Önce mevcut klandan ayrıl!'); return }
     setLoading(true)
-    await update(ref(db, `clans/${clan.id}/members/${user.uid}`), {
-      uid: user.uid,
-      name: profile?.name || 'Player',
-      rank: 'member',
-      joinedAt: Date.now()
-    })
-    await updateProfile({ clan: clan.tag })
-    toast.success(`${clan.name} klanına katıldın! ⚔️`)
+    try {
+      await update(ref(db, `clans/${clan.id}/members/${user.uid}`), {
+        uid: user.uid,
+        name: profile?.name || 'Player',
+        rank: 'member',
+        joinedAt: Date.now()
+      })
+      await updateProfile({ clan: clan.tag })
+      toast.success(`${clan.name} klanına katıldın! ⚔️`)
+    } catch (e) {
+      toast.error('Katılma başarısız: ' + (e?.message || 'Hata'))
+    }
     setLoading(false)
   }
 
@@ -102,7 +116,7 @@ export default function ClanSystem() {
       toast.error('Lider olarak ayrılamazsın! Önce liderliği devret.')
       return
     }
-    await remove(ref(db, `clans/${myClan.id}/members/${user.uid}`))
+    try { await remove(ref(db, `clans/${myClan.id}/members/${user.uid}`)) } catch {}
     await updateProfile({ clan: null })
     setMyClan(null)
     toast.success('Klandan ayrıldın.')

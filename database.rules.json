@@ -6,38 +6,67 @@
         ".write": true
       }
     },
+    "clans": {
+      ".read": true,
+      "$clanId": {
+        ".write": true,
+        "members": {
+          "$uid": {
+            ".write": true
+          }
+        }
+      }
+    },
     "chat": {
       "global": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+        ".read": true,
+        ".write": true
+      },
+      "rooms": {
+        "$roomId": {
+          ".read": true,
+          ".write": true
+        }
       },
       "clan": {
         "$clanId": {
-          ".read": "auth != null",
-          ".write": "auth != null"
+          ".read": true,
+          ".write": true
         }
       }
     },
     "userSearch": {
       ".read": true,
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": true
       }
     },
     "users": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": true,
         ".write": "auth != null && auth.uid === $uid",
         "friends": {
-          ".read": "auth != null && auth.uid === $uid",
+          ".read": true,
           ".write": "auth != null && auth.uid === $uid"
         },
         "friendRequests": {
-          ".read": "auth != null && auth.uid === $uid",
+          ".read": true,
           "$fromUid": {
-            ".write": "auth != null"
+            ".write": true
           }
         }
+      }
+    },
+    "rooms": {
+      ".read": true,
+      "$roomId": {
+        ".write": true
+      }
+    },
+    "leaderboard": {
+      ".read": true,
+      "$uid": {
+        ".write": true
       }
     }
   }
