@@ -530,7 +530,10 @@ io.on('connection', (socket) => {
         skillSlowTimer: 0,
         skillShieldTimer: 0,
         _virusFirstHit: false,
-        joinedAt: Date.now()
+        joinedAt: Date.now(),
+        _skillCooldowns: { speed: 0, shield: 0, slow: 0 },
+        _skillUseCount: { speed: 0, shield: 0, slow: 0 },
+        _skillRateWindow: 0
       }
 
       room.addPlayer(player)
@@ -588,12 +591,44 @@ io.on('connection', (socket) => {
     const player = room.players.get(playerId)
     if (!player || player.dead) return
     const skill = data.skill
-    if (skill === 'speed') player.skillSpeedTimer = 10
-    else if (skill === 'shield') player.skillShieldTimer = 5
-    else if (skill === 'slow') {
-      const nearest = _findNearestEnemy(room, player)
-      if (nearest) nearest.skillSlowTimer = 3
+    if (!['speed', 'shield', 'slow'].includes(skill)) return
+
+    const now = Date.now()
+    if (!player._skillCooldowns) player._skillCooldowns = { speed: 0, shield: 0, slow: 0 }
+    if (!player._skillUseCount) player._skillUseCount = { speed: 0, shield: 0, slow: 0 }
+
+    const COOLDOWNS = { speed: 20000, shield: 15000, slow: 12000 }
+    const PREMIUM_COOLDOWNS = { speed: 12000, shield: 9000, slow: 7000 }
+    const cooldownMs = player.isPremium ? PREMIUM_COOLDOWNS[skill] : COOLDOWNS[skill]
+
+    if (now - player._skillCooldowns[skill] < cooldownMs) {
+      socket.emit('skill:denied', { skill, remaining: Math.ceil((cooldownMs - (now - player._skillCooldowns[skill])) / 1000) })
+      return
     }
+
+    if (now - (player._skillRateWindow || 0) > 5000) {
+      player._skillUseCount = { speed: 0, shield: 0, slow: 0 }
+      player._skillRateWindow = now
+    }
+    player._skillUseCount[skill] = (player._skillUseCount[skill] || 0) + 1
+    if (player._skillUseCount[skill] > 3) {
+      socket.emit('anticheat:warn', { reason: 'skill_spam' })
+      player.dead = true
+      return
+    }
+
+    player._skillCooldowns[skill] = now
+
+    if (skill === 'speed') {
+      player.skillSpeedTimer = player.isPremium ? 14 : 10
+    } else if (skill === 'shield') {
+      player.skillShieldTimer = player.isPremium ? 8 : 5
+    } else if (skill === 'slow') {
+      const nearest = _findNearestEnemy(room, player)
+      if (nearest) nearest.skillSlowTimer = player.isPremium ? 5 : 3
+    }
+
+    socket.emit('skill:activated', { skill, cooldown: cooldownMs })
   })
 
   socket.on('player:move', (data) => {

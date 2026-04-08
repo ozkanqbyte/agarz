@@ -514,6 +514,15 @@ export class GameEngine {
           if (!activeIds.has(id)) delete this.otherPlayers[id]
         }
       })
+      .on('skill:activated', (d) => {
+        const skillMap = { speed: this.skills.speed, shield: this.skills.shield, slow: this.skills.slow }
+        const sk = skillMap[d.skill]
+        if (sk) sk.cooldown = (d.cooldown || 20000) / 1000
+      })
+      .on('skill:denied', (d) => {
+        const labels = { speed: '⚡', shield: '🛡️', slow: '🌀' }
+        this._showFloat(`${labels[d.skill] || '⛔'} Bekleme: ${d.remaining}s`, '#ef4444')
+      })
       .on('ejected:spawn', (list) => {
         if (!Array.isArray(list)) return
         for (const em of list) {
@@ -2015,6 +2024,7 @@ export class GameEngine {
   _activateSlow() {
     const sk = this.skills.slow
     if (sk.cooldown > 0) { this._showFloat(`🌀 Bekleme: ${Math.ceil(sk.cooldown)}s`, '#8b5cf6'); return }
+    if (!this.options.isPremium) { this._showFloat('🌀 Premium Gerekli! 💎', '#8b5cf6'); return }
     const cell = this.cells[0]
     if (!cell) return
     let nearestId = null, nearDist = Infinity
@@ -2039,6 +2049,7 @@ export class GameEngine {
   _activateShield() {
     const sk = this.skills.shield
     if (sk.cooldown > 0) { this._showFloat(`🛡️ Bekleme: ${Math.ceil(sk.cooldown)}s`, '#06b6d4'); return }
+    if (!this.options.isPremium) { this._showFloat('🛡️ Premium Gerekli! 💎', '#06b6d4'); return }
     sk.active = true; sk.timer = SKILL_SHIELD_DURATION; sk.cooldown = SKILL_SHIELD_COOLDOWN
     this._showFloat('🛡️ KALKAN AKTİF!', '#06b6d4')
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#06b6d4')
