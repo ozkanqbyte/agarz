@@ -78,9 +78,16 @@ const usePremiumStore = create((set, get) => ({
   setCoins: (coins) => set({ coins }),
 
   mockPurchasePackage: (packageId) => {
-    set({ ownedPackage: packageId })
-    if (packageId === 'pro') set({ ownedSkins: SKINS.filter(s => !s.premium || s.price <= 2000).map(s => s.id) })
-    if (packageId === 'god') set({ ownedSkins: SKINS.map(s => s.id) })
+    let newSkins = get().ownedSkins
+    if (packageId === 'pro') newSkins = SKINS.filter(s => !s.premium || s.price <= 2000).map(s => s.id)
+    if (packageId === 'god') newSkins = SKINS.map(s => s.id)
+    set({ ownedPackage: packageId, ownedSkins: newSkins })
+    import('../firebase/syncService').then(({ fbSavePremium }) => {
+      import('./useAuthStore').then(({ default: useAuthStore }) => {
+        const uid = useAuthStore.getState().user?.uid
+        fbSavePremium(uid, { ownedPackage: packageId, ownedSkins: newSkins, coins: get().coins })
+      })
+    }).catch(() => {})
     return { success: true }
   },
 
@@ -89,11 +96,28 @@ const usePremiumStore = create((set, get) => ({
     const skin = SKINS.find(s => s.id === skinId)
     if (!skin || ownedSkins.includes(skinId)) return { success: false, error: 'Zaten sahipsin' }
     if (coins < skin.price) return { success: false, error: 'Yetersiz coin' }
-    set({ ownedSkins: [...ownedSkins, skinId], coins: coins - skin.price })
+    const newSkins = [...ownedSkins, skinId]
+    const newCoins = coins - skin.price
+    set({ ownedSkins: newSkins, coins: newCoins })
+    import('../firebase/syncService').then(({ fbSavePremium }) => {
+      import('./useAuthStore').then(({ default: useAuthStore }) => {
+        const uid = useAuthStore.getState().user?.uid
+        fbSavePremium(uid, { ownedPackage: get().ownedPackage, ownedSkins: newSkins, coins: newCoins })
+      })
+    }).catch(() => {})
     return { success: true }
   },
 
-  addCoins: (amount) => set(s => ({ coins: s.coins + amount }))
+  addCoins: (amount) => set(s => ({ coins: s.coins + amount })),
+
+  _hydrate: (data) => {
+    if (!data) return
+    set(s => ({
+      ownedPackage: data.ownedPackage || s.ownedPackage,
+      ownedSkins: data.ownedSkins?.length ? [...new Set([...s.ownedSkins, ...data.ownedSkins])] : s.ownedSkins,
+      coins: Math.max(s.coins, data.coins ?? 0),
+    }))
+  },
 }))
 
 export default usePremiumStore

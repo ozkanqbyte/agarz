@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
+import { ref, onValue, off } from 'firebase/database'
+import { db } from '../../firebase/config'
 import useAuthStore from '../../store/useAuthStore'
 import useGameStore from '../../store/useGameStore'
 import usePremiumStore from '../../store/usePremiumStore'
 import useProgressStore, { xpForLevel, BADGES } from '../../store/useProgressStore'
 import useQuestStore from '../../store/useQuestStore'
 import { THEME_LIST, getTheme } from '../../themes/themes'
+import { fbGetLeaderboard } from '../../firebase/syncService'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -522,11 +525,37 @@ export default function MainMenu() {
 
 function LobbyTab({ theme, panelStyle, onCreateLobby, navigate, playerName }) {
   const [lobbyCode, setLobbyCode] = useState('')
-  const recentLobbies = [
-    { id: 'priv_ab12cd34', mode: 'ffa', players: 3, max: 8, host: 'CyberCell' },
-    { id: 'priv_xy78ef90', mode: 'teams', players: 6, max: 10, host: 'DragonSlayer' },
-    { id: 'priv_mn56gh12', mode: 'battle_royale', players: 1, max: 12, host: 'BlobMaster' },
-  ]
+  const [recentLobbies, setRecentLobbies] = useState([])
+  const [loadingLobbies, setLoadingLobbies] = useState(true)
+
+  useEffect(() => {
+    let lobbiesRef
+    try {
+      lobbiesRef = ref(db, 'lobbies')
+      const unsub = onValue(lobbiesRef, (snap) => {
+        setLoadingLobbies(false)
+        if (!snap.exists()) { setRecentLobbies([]); return }
+        const data = snap.val()
+        const list = Object.entries(data)
+          .map(([id, lobby]) => ({
+            id,
+            mode: lobby.mode || 'ffa',
+            players: Object.keys(lobby.players || {}).length,
+            max: lobby.maxPlayers || 8,
+            host: lobby.hostName || Object.values(lobby.players || {})[0]?.name || 'Host',
+            starting: !!lobby.starting,
+            createdAt: lobby.createdAt || 0,
+          }))
+          .filter(l => l.players > 0 && !l.starting)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 10)
+        setRecentLobbies(list)
+      })
+      return () => off(lobbiesRef)
+    } catch {
+      setLoadingLobbies(false)
+    }
+  }, [])
 
   const handleJoinCode = () => {
     if (!lobbyCode.trim()) { return }
@@ -571,32 +600,43 @@ function LobbyTab({ theme, panelStyle, onCreateLobby, navigate, playerName }) {
       </div>
 
       <div className="rounded-2xl p-5" style={panelStyle}>
-        <div className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: theme.uiAccent }}>
-          🌐 Aktif Lobiler
+        <div className="text-xs font-bold uppercase tracking-widest mb-4 flex items-center justify-between" style={{ color: theme.uiAccent }}>
+          <span>🌐 Aktif Lobiler</span>
+          {!loadingLobbies && <span className="text-gray-500 normal-case tracking-normal font-normal text-xs">{recentLobbies.length} lobi</span>}
         </div>
         <div className="space-y-2">
-          {recentLobbies.map(lobby => (
-            <motion.div key={lobby.id}
-              whileHover={{ scale: 1.01, x: 3 }}
-              className="flex items-center gap-3 p-3 rounded-xl cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-              onClick={() => navigate(`/lobby?room=${lobby.id}`)}>
-              <div className="text-xl">
-                {lobby.mode === 'ffa' ? '⚔️' : lobby.mode === 'teams' ? '🛡️' : '💥'}
-              </div>
-              <div className="flex-1">
-                <div className="text-white font-bold text-sm">{lobby.host}'s Lobby</div>
-                <div className="text-xs text-gray-400">{lobby.mode.toUpperCase()}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-bold" style={{ color: theme.uiAccent }}>
-                  {lobby.players}/{lobby.max}
+          {loadingLobbies && (
+            <div className="text-center text-gray-500 py-6 text-sm">Lobiler yükleniyor...</div>
+          )}
+          {!loadingLobbies && recentLobbies.length === 0 && (
+            <div className="text-center text-gray-500 py-6 text-sm">
+              <div className="text-3xl mb-2">🏠</div>
+              Aktif lobi yok. İlk seni oluştur!
+            </div>
+          )}
+          {recentLobbies.map(lobby => {
+            const modeIcon = lobby.mode === 'ffa' ? '⚔️' : lobby.mode === 'teams' ? '🛡️' : lobby.mode === 'battle_royale' ? '💥' : lobby.mode === 'rush' ? '⚡' : '🏰'
+            return (
+              <motion.div key={lobby.id}
+                whileHover={{ scale: 1.01, x: 3 }}
+                className="flex items-center gap-3 p-3 rounded-xl cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                onClick={() => navigate(`/lobby?room=${lobby.id}`)}>
+                <div className="text-xl">{modeIcon}</div>
+                <div className="flex-1">
+                  <div className="text-white font-bold text-sm">{lobby.host}'s Lobby</div>
+                  <div className="text-xs text-gray-400">{lobby.mode.toUpperCase()}</div>
                 </div>
-                <div className="text-xs text-gray-500">oyuncu</div>
-              </div>
-              <div className="w-2 h-2 rounded-full bg-green-400" style={{ boxShadow: '0 0 6px #4ade80' }} />
-            </motion.div>
-          ))}
+                <div className="text-right">
+                  <div className="text-sm font-bold" style={{ color: theme.uiAccent }}>
+                    {lobby.players}/{lobby.max}
+                  </div>
+                  <div className="text-xs text-gray-500">oyuncu</div>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-green-400" style={{ boxShadow: '0 0 6px #4ade80' }} />
+              </motion.div>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -825,6 +865,24 @@ function QuestsTab({ theme, panelStyle, quests }) {
 
 function LeaderboardTab({ theme, panelStyle }) {
   const medals = ['🥇', '🥈', '🥉']
+  const [lbData, setLbData] = useState([])
+  const [lbLoading, setLbLoading] = useState(true)
+
+  useEffect(() => {
+    setLbLoading(true)
+    fbGetLeaderboard(50).then(data => {
+      if (data.length > 0) {
+        setLbData(data)
+      } else {
+        setLbData(MOCK_LEADERBOARD.map(p => ({ name: p.name, score: p.mass, color: p.color, level: 1 })))
+      }
+      setLbLoading(false)
+    }).catch(() => {
+      setLbData(MOCK_LEADERBOARD.map(p => ({ name: p.name, score: p.mass, color: p.color, level: 1 })))
+      setLbLoading(false)
+    })
+  }, [])
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 rounded-2xl overflow-hidden" style={panelStyle}>
@@ -837,11 +895,15 @@ function LeaderboardTab({ theme, panelStyle }) {
           </div>
         </div>
         <div className="p-3 space-y-1">
-          {MOCK_LEADERBOARD.map((p, i) => (
-            <motion.div key={p.name}
+          {lbLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: theme.uiAccent }} />
+            </div>
+          ) : lbData.map((p, i) => (
+            <motion.div key={p.uid || p.name}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
+              transition={{ delay: i * 0.04 }}
               whileHover={{ x: 4 }}
               className="flex items-center gap-3 px-3 py-3 rounded-xl"
               style={{
@@ -852,17 +914,18 @@ function LeaderboardTab({ theme, panelStyle }) {
                 {i < 3 ? medals[i] : <span style={{ color: '#4b5563' }}>#{i+1}</span>}
               </div>
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
-                style={{ background: p.color, boxShadow: `0 0 10px ${p.color}66` }}>
-                {p.isGod ? '👑' : p.name[0]}
+                style={{ background: p.color || '#6366f1', boxShadow: `0 0 10px ${p.color || '#6366f1'}66` }}>
+                {p.name?.[0] || '?'}
               </div>
               <div className="flex-1">
-                <span className="text-white font-bold text-sm">{p.isGod ? '👑 ' : ''}{p.name}</span>
+                <div className="text-white font-bold text-sm">{p.name}</div>
+                {p.level > 1 && <div className="text-xs text-gray-500">Lv.{p.level}{p.prestige > 0 ? ` ✦${p.prestige}` : ''}</div>}
               </div>
               <div className="text-right">
                 <div className="font-black text-sm" style={{ color: i === 0 ? '#fbbf24' : theme.uiAccent }}>
-                  {p.mass.toLocaleString()}
+                  {(p.score || 0).toLocaleString()}
                 </div>
-                <div className="text-xs text-gray-500">kütle</div>
+                <div className="text-xs text-gray-500">skor</div>
               </div>
             </motion.div>
           ))}

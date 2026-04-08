@@ -524,6 +524,30 @@ export class GameEngine {
         const labels = { speed: '⚡', shield: '🛡️', slow: '🌀' }
         this._showFloat(`${labels[d.skill] || '⛔'} Bekleme: ${d.remaining}s`, '#ef4444')
       })
+      .on('zone:update', (d) => {
+        if (d?.radius != null) {
+          this.brZone.radius = d.radius
+          this.brZone.active = true
+        }
+      })
+      .on('rush:tick', (d) => {
+        this.rushTime = d.timeLeft
+        this.onTimerChange(d.timeLeft)
+      })
+      .on('rush:ended', (d) => {
+        const winner = d.winner
+        const isWinner = winner?.id === this.playerId
+        this._showFloat(isWinner ? '🏆 KAZANDIN!' : `🏁 Kazanan: ${winner?.name || '?'}`, isWinner ? '#fbbf24' : '#f59e0b')
+        this.modeMessage = `🏁 ${winner?.name || '?'} KAZANDI!`
+        this.modeMessageTimer = 8
+        if (isWinner) {
+          this.screenFlash = 0.6
+          soundSystem.levelUp?.()
+        }
+        setTimeout(() => {
+          if (!this.dead) { this.dead = true; this.onDeath && this.onDeath() }
+        }, 5000)
+      })
       .on('ejected:spawn', (list) => {
         if (!Array.isArray(list)) return
         for (const em of list) {
@@ -2307,12 +2331,15 @@ export class GameEngine {
         }
       }
     }
-    if (mode === 'rush') {
+    if (mode === 'rush' && !this._useSocket) {
       this.rushTime -= dt
-      if (this.rushTime <= 0 && !this.dead) {
+      this.onTimerChange(Math.max(0, Math.ceil(this.rushTime)))
+      if (this.rushTime <= 0 && !this.dead && !this._rushEndedLocal) {
+        this._rushEndedLocal = true
         this.rushTime = 0
         this.modeMessage = `🏁 Süre Bitti! Skor: ${Math.floor(this.score)}`
         this.modeMessageTimer = 5
+        setTimeout(() => { if (!this.dead) { this.dead = true; this.onDeath && this.onDeath() } }, 4000)
       }
     }
     if (mode === 'teams') {

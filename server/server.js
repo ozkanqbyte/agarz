@@ -142,6 +142,7 @@ class GameRoom {
     this._checkVirusCollisions()
     this._respawnFood()
     this._updateBattleRoyale(dt)
+    this._updateRush(dt)
 
     if (this._tick % BROADCAST_EVERY === 0) {
       this._broadcast()
@@ -400,6 +401,23 @@ class GameRoom {
         spawned.push(f)
       }
       if (spawned.length) io.to(this.id).emit('food:spawned', spawned)
+    }
+  }
+
+  _updateRush(dt) {
+    if (this.mode !== 'rush' || this._rushEnded) return
+    this.rushTime = (this.rushTime || 300) - dt
+    if (this._tick % TICK_RATE === 0) {
+      io.to(this.id).emit('rush:tick', { timeLeft: Math.max(0, Math.ceil(this.rushTime)) })
+    }
+    if (this.rushTime <= 0) {
+      this._rushEnded = true
+      const winner = Array.from(this.players.values())
+        .filter(p => !p.dead && p.mass > 0)
+        .sort((a, b) => b.mass - a.mass)[0]
+      io.to(this.id).emit('rush:ended', {
+        winner: winner ? { id: winner.id, name: winner.name, mass: Math.floor(winner.mass) } : null
+      })
     }
   }
 

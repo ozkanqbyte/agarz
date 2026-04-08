@@ -86,6 +86,19 @@ const useBattlePassStore = create(
         }
         return true
       },
+
+      _hydrate: (data) => {
+        if (!data) return
+        set(s => ({
+          currentTier: Math.max(s.currentTier, data.currentTier ?? 0),
+          bpXP: data.bpXP ?? s.bpXP,
+          isPremium: data.isPremium || s.isPremium,
+          seasonNumber: data.seasonNumber || s.seasonNumber,
+          claimedFree: [...new Set([...s.claimedFree, ...(data.claimedFree || [])])],
+          claimedPremium: [...new Set([...s.claimedPremium, ...(data.claimedPremium || [])])],
+          seasonEnd: data.seasonEnd || s.seasonEnd,
+        }))
+      },
     }),
     { name: 'agarz-battlepass' }
   )

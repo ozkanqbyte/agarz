@@ -102,6 +102,7 @@ export default function Lobby() {
       const uid = user?.uid || 'guest_' + Math.random().toString(36).slice(2, 8)
       await set(ref(db, `lobbies/${roomId}`), {
         host: uid,
+        hostName: profile?.name || 'Player',
         mode: selectedMode,
         maxPlayers: 8,
         createdAt: Date.now(),

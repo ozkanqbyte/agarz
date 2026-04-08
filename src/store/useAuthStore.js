@@ -66,7 +66,7 @@ const useAuthStore = create((set, get) => ({
   loadProfile: (uid) => {
     try {
       const profileRef = dbRef(db, `users/${uid}/profile`)
-      return onValue(profileRef, (snap) => {
+      const unsub = onValue(profileRef, (snap) => {
         if (snap.exists()) {
           set({ profile: snap.val() })
         } else {
@@ -75,6 +75,10 @@ const useAuthStore = create((set, get) => ({
           set({ profile: defaultProfile })
         }
       })
+      import('../firebase/syncService').then(({ fbHydrateAllStores }) => {
+        fbHydrateAllStores(uid)
+      }).catch(() => {})
+      return unsub
     } catch (e) {}
   },
 

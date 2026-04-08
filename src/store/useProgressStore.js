@@ -33,6 +33,9 @@ const useProgressStore = create(
       totalPlayTime: 0,
       earnedBadges: [],
       pendingLootBoxes: 0,
+      pendingGodGames: 0,
+      ownedFrames: [],
+      pendingBoosts: [],
 
       addXP: (amount) => {
         const state = get()
@@ -79,6 +82,21 @@ const useProgressStore = create(
         return true
       },
       incrementGames: () => set(s => ({ gamesPlayed: s.gamesPlayed + 1 })),
+      addPendingGod: (count = 1) => set(s => ({ pendingGodGames: s.pendingGodGames + count })),
+      usePendingGod: () => {
+        if (get().pendingGodGames <= 0) return false
+        set(s => ({ pendingGodGames: s.pendingGodGames - 1 }))
+        return true
+      },
+      addFrame: (frame) => set(s => ({ ownedFrames: [...new Set([...s.ownedFrames, frame])] })),
+      addBoost: (boostType) => set(s => ({ pendingBoosts: [...s.pendingBoosts, { type: boostType, addedAt: Date.now() }] })),
+      useBoost: () => {
+        const { pendingBoosts } = get()
+        if (!pendingBoosts.length) return null
+        const boost = pendingBoosts[0]
+        set(s => ({ pendingBoosts: s.pendingBoosts.slice(1) }))
+        return boost
+      },
 
       checkBadges: () => {
         const state = get()
@@ -92,6 +110,24 @@ const useProgressStore = create(
           set(s => ({ earnedBadges: [...s.earnedBadges, ...newBadges.map(b => b.id)] }))
         }
         return newBadges
+      },
+
+      _hydrate: (data) => {
+        if (!data) return
+        set(s => ({
+          xp: data.xp ?? s.xp,
+          level: data.level ?? s.level,
+          prestige: data.prestige ?? s.prestige,
+          totalXP: data.totalXP ?? s.totalXP,
+          coins: Math.max(s.coins, data.coins ?? 0),
+          totalKills: Math.max(s.totalKills, data.totalKills ?? 0),
+          highScore: Math.max(s.highScore, data.highScore ?? 0),
+          gamesPlayed: Math.max(s.gamesPlayed, data.gamesPlayed ?? 0),
+          totalViruses: Math.max(s.totalViruses, data.totalViruses ?? 0),
+          totalPlayTime: Math.max(s.totalPlayTime, data.totalPlayTime ?? 0),
+          earnedBadges: [...new Set([...s.earnedBadges, ...(data.earnedBadges || [])])],
+          pendingLootBoxes: Math.max(s.pendingLootBoxes, data.pendingLootBoxes ?? 0),
+        }))
       },
     }),
     { name: 'agarz-progress' }

@@ -71,6 +71,17 @@ const useQuestStore = create(
         }))
         return true
       },
+
+      _hydrate: (data) => {
+        if (!data) return
+        const now = Date.now()
+        const { lastReset } = get()
+        if (data.lastReset > lastReset && data.quests?.length > 0) {
+          if (now - data.lastReset < 24 * 60 * 60 * 1000) {
+            set({ quests: data.quests, lastReset: data.lastReset })
+          }
+        }
+      },
     }),
     { name: 'agarz-quests' }
   )

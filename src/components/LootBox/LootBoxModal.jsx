@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import useProgressStore from '../../store/useProgressStore'
+import usePremiumStore from '../../store/usePremiumStore'
 
 const RARITY_COLORS = {
   common: '#60a5fa',
@@ -34,7 +35,8 @@ function getRandomReward() {
 }
 
 export default function LootBoxModal({ onClose, onRewardEarned }) {
-  const { pendingLootBoxes, useLootBox, addCoins, addXP } = useProgressStore()
+  const { pendingLootBoxes, useLootBox, addCoins, addXP, addPendingGod, addFrame, addBoost } = useProgressStore()
+  const { _hydrate: premiumHydrate } = usePremiumStore()
   const [phase, setPhase] = useState('idle')
   const [reward, setReward] = useState(null)
   const [particles, setParticles] = useState([])
@@ -57,6 +59,10 @@ export default function LootBoxModal({ onClose, onRewardEarned }) {
       setParticles(pts)
       if (r.type === 'coins') addCoins(r.value)
       if (r.type === 'xp') addXP(r.value)
+      if (r.type === 'skin') premiumHydrate({ ownedSkins: [r.value] })
+      if (r.type === 'god_temp') addPendingGod(r.value)
+      if (r.type === 'frame' || r.type === 'frame_permanent') addFrame(r.value)
+      if (r.type === 'boost') addBoost(r.value)
       onRewardEarned?.(r)
     }, 1900)
   }

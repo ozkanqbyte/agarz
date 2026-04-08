@@ -7,6 +7,7 @@ import usePremiumStore from '../../store/usePremiumStore'
 import useProgressStore from '../../store/useProgressStore'
 import useQuestStore from '../../store/useQuestStore'
 import useBattlePassStore from '../../store/useBattlePassStore'
+import { fbSaveProgress, fbSaveBattlePass, fbSaveQuests, fbUpdateLeaderboard } from '../../firebase/syncService'
 import GameUI from './GameUI'
 import ChatSystem from '../Chat/ChatSystem'
 import toast from 'react-hot-toast'
@@ -19,7 +20,7 @@ export default function GameCanvas({ onLevelUp }) {
   const { user, profile } = useAuthStore()
   const { setScore, setRank, setTotalPlayers, setLeaderboard, setPlaying, currentTheme, gameMode } = useGameStore()
   const { ownedPackage } = usePremiumStore()
-  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges } = useProgressStore()
+  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames } = useProgressStore()
   const { updateProgress } = useQuestStore()
   const { addBPXP } = useBattlePassStore()
   const startTimeRef = useRef(Date.now())
@@ -68,7 +69,7 @@ export default function GameCanvas({ onLevelUp }) {
       roomId,
       gameMode: mode,
       theme: currentTheme,
-      isGod: profile?.isGod || false,
+      isGod: profile?.isGod || (pendingGodGames > 0 && usePendingGod()) || false,
       clan: profile?.clan || null,
       isPremium: ownedPackage !== 'free',
       ownedPackage,
@@ -106,6 +107,23 @@ export default function GameCanvas({ onLevelUp }) {
       updateProgress('playtime', elapsed)
       engine.destroy()
       setPlaying(false)
+
+      const uid = user?.uid
+      if (uid && !uid.startsWith('guest_')) {
+        const ps = useProgressStore.getState()
+        const bp = useBattlePassStore.getState()
+        const qs = useQuestStore.getState()
+        fbSaveProgress(uid, ps).catch(() => {})
+        fbSaveBattlePass(uid, bp).catch(() => {})
+        fbSaveQuests(uid, qs).catch(() => {})
+        fbUpdateLeaderboard(uid, {
+          name: profile?.name || playerName,
+          score: ps.highScore,
+          level: ps.level,
+          prestige: ps.prestige,
+          color: profile?.color || '#6366f1',
+        }).catch(() => {})
+      }
     }
   }, [])
 
