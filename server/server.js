@@ -338,3 +338,4 @@ httpServer.listen(PORT, () => {
   console.log(`🎮 AGARZ Server running on port ${PORT}`)
   console.log(`   Health: http://localhost:${PORT}/health`)
 })
+  
