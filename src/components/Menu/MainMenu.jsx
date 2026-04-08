@@ -10,6 +10,7 @@ import useProgressStore, { xpForLevel, BADGES } from '../../store/useProgressSto
 import useQuestStore from '../../store/useQuestStore'
 import { THEME_LIST, getTheme } from '../../themes/themes'
 import { fbGetLeaderboard } from '../../firebase/syncService'
+import FriendSystem from '../Friends/FriendSystem'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -24,6 +25,7 @@ const GAME_MODES = [
 const NAV_ITEMS = [
   { id: 'play', icon: '🎮', label: 'Oyna' },
   { id: 'lobby', icon: '🏠', label: 'Lobi' },
+  { id: 'friends', icon: '👥', label: 'Arkadaşlar' },
   { id: 'profile', icon: '👤', label: 'Profil' },
   { id: 'clan', icon: '⚔️', label: 'Klan' },
   { id: 'leaderboard', icon: '🏆', label: 'Sıralama' },
@@ -191,6 +193,7 @@ export default function MainMenu() {
             <h2 className="text-2xl font-black text-white">
               {tab === 'play' && '🎮 Oyna'}
               {tab === 'lobby' && '🏠 Lobi'}
+              {tab === 'friends' && '👥 Arkadaşlar'}
               {tab === 'profile' && '👤 Profil'}
               {tab === 'clan' && '⚔️ Klan'}
               {tab === 'leaderboard' && '🏆 Küresel Sıralama'}
@@ -402,6 +405,13 @@ export default function MainMenu() {
             <motion.div key="lobby"
               initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }}>
               <LobbyTab theme={theme} panelStyle={panelStyle} onCreateLobby={handlePrivateLobby} onJoinPublic={handlePlay} navigate={navigate} playerName={playerName} />
+            </motion.div>
+          )}
+
+          {tab === 'friends' && (
+            <motion.div key="friends"
+              initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }}>
+              <FriendSystem />
             </motion.div>
           )}
 

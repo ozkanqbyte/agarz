@@ -1,0 +1,44 @@
+{
+  "rules": {
+    "lobbies": {
+      ".read": true,
+      "$lobbyId": {
+        ".write": true
+      }
+    },
+    "chat": {
+      "global": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "clan": {
+        "$clanId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      }
+    },
+    "userSearch": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "friends": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
+        },
+        "friendRequests": {
+          ".read": "auth != null && auth.uid === $uid",
+          "$fromUid": {
+            ".write": "auth != null"
+          }
+        }
+      }
+    }
+  }
+}

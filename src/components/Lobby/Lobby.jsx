@@ -7,6 +7,7 @@ import { db, auth } from '../../firebase/config'
 import useAuthStore from '../../store/useAuthStore'
 import useGameStore from '../../store/useGameStore'
 import { getTheme } from '../../themes/themes'
+import FriendSystem from '../Friends/FriendSystem'
 import toast from 'react-hot-toast'
 
 const GAME_MODES = [
@@ -98,7 +99,10 @@ export default function Lobby() {
           ready: false,
           joinedAt: Date.now()
         })
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Lobby join failed:', e?.message)
+        toast.error('Lobi bağlantısı kurulamadı: ' + (e?.code || 'Hata'))
+      }
     }
 
     const doLeave = async () => {
@@ -282,7 +286,7 @@ export default function Lobby() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl"
+          <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid rgba(255,255,255,0.1)` }}>
             <span className="text-gray-400 text-sm">Kod:</span>
             <span className="font-black text-white tracking-widest">{shortCode}</span>
@@ -295,8 +299,9 @@ export default function Lobby() {
               border: `1px solid rgba(${theme.glowColor},0.4)`,
               color: copied ? '#4ade80' : theme.uiAccent
             }}>
-            {copied ? '✓ Kopyalandı' : '🔗 Davet Linki'}
+            {copied ? '✓ Kopyalandı' : '🔗 Davet'}
           </motion.button>
+          <FriendSystem compact lobbyId={roomId} />
         </div>
       </header>
 
@@ -333,10 +338,10 @@ export default function Lobby() {
                     transition={{ delay: i * 0.07 }}
                     className="flex items-center gap-3 p-3 rounded-xl"
                     style={{
-                      background: p.uid === user?.uid
+                      background: p.uid === playerId
                         ? `rgba(${theme.glowColor},0.1)`
                         : 'rgba(255,255,255,0.03)',
-                      border: p.uid === user?.uid
+                      border: p.uid === playerId
                         ? `1px solid rgba(${theme.glowColor},0.3)`
                         : '1px solid rgba(255,255,255,0.06)'
                     }}>
@@ -351,7 +356,7 @@ export default function Lobby() {
                       <div className="font-bold text-white text-sm truncate">
                         {p.isGod ? '👑 ' : ''}{p.name}
                         {p.uid === lobby?.host && <span className="ml-1 text-yellow-400 text-xs">(Host)</span>}
-                        {p.uid === user?.uid && <span className="ml-1 text-xs" style={{ color: theme.uiAccent }}>(Sen)</span>}
+                        {p.uid === playerId && <span className="ml-1 text-xs" style={{ color: theme.uiAccent }}>(Sen)</span>}
                       </div>
                       {p.clan && <div className="text-xs text-gray-500">[{p.clan}]</div>}
                     </div>
