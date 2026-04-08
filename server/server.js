@@ -182,7 +182,13 @@ class GameRoom {
 
   _massDecay(player, dt) {
     for (const cell of player.cells) {
-      if (cell.mass > 20) cell.mass = Math.max(20, cell.mass - 2 * dt)
+      if (cell.mass <= 20) continue
+      let rate
+      if (cell.mass < 100) rate = 0.15
+      else if (cell.mass < 500) rate = 0.3
+      else if (cell.mass < 2000) rate = cell.mass * 0.0004
+      else rate = cell.mass * 0.0007
+      cell.mass = Math.max(20, cell.mass - rate * dt)
     }
   }
 

@@ -309,7 +309,7 @@ export class GameEngine {
   async init() {
     this._setupEvents()
     this._onResize()
-    const inheritMass = this._bestScore > 0 ? Math.max(0, Math.floor(this._bestScore * 0.10 / scoreMultiplierForMass(this._bestScore))) : 0
+    const inheritMass = this._bestScore > 0 ? Math.max(0, Math.floor(this._bestScore * 0.25 / scoreMultiplierForMass(this._bestScore))) : 0
     const startMass = Math.max(this.options.comeback ? 24 : 20, Math.min(inheritMass, 80))
     this.cells = [new Cell(this.spawnX, this.spawnY, startMass, this.playerColor)]
     if (this.options.comeback) {
@@ -1418,9 +1418,13 @@ export class GameEngine {
 
   _massDecay(dt) {
     for (const cell of this.cells) {
-      if (cell.mass > 20) {
-        cell.mass = Math.max(20, cell.mass - 2 * dt)
-      }
+      if (cell.mass <= 20) continue
+      let rate
+      if (cell.mass < 100) rate = 0.15
+      else if (cell.mass < 500) rate = 0.3
+      else if (cell.mass < 2000) rate = cell.mass * 0.0004
+      else rate = cell.mass * 0.0007
+      cell.mass = Math.max(20, cell.mass - rate * dt)
     }
   }
 
