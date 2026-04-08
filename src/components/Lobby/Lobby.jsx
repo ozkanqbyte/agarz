@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { ref, set, onValue, remove, update } from 'firebase/database'
-import { db } from '../../firebase/config'
+import { signInAnonymously, updateProfile } from 'firebase/auth'
+import { db, auth } from '../../firebase/config'
 import useAuthStore from '../../store/useAuthStore'
 import useGameStore from '../../store/useGameStore'
 import { getTheme } from '../../themes/themes'
@@ -16,6 +17,19 @@ const GAME_MODES = [
   { id: 'clan_war', name: 'Klan Savaşı', icon: '🏰' },
 ]
 
+function getOrCreateGuestId() {
+  try {
+    let id = sessionStorage.getItem('lobbyGuestId')
+    if (!id) {
+      id = 'guest_' + Math.random().toString(36).slice(2, 10)
+      sessionStorage.setItem('lobbyGuestId', id)
+    }
+    return id
+  } catch {
+    return 'guest_' + Math.random().toString(36).slice(2, 10)
+  }
+}
+
 export default function Lobby() {
   const [searchParams] = useSearchParams()
   const { mode: modeParam } = useParams()
@@ -23,6 +37,10 @@ export default function Lobby() {
   const { user, profile } = useAuthStore()
   const { currentTheme, gameMode } = useGameStore()
   const theme = getTheme(currentTheme)
+
+  const playerId = user?.uid || getOrCreateGuestId()
+  const playerName = profile?.name || user?.displayName || 'Player'
+  const playerColor = profile?.color || '#6366f1'
 
   const roomId = searchParams.get('room') || (modeParam ? `lobby_${modeParam}_main` : 'lobby_main')
   const [lobby, setLobby] = useState(null)
@@ -50,29 +68,96 @@ export default function Lobby() {
 
   useEffect(() => {
     let unsub
-    try {
-      const lobbyRef = ref(db, `lobbies/${roomId}`)
-      unsub = onValue(lobbyRef, (snap) => {
-        if (!snap.exists()) {
-          createLobby()
-          return
-        }
-        const data = snap.val()
-        setLobby(data)
-        setPlayers(Object.values(data.players || {}))
-        setIsHost(data.host === user?.uid)
-        const msgs = Object.values(data.chat || {})
-        setMessages(msgs.slice(-50))
-        if (data.starting) setCountdown(data.countdown || 5)
-      })
-    } catch (e) {
-      createLocalLobby()
+    let didCreate = false
+    let _playerId = playerId
+    let _playerName = playerName
+
+    const ensureAuth = async () => {
+      if (user?.uid) return user.uid
+      try {
+        const cred = await signInAnonymously(auth)
+        const name = sessionStorage.getItem('lobbyGuestName') || 'Misafir'
+        try { await updateProfile(cred.user, { displayName: name }) } catch {}
+        useAuthStore.setState(s => ({ user: cred.user, isGuest: true }))
+        _playerId = cred.user.uid
+        _playerName = name
+        return cred.user.uid
+      } catch {
+        return _playerId
+      }
     }
 
-    joinLobby()
+    const doJoin = async () => {
+      try {
+        await set(ref(db, `lobbies/${roomId}/players/${_playerId}`), {
+          uid: _playerId,
+          name: _playerName,
+          color: playerColor,
+          isGod: profile?.isGod || false,
+          clan: profile?.clan || null,
+          ready: false,
+          joinedAt: Date.now()
+        })
+      } catch (e) {}
+    }
+
+    const doLeave = async () => {
+      try {
+        await remove(ref(db, `lobbies/${roomId}/players/${_playerId}`))
+      } catch (e) {}
+    }
+
+    const init = async () => {
+      await ensureAuth()
+
+      try {
+        const lobbyRef = ref(db, `lobbies/${roomId}`)
+        unsub = onValue(lobbyRef, async (snap) => {
+          if (!snap.exists()) {
+            if (!didCreate) {
+              didCreate = true
+              try {
+                await set(ref(db, `lobbies/${roomId}`), {
+                  host: _playerId,
+                  hostName: _playerName,
+                  mode: selectedMode,
+                  maxPlayers: 8,
+                  createdAt: Date.now(),
+                  players: {},
+                  chat: {}
+                })
+                await doJoin()
+              } catch (e) {
+                const me = { uid: _playerId, name: _playerName, color: playerColor, ready: false, isHost: true }
+                setPlayers([me])
+                setIsHost(true)
+                setLobby({ host: _playerId, mode: selectedMode })
+              }
+            }
+            return
+          }
+          const data = snap.val()
+          setLobby(data)
+          setPlayers(Object.values(data.players || {}))
+          setIsHost(data.host === _playerId)
+          const msgs = Object.values(data.chat || {}).sort((a, b) => (a.time || 0) - (b.time || 0))
+          setMessages(msgs.slice(-50))
+          if (data.starting) setCountdown(data.countdown || 5)
+        })
+      } catch (e) {
+        const me = { uid: _playerId, name: _playerName, color: playerColor, ready: false, isHost: true }
+        setPlayers([me])
+        setIsHost(true)
+        setLobby({ host: _playerId, mode: selectedMode })
+      }
+
+      await doJoin()
+    }
+
+    init()
     return () => {
       if (typeof unsub === 'function') unsub()
-      leaveLobby()
+      try { remove(ref(db, `lobbies/${roomId}/players/${_playerId}`)) } catch {}
     }
   }, [roomId])
 
@@ -83,66 +168,18 @@ export default function Lobby() {
   useEffect(() => {
     if (countdown === null) return
     if (countdown <= 0) {
-      navigate(`/game?room=${roomId}&name=${encodeURIComponent(profile?.name || 'Player')}&mode=${selectedMode}`)
+      navigate(`/game?room=${roomId}&name=${encodeURIComponent(playerName)}&mode=${selectedMode}`)
       return
     }
     const timer = setTimeout(() => setCountdown(c => c - 1), 1000)
     return () => clearTimeout(timer)
   }, [countdown])
 
-  const createLocalLobby = () => {
-    const me = { uid: user?.uid || 'guest', name: profile?.name || 'Player', color: profile?.color || '#6366f1', ready: false, isHost: true, isGod: profile?.isGod || false }
-    setPlayers([me])
-    setIsHost(true)
-    setLobby({ host: user?.uid, mode: selectedMode })
-  }
-
-  const createLobby = async () => {
-    try {
-      const uid = user?.uid || 'guest_' + Math.random().toString(36).slice(2, 8)
-      await set(ref(db, `lobbies/${roomId}`), {
-        host: uid,
-        hostName: profile?.name || 'Player',
-        mode: selectedMode,
-        maxPlayers: 8,
-        createdAt: Date.now(),
-        players: {},
-        chat: {}
-      })
-    } catch (e) {
-      createLocalLobby()
-    }
-    joinLobby()
-  }
-
-  const joinLobby = async () => {
-    if (!user?.uid) return
-    try {
-      await set(ref(db, `lobbies/${roomId}/players/${user.uid}`), {
-        uid: user.uid,
-        name: profile?.name || 'Player',
-        color: profile?.color || '#6366f1',
-        isGod: profile?.isGod || false,
-        clan: profile?.clan || null,
-        ready: false,
-        joinedAt: Date.now()
-      })
-    } catch (e) {}
-  }
-
-  const leaveLobby = async () => {
-    if (!user?.uid) return
-    try {
-      await remove(ref(db, `lobbies/${roomId}/players/${user.uid}`))
-    } catch (e) {}
-  }
-
   const toggleReady = async () => {
     const newReady = !ready
     setReady(newReady)
-    if (!user?.uid) return
     try {
-      await update(ref(db, `lobbies/${roomId}/players/${user.uid}`), { ready: newReady })
+      await update(ref(db, `lobbies/${roomId}/players/${playerId}`), { ready: newReady })
     } catch (e) {}
   }
 
@@ -150,13 +187,13 @@ export default function Lobby() {
     try {
       await update(ref(db, `lobbies/${roomId}`), { starting: true, countdown: 5, mode: selectedMode })
     } catch (e) {
-      navigate(`/game?room=${roomId}&name=${encodeURIComponent(profile?.name || 'Player')}&mode=${selectedMode}`)
+      navigate(`/game?room=${roomId}&name=${encodeURIComponent(playerName)}&mode=${selectedMode}`)
     }
   }
 
   const sendMessage = async () => {
     if (!chatInput.trim()) return
-    const msg = { text: chatInput.trim(), name: profile?.name || 'Player', color: profile?.color || '#6366f1', time: Date.now() }
+    const msg = { text: chatInput.trim().slice(0, 200), name: playerName, color: playerColor, time: Date.now() }
     setChatInput('')
     try {
       const msgRef = ref(db, `lobbies/${roomId}/chat/${Date.now()}_${Math.random().toString(36).slice(2, 6)}`)
