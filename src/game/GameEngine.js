@@ -84,7 +84,7 @@ class Cell {
 class Food {
   constructor(x, y, color, value = 5) {
     this.x = x; this.y = y; this.color = color; this.value = value
-    this.radius = 4 + Math.random() * 3
+    this.radius = 6 + Math.random() * 3
     this.pulse = Math.random() * Math.PI * 2
     this.id = uuidv4()
     this.poison = false
@@ -135,6 +135,7 @@ class EjectedMass {
     this.id = uuidv4(); this.life = 1.0
     this.settled = false
     this.settledTimer = 0
+    this.dirAngle = Math.atan2(vy, vx)
   }
   get radius() { return 5 }
 }
@@ -1200,6 +1201,7 @@ export class GameEngine {
       if (virus.dead) continue
       for (const cell of this.cells) {
         if (dist(cell, virus) >= cell.radius * 0.85) continue
+        if (cell.mass <= virus.mass) continue
         const vInfo = VIRUS_TYPES[virus.type]
 
         if (this.skills.shield.active) {
@@ -1343,13 +1345,16 @@ export class GameEngine {
           this._spawnParticle(em.x, em.y, em.color, 4)
           virus.feedCount = (virus.feedCount || 0) + 1
           virus.mass = Math.min(220, 100 + (virus.feedCount % 5) * 20)
+          if (typeof em.dirAngle === 'number') virus._lastFeedAngle = em.dirAngle
           if (virus.feedCount % 5 === 0) {
-            const angle = Math.random() * Math.PI * 2
+            const angle = virus._lastFeedAngle ?? (Math.random() * Math.PI * 2)
             const newV = new Virus(
-              clamp(virus.x + Math.cos(angle) * virus.radius * 2.8, 150, WORLD_SIZE - 150),
-              clamp(virus.y + Math.sin(angle) * virus.radius * 2.8, 150, WORLD_SIZE - 150),
+              clamp(virus.x + Math.cos(angle) * virus.radius * 3.2, 150, WORLD_SIZE - 150),
+              clamp(virus.y + Math.sin(angle) * virus.radius * 3.2, 150, WORLD_SIZE - 150),
               virus.type
             )
+            newV.vx = Math.cos(angle) * 3
+            newV.vy = Math.sin(angle) * 3
             this.viruses.push(newV)
             const splitBonus = 200 * (virus.feedCount / 5)
             this.score += splitBonus
@@ -1812,22 +1817,18 @@ export class GameEngine {
 
   _drawEjected() {
     const { ctx } = this
-    const t = Date.now() / 600
     for (const em of this.ejected) {
       em._pulse = (em._pulse || Math.random() * Math.PI * 2) + 0.06
-      const r = 5 + 0.7 * Math.sin(em._pulse)
-      ctx.save()
-      ctx.globalAlpha = em.settled ? 0.7 : 0.95
+      const r = 5 + 0.8 * Math.sin(em._pulse)
       ctx.beginPath()
       ctx.arc(em.x, em.y, r, 0, Math.PI * 2)
       ctx.fillStyle = em.color
       if (this.qualityLevel !== 'low') {
-        ctx.shadowBlur = 6
+        ctx.shadowBlur = 8
         ctx.shadowColor = em.color
       }
       ctx.fill()
       ctx.shadowBlur = 0
-      ctx.restore()
     }
   }
 
@@ -2034,15 +2035,17 @@ export class GameEngine {
       if (d < nearDist) { nearDist = d; nearestId = bot.id }
     }
     for (const [id, p] of Object.entries(this.otherPlayers)) {
-      const d = Math.sqrt((p.x-cell.x)**2+(p.y-cell.y)**2)
+      const d = Math.sqrt((p.x - cell.x) ** 2 + (p.y - cell.y) ** 2)
       if (d < nearDist) { nearDist = d; nearestId = id }
     }
     if (!nearestId) { this._showFloat('🌀 Hedef bulunamadı!', '#8b5cf6'); return }
     sk.active = true; sk.timer = SKILL_SLOW_DURATION; sk.cooldown = SKILL_SLOW_COOLDOWN
     sk.targetId = nearestId
     this.slowedEntities[nearestId] = SKILL_SLOW_DURATION
-    this.clickTarget = null
+    const target = this.bots.find(b => b.id === nearestId) || this.otherPlayers[nearestId]
+    this.clickTarget = target ? { x: target.x, y: target.y } : null
     this._showFloat('🌀 EN YAKIN YAVAŞLATILDI!', '#8b5cf6')
+    this._spawnExplosion(cell.x, cell.y, '#8b5cf6')
     this.onSkillChange({ ...this.skills })
   }
 

@@ -95,7 +95,7 @@ class GameRoom {
       y: rnd(WORLD_SIZE),
       color: FOOD_COLORS[(Math.random() * FOOD_COLORS.length) | 0],
       value: 5,
-      radius: 5 + Math.random() * 3
+      radius: 7 + Math.random() * 3
     }
   }
 
@@ -267,7 +267,7 @@ class GameRoom {
         const r = massToRadius(cell.mass)
         for (const virus of this.viruses) {
           if (toRemove.has(virus.id)) continue
-          if (dist(cell, virus) < r * 0.88) {
+          if (dist(cell, virus) < r * 0.88 && cell.mass > virus.mass) {
             const shield = player.skillShieldTimer > 0
             if (shield) {
               cell.mass += 300
