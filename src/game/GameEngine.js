@@ -38,13 +38,17 @@ function hexToRgb(hex) {
   const n = parseInt(hex.replace('#',''), 16)
   return { r: (n>>16)&255, g: (n>>8)&255, b: n&255 }
 }
-function lighten(hex, amt) {
+function lighten(hex, amt, alpha = 1) {
   const {r,g,b} = hexToRgb(hex)
-  return `rgb(${Math.min(255,r+amt)},${Math.min(255,g+amt)},${Math.min(255,b+amt)})`
+  return `rgba(${Math.min(255,r+amt)},${Math.min(255,g+amt)},${Math.min(255,b+amt)},${alpha})`
 }
-function darken(hex, amt) {
+function darken(hex, amt, alpha = 1) {
   const {r,g,b} = hexToRgb(hex)
-  return `rgb(${Math.max(0,r-amt)},${Math.max(0,g-amt)},${Math.max(0,b-amt)})`
+  return `rgba(${Math.max(0,r-amt)},${Math.max(0,g-amt)},${Math.max(0,b-amt)},${alpha})`
+}
+function hexAlpha(hex, alpha) {
+  const {r,g,b} = hexToRgb(hex)
+  return `rgba(${r},${g},${b},${alpha})`
 }
 
 const VIRUS_TYPES = {
@@ -1503,9 +1507,9 @@ export class GameEngine {
       ctx.rotate(v.rotAngle)
 
       const grad = ctx.createRadialGradient(0, 0, innerR * 0.3, 0, 0, outerR)
-      grad.addColorStop(0, lighten(vInfo.color, 60) + 'ee')
-      grad.addColorStop(0.6, vInfo.color + 'cc')
-      grad.addColorStop(1, darken(vInfo.color, 30) + 'aa')
+      grad.addColorStop(0, lighten(vInfo.color, 60, 0.93))
+      grad.addColorStop(0.6, hexAlpha(vInfo.color, 0.80))
+      grad.addColorStop(1, darken(vInfo.color, 30, 0.67))
 
       ctx.beginPath()
       for (let i = 0; i < spikes * 2; i++) {
