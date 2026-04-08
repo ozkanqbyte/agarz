@@ -258,6 +258,7 @@ export class GameEngine {
     this.modeMessage = null
     this.modeMessageTimer = 0
 
+    this._virusAutoTimer = 7
     this.onScoreChange = options.onScoreChange || (() => {})
     this.onDeath = options.onDeath || (() => {})
     this.onLeaderboardChange = options.onLeaderboardChange || (() => {})
@@ -783,6 +784,7 @@ export class GameEngine {
     this._checkFoodCollisions()
     this._checkVirusCollisions()
     this._updateViruses(dt)
+    this._virusAutoEat(dt)
     this._checkEjectedFoodConversion()
     this._checkSelfMerge()
     this._updateCellEffects(dt)
@@ -1098,24 +1100,21 @@ export class GameEngine {
     for (const virus of this.viruses) {
       if (virus.dead) continue
       for (const cell of this.cells) {
-        if (dist(cell, virus) >= cell.radius) continue
+        if (dist(cell, virus) >= cell.radius * 0.85) continue
         const vInfo = VIRUS_TYPES[virus.type]
 
         if (this.skills.shield.active) {
           this._showFloat('🛡️ Korundu!', '#06b6d4')
           this._spawnExplosion(virus.x, virus.y, '#06b6d4')
-          cell.mass += 10
+          cell.mass += 300
           cell.eatPulse = 1
-          virus.feedCount = 0
+          virus.dead = true
+          this.score += 300
+          this.onScoreChange(Math.floor(this.score))
+          soundSystem.virusEat()
+          this._showFloat('+300 🛡️', '#06b6d4')
           break
         }
-
-        const firstHit = !virus.hitCooldown && !virus.hitReady
-        const repeatHit = virus.hitReady
-
-        if (!firstHit && !repeatHit) break
-
-        if (repeatHit) virus.hitReady = false
 
         cell.eatPulse = 1.2
         this.lastEatTime = Date.now()
@@ -1124,25 +1123,25 @@ export class GameEngine {
         if (cell.mass > 100) {
           const splitCount = Math.min(16, Math.floor(cell.mass / 16))
           this._explodeCell(cell, splitCount)
-          cell.mass += 10
-          this._showFloat('💥 PATLAMA!', '#fbbf24')
-          this.onXPGain(10)
+          this._showFloat('💥 PATLAMA! +300', '#fbbf24')
         } else {
-          cell.mass += 10
-          this._showFloat('+10 🌿', '#4ade80')
-          this.onXPGain(3)
+          this._showFloat('+300 🌿', '#4ade80')
         }
+
+        cell.mass += 300
+        this.score += 300
+        this.onScoreChange(Math.floor(this.score))
+        this.onXPGain(15)
 
         if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('☠️ Zehirlendi!', '#a855f7') }
         else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('❄️ Donduruldu!', '#38bdf8') }
 
         this._spawnExplosion(virus.x, virus.y, vInfo.color)
-
-        virus.hitCooldown = 7
-        virus.hitReady = false
+        virus.dead = true
         break
       }
     }
+    this.viruses = this.viruses.filter(v => !v.dead)
   }
 
   _explodeCell(cell, maxSplits) {
@@ -1179,6 +1178,45 @@ export class GameEngine {
       }
     }
     this.viruses = this.viruses.filter(v => !v.dead)
+  }
+
+  _virusAutoEat(dt) {
+    if (!this.cells.length) return
+    this._virusAutoTimer -= dt
+    if (this._virusAutoTimer > 0) return
+    this._virusAutoTimer = 7
+
+    const cx = this.cells.reduce((s,c) => s+c.x, 0) / this.cells.length
+    const cy = this.cells.reduce((s,c) => s+c.y, 0) / this.cells.length
+    const playerRadius = Math.max(...this.cells.map(c => c.radius))
+    const eatRange = playerRadius * 3.5
+
+    let eaten = 0
+    for (const virus of this.viruses) {
+      if (virus.dead) continue
+      const d = Math.sqrt((virus.x - cx)**2 + (virus.y - cy)**2)
+      if (d < eatRange) {
+        virus.dead = true
+        eaten++
+      }
+    }
+    this.viruses = this.viruses.filter(v => !v.dead)
+
+    if (eaten > 0) {
+      const massGain = eaten * 300
+      const scoreGain = eaten * 300
+      const targetCell = this.cells[0]
+      if (targetCell) {
+        targetCell.mass += massGain
+        targetCell.eatPulse = 1.3
+      }
+      this.score += scoreGain
+      this.onScoreChange(Math.floor(this.score))
+      this.onXPGain(eaten * 15)
+      this._showFloat(`🌿 +${massGain} (${eaten} diken!)`, '#22c55e')
+      this._spawnExplosion(cx, cy, '#22c55e')
+      soundSystem.virusEat && soundSystem.virusEat()
+    }
   }
 
   _checkEjectedFoodConversion() {
@@ -1252,16 +1290,10 @@ export class GameEngine {
   }
 
   _massDecay(dt) {
-    const moving = this._isMoving
     for (const cell of this.cells) {
-      const m = cell.mass
-      let rate = 0
-      if (m <= 50) rate = 0
-      else if (m <= 200) rate = moving ? 0.001 : 0.0005
-      else if (m <= 1000) rate = moving ? 0.002 : 0.001
-      else if (m <= 5000) rate = moving ? 0.003 : 0.0015
-      else rate = moving ? 0.005 : 0.0025
-      if (rate > 0) cell.mass = Math.max(20, cell.mass * Math.pow(1 - rate, dt))
+      if (cell.mass > 20) {
+        cell.mass = Math.max(20, cell.mass - 2 * dt)
+      }
     }
   }
 
