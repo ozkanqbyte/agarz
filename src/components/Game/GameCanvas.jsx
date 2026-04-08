@@ -118,11 +118,19 @@ export default function GameCanvas({ onLevelUp }) {
   const handleSpectate = (targetId) => {
     if (!engineRef.current) return
     engineRef.current.spectating = true
+    engineRef.current.dead = false
     if (targetId) {
       const targets = Object.keys(engineRef.current.otherPlayers)
       const idx = targets.indexOf(targetId)
       if (idx >= 0) engineRef.current.spectateIndex = idx
     }
+  }
+  const handleRestart = () => {
+    if (!engineRef.current) return
+    engineRef.current.spectating = false
+    engineRef.current.dead = false
+    engineRef.current.cells = []
+    engineRef.current.init()
   }
 
   return (
@@ -135,6 +143,7 @@ export default function GameCanvas({ onLevelUp }) {
         onEject={handleEject}
         onLeave={handleLeave}
         onSpectate={handleSpectate}
+        onRestart={handleRestart}
         roomId={roomId}
         mode={mode}
       />

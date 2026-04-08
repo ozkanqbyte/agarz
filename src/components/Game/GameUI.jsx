@@ -42,7 +42,7 @@ function formatTime(secs) {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
-export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectate, roomId, mode }) {
+export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectate, onRestart, roomId, mode }) {
   const { score, leaderboard, totalPlayers, currentTheme } = useGameStore()
   const { profile } = useAuthStore()
   const { xp, level, prestige, earnedBadges } = useProgressStore()
@@ -456,18 +456,25 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
                 ))}
               </div>
               <motion.button
-                onClick={() => { setDeathScreen(null); onLeave() }}
+                onClick={() => { setDeathScreen(null); onRestart?.() }}
                 whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                 className="w-full py-4 rounded-2xl font-black text-lg mb-3"
                 style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 25px rgba(${theme.glowColor},0.4)` }}>
-                {respawnCountdown > 0 ? `⏳ ${respawnCountdown}s — Menüye Dön` : '🏠 Menüye Dön'}
+                🔄 Tekrar Başla
               </motion.button>
               <motion.button
                 onClick={() => { setDeathScreen(null); onSpectate?.() }}
                 whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                className="w-full py-3 rounded-2xl font-bold text-base"
+                className="w-full py-3 rounded-2xl font-bold text-base mb-2"
                 style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', color: '#a78bfa' }}>
                 👁️ Oyunu İzle
+              </motion.button>
+              <motion.button
+                onClick={() => { setDeathScreen(null); onLeave() }}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                className="w-full py-3 rounded-2xl font-bold text-base"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: '#9ca3af' }}>
+                {respawnCountdown > 0 ? `⏳ ${respawnCountdown}s — Menüye Dön` : '🏠 Menüye Dön'}
               </motion.button>
             </motion.div>
           </motion.div>

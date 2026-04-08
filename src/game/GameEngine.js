@@ -1104,13 +1104,19 @@ export class GameEngine {
         if (this.skills.shield.active) {
           this._showFloat('🛡️ Korundu!', '#06b6d4')
           this._spawnExplosion(virus.x, virus.y, '#06b6d4')
-          cell.mass += cell.mass * 0.2
+          cell.mass += 10
           cell.eatPulse = 1
-          virus.mass = 100; virus.feedCount = 0
+          virus.feedCount = 0
           break
         }
 
-        const gained = cell.mass * 0.2
+        const firstHit = !virus.hitCooldown && !virus.hitReady
+        const repeatHit = virus.hitReady
+
+        if (!firstHit && !repeatHit) break
+
+        if (repeatHit) virus.hitReady = false
+
         cell.eatPulse = 1.2
         this.lastEatTime = Date.now()
         soundSystem.virusEat()
@@ -1118,12 +1124,12 @@ export class GameEngine {
         if (cell.mass > 100) {
           const splitCount = Math.min(16, Math.floor(cell.mass / 16))
           this._explodeCell(cell, splitCount)
-          cell.mass += gained
-          this._showFloat(`💥 PATLAMA! +${Math.floor(gained)}`, '#fbbf24')
+          cell.mass += 10
+          this._showFloat('💥 PATLAMA!', '#fbbf24')
           this.onXPGain(10)
         } else {
-          cell.mass += gained
-          this._showFloat(`+${Math.floor(gained)} 🌿`, '#4ade80')
+          cell.mass += 10
+          this._showFloat('+10 🌿', '#4ade80')
           this.onXPGain(3)
         }
 
@@ -1131,11 +1137,12 @@ export class GameEngine {
         else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('❄️ Donduruldu!', '#38bdf8') }
 
         this._spawnExplosion(virus.x, virus.y, vInfo.color)
-        virus.dead = true
+
+        virus.hitCooldown = 7
+        virus.hitReady = false
         break
       }
     }
-    this.viruses = this.viruses.filter(v => !v.dead)
   }
 
   _explodeCell(cell, maxSplits) {
@@ -1156,31 +1163,22 @@ export class GameEngine {
   }
 
   _updateViruses(dt) {
-    const maxViruses = Math.max(50, (this.totalPlayers || 1) * 3)
     for (const virus of this.viruses) {
       if (virus.dead) continue
       virus.age = (virus.age || 0) + dt
-      virus.moveTimer = (virus.moveTimer || 0) - dt
-      if (virus.moveTimer <= 0) {
-        const angle = Math.random() * Math.PI * 2
-        virus.vx = Math.cos(angle) * 0.5
-        virus.vy = Math.sin(angle) * 0.5
-        virus.moveTimer = 3 + Math.random() * 4
+      virus.rotAngle = (virus.rotAngle || 0) + dt * 0.4
+      virus.wiggleT = (virus.wiggleT || 0) + dt * 2.1
+      virus.x = virus.spawnX + Math.sin(virus.wiggleT * 1.1) * 3
+      virus.y = virus.spawnY + Math.cos(virus.wiggleT * 0.9) * 3
+      if ((virus.hitCooldown || 0) > 0) {
+        virus.hitCooldown -= dt
+        if (virus.hitCooldown <= 0) {
+          virus.hitCooldown = 0
+          virus.hitReady = true
+        }
       }
-      virus.x = clamp(virus.x + (virus.vx || 0) * dt * 60, 100, WORLD_SIZE - 100)
-      virus.y = clamp(virus.y + (virus.vy || 0) * dt * 60, 100, WORLD_SIZE - 100)
-      virus.rotAngle = (virus.rotAngle || 0) + dt * 0.5
     }
     this.viruses = this.viruses.filter(v => !v.dead)
-    if (this.viruses.length < maxViruses && Math.random() < 0.002) {
-      const cx = this.cells.length ? this.cells[0].x : WORLD_SIZE / 2
-      const cy = this.cells.length ? this.cells[0].y : WORLD_SIZE / 2
-      const angle = Math.random() * Math.PI * 2
-      const dist2 = 400 + Math.random() * 800
-      const nx = clamp(cx + Math.cos(angle) * dist2, 150, WORLD_SIZE - 150)
-      const ny = clamp(cy + Math.sin(angle) * dist2, 150, WORLD_SIZE - 150)
-      this.viruses.push(new Virus(nx, ny))
-    }
   }
 
   _checkEjectedFoodConversion() {
@@ -1268,6 +1266,25 @@ export class GameEngine {
   }
 
   _updateCamera(dt) {
+    if (this.spectating || (this.dead && !this.cells.length)) {
+      const allTargets = [
+        ...Object.values(this.otherPlayers),
+        ...this.bots.filter(b => !b.dead)
+      ]
+      if (allTargets.length > 0) {
+        const idx = this.spectateIndex % allTargets.length
+        const t = allTargets[idx]
+        if (t) {
+          this.camera.x = lerp(this.camera.x, t.x, 0.08)
+          this.camera.y = lerp(this.camera.y, t.y, 0.08)
+          const mass = t.mass || 20
+          const r = Math.sqrt(mass) * 4.5
+          const autoZoom = clamp(Math.min(this.canvas.width/(r*6), this.canvas.height/(r*6), 1.2), 0.08, 1.2)
+          this.camera.zoom = lerp(this.camera.zoom, autoZoom * this._zoomFactor, 0.05)
+        }
+      }
+      return
+    }
     if (!this.cells.length) return
     const cx = this.cells.reduce((s,c) => s+c.x, 0) / this.cells.length
     const cy = this.cells.reduce((s,c) => s+c.y, 0) / this.cells.length
