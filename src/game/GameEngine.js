@@ -1864,6 +1864,7 @@ export class GameEngine {
   }
 
   _initBots() {
+    return
     const BOT_COUNT = 30
     const teamColors = { red: '#ef4444', blue: '#3b82f6' }
     for (let i = 0; i < BOT_COUNT; i++) {
@@ -1977,12 +1978,11 @@ export class GameEngine {
       bot.mass = Math.max(20, bot.mass - bot.mass * 0.002 * dt)
     }
     if (this.offline) {
-      const all = [{ id: this.playerId, name: this.playerName, mass: this.cells.reduce((s,c)=>s+c.mass,0), color: this.playerColor, isGod: this.isGod },
-        ...this.bots.filter(b=>!b.dead).map(b=>({ id: b.id, name: b.name, mass: b.mass, color: b.color, isGod: false }))]
+      const all = [{ id: this.playerId, name: this.playerName, mass: this.cells.reduce((s,c)=>s+c.mass,0), color: this.playerColor, isGod: this.isGod }]
       all.sort((a,b) => b.mass - a.mass)
       this.leaderboard = all.slice(0,10)
       this.onLeaderboardChange(this.leaderboard)
-      this.onPlayerCountChange(1 + this.bots.filter(b=>!b.dead).length)
+      this.onPlayerCountChange(1)
     }
   }
 
