@@ -615,8 +615,8 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now }
+    if (e.code === 'KeyR' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -759,7 +759,7 @@ export class GameEngine {
     this.bgTime += dt
     const now = Date.now()
 
-    if (this.keys['KeyE'] && now - this.lastEjectTime > 50) {
+    if (this.keys['KeyE'] && now - this.lastEjectTime > 30) {
       this._eject(EJECT_MASS_MD)
       this.lastEjectTime = now
     }
@@ -1220,33 +1220,21 @@ export class GameEngine {
   }
 
   _checkEjectedFoodConversion() {
-    const toConvert = []
     for (const em of this.ejected) {
       const spd = Math.sqrt(em.vx * em.vx + em.vy * em.vy)
-      if (spd < 0.8 && !em.settled) {
-        em.settled = true
-        toConvert.push(em)
-      }
-    }
-    for (const em of toConvert) {
-      this.ejected = this.ejected.filter(e => e.id !== em.id)
-      const f = new Food(em.x, em.y, em.color, Math.max(1, Math.floor(em.mass * 0.5)))
-      f.radius = Math.max(8, massToRadius(em.mass) * 0.8)
-      this.food.push(f)
+      if (spd < 0.8) em.settled = true
     }
     const ejectedToRemove = new Set()
     for (const virus of this.viruses) {
       if (virus.dead) continue
       for (const em of this.ejected) {
         if (ejectedToRemove.has(em.id)) continue
-        if (dist(virus, em) < virus.radius + em.radius) {
+        if (dist(virus, em) < virus.radius + em.radius + 4) {
           ejectedToRemove.add(em.id)
-          this._spawnParticle(em.x, em.y, em.color, 3)
-          virus.mass += 13
+          this._spawnParticle(em.x, em.y, em.color, 4)
           virus.feedCount = (virus.feedCount || 0) + 1
           if (virus.feedCount >= 5) {
             virus.feedCount = 0
-            virus.mass = 100
             const angle = Math.random() * Math.PI * 2
             const maxViruses = Math.max(50, (this.totalPlayers || 1) * 3)
             if (this.viruses.filter(v => !v.dead).length < maxViruses) {
@@ -1264,6 +1252,9 @@ export class GameEngine {
     }
     if (ejectedToRemove.size > 0) {
       this.ejected = this.ejected.filter(e => !ejectedToRemove.has(e.id))
+    }
+    if (this.ejected.length > 200) {
+      this.ejected = this.ejected.slice(-200)
     }
   }
 
@@ -1539,70 +1530,62 @@ export class GameEngine {
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
-      v.pulse = (v.pulse || 0) + 0.04
-      v.rotAngle = (v.rotAngle || 0) + 0.012
+      v.pulse = (v.pulse || 0) + 0.035
       const vInfo = VIRUS_TYPES[v.type]
-      const feedPct = (v.feedCount || 0) / 5
-      const growScale = 1 + feedPct * 0.42
-      const baseR = v.radius * growScale
-      const pulseMod = 1 + 0.05 * Math.sin(v.pulse)
-      const outerR = baseR * pulseMod
-      const spikes = v.type === 'super' ? 18 : 12 + Math.floor(feedPct * 4)
-      const spikeDepth = 0.62 + feedPct * 0.12
-      const innerR = outerR * spikeDepth
+      const feedPct = Math.min((v.feedCount || 0) / 5, 1)
+      const pulseMod = 1 + 0.04 * Math.sin(v.pulse)
+      const baseR = v.radius * (1 + feedPct * 0.35) * pulseMod
+      const glowSize = 14 + feedPct * 20
 
       ctx.save()
-      ctx.translate(v.x, v.y)
-      ctx.rotate(v.rotAngle)
 
-      const grad = ctx.createRadialGradient(0, 0, innerR * 0.3, 0, 0, outerR)
-      grad.addColorStop(0, lighten(vInfo.color, 60, 0.93))
-      grad.addColorStop(0.6, hexAlpha(vInfo.color, 0.80))
-      grad.addColorStop(1, darken(vInfo.color, 30, 0.67))
-
+      ctx.shadowBlur = glowSize
+      ctx.shadowColor = vInfo.color
+      const grad = ctx.createRadialGradient(v.x - baseR * 0.3, v.y - baseR * 0.3, baseR * 0.05, v.x, v.y, baseR)
+      grad.addColorStop(0, lighten(vInfo.color, 70, 0.95))
+      grad.addColorStop(0.5, hexAlpha(vInfo.color, 0.82))
+      grad.addColorStop(1, darken(vInfo.color, 40, 0.75))
       ctx.beginPath()
-      for (let i = 0; i < spikes * 2; i++) {
-        const angle = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2
-        const r = i % 2 === 0 ? outerR : innerR
-        const px = Math.cos(angle) * r
-        const py = Math.sin(angle) * r
-        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)
-      }
-      ctx.closePath()
+      ctx.arc(v.x, v.y, baseR, 0, Math.PI * 2)
       ctx.fillStyle = grad
-      ctx.shadowBlur = 18 + feedPct * 14; ctx.shadowColor = vInfo.color
       ctx.fill()
-      ctx.strokeStyle = vInfo.border
-      ctx.lineWidth = 2 + feedPct * 1.5
-      ctx.stroke()
       ctx.shadowBlur = 0
 
       ctx.beginPath()
-      ctx.arc(0, 0, innerR * 0.55, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(255,255,255,0.10)'
+      ctx.arc(v.x, v.y, baseR, 0, Math.PI * 2)
+      ctx.strokeStyle = hexAlpha(vInfo.border, 0.9)
+      ctx.lineWidth = 2 + feedPct * 2
+      ctx.stroke()
+
+      ctx.beginPath()
+      ctx.arc(v.x - baseR * 0.28, v.y - baseR * 0.28, baseR * 0.28, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'
       ctx.fill()
-      ctx.restore()
 
       if (v.feedCount > 0) {
-        const dotR = Math.max(3, outerR * 0.12)
-        for (let i = 0; i < v.feedCount; i++) {
-          const a = (i / 5) * Math.PI * 2 - Math.PI / 2
-          const dr = outerR * 0.72
-          ctx.beginPath()
-          ctx.arc(v.x + Math.cos(a) * dr, v.y + Math.sin(a) * dr, dotR, 0, Math.PI * 2)
-          ctx.fillStyle = '#fbbf24'
-          ctx.shadowBlur = 6; ctx.shadowColor = '#fbbf24'
-          ctx.fill()
-          ctx.shadowBlur = 0
-        }
+        const arcLen = (v.feedCount / 5) * Math.PI * 2
+        ctx.beginPath()
+        ctx.arc(v.x, v.y, baseR + 5, -Math.PI / 2, -Math.PI / 2 + arcLen)
+        ctx.strokeStyle = '#fbbf24'
+        ctx.lineWidth = 3
+        ctx.shadowBlur = 8; ctx.shadowColor = '#fbbf24'
+        ctx.stroke()
+        ctx.shadowBlur = 0
+
+        ctx.fillStyle = '#fbbf24'
+        ctx.font = `bold ${Math.max(9, baseR * 0.38)}px sans-serif`
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(`${v.feedCount}/5`, v.x, v.y + baseR * 0.55)
       }
 
       if (v.type !== 'normal') {
         ctx.fillStyle = 'white'
-        ctx.font = `bold ${Math.max(10, outerR * 0.45)}px sans-serif`
+        ctx.font = `bold ${Math.max(10, baseR * 0.5)}px sans-serif`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(vInfo.label.split(' ')[0], v.x, v.y)
+        ctx.fillText(vInfo.label.split(' ')[0], v.x, v.y - baseR * 0.1)
       }
+
+      ctx.restore()
     }
   }
 
