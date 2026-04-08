@@ -1,0 +1,515 @@
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useSearchParams } from 'react-router-dom'
+import useGameStore from '../../store/useGameStore'
+import useAuthStore from '../../store/useAuthStore'
+import useProgressStore, { xpForLevel, BADGES } from '../../store/useProgressStore'
+import useQuestStore from '../../store/useQuestStore'
+import { getTheme } from '../../themes/themes'
+
+const MODE_LABELS = {
+  ffa: '⚔️ Free For All',
+  teams: '🛡️ Takım Modu',
+  battle_royale: '💥 Battle Royale',
+  rush: '⚡ Rush Mode',
+  clan_war: '🏰 Klan Savaşı'
+}
+
+const KEYS = [
+  { key: 'SPACE', action: 'Böl', color: '#6366f1' },
+  { key: 'W', action: 'Fırlat (Küçük)' },
+  { key: 'E', action: 'Fırlat (Sürekli)' },
+  { key: 'R', action: 'Fırlat (Büyük)' },
+  { key: 'A', action: '+Kütle 10g', color: '#fbbf24' },
+  { key: 'S', action: '+Kütle 50g', color: '#f59e0b' },
+  { key: 'Z', action: 'Macro x2', color: '#ec4899' },
+  { key: 'X', action: 'Macro Max', color: '#ec4899' },
+  { key: 'T', action: 'Oto Hareket' },
+  { key: 'Q', action: 'İzle' },
+  { key: '1/2', action: 'Hedef Değiştir' },
+  { key: 'F', action: '⚡ Hızlan', color: '#fbbf24' },
+  { key: 'G', action: '🌀 Yavaşlat', color: '#8b5cf6' },
+  { key: 'H', action: '🛡️ Kalkan', color: '#06b6d4' },
+  { key: 'J', action: '⚠️ Yem Tuzağı' },
+  { key: 'N', action: '🔊 Ses Aç/Kapat' },
+]
+
+function formatTime(secs) {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+}
+
+export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectate, roomId, mode }) {
+  const { score, leaderboard, totalPlayers, currentTheme } = useGameStore()
+  const { profile } = useAuthStore()
+  const { xp, level, prestige, earnedBadges } = useProgressStore()
+  const { quests } = useQuestStore()
+  const [searchParams] = useSearchParams()
+  const activeQuestCount = quests.filter(q => !q.completed && !q.claimed).length
+  const completedQuestCount = quests.filter(q => q.completed && !q.claimed).length
+  const playerTeam = searchParams.get('team') || 'none'
+  const theme = getTheme(currentTheme)
+  const [showKeys, setShowKeys] = useState(false)
+  const [gold, setGold] = useState(0)
+  const [status, setStatus] = useState({ autoMove: false, spectating: false })
+  const [milestone, setMilestone] = useState(null)
+  const [prevScore, setPrevScore] = useState(0)
+  const [gameTimer, setGameTimer] = useState(3600)
+  const [skills, setSkills] = useState({ speed: { active: false, timer: 0, cooldown: 0 }, slow: { active: false, timer: 0, cooldown: 0 }, shield: { active: false, timer: 0, cooldown: 0 } })
+  const [deathScreen, setDeathScreen] = useState(null)
+  const [respawnCountdown, setRespawnCountdown] = useState(5)
+
+  const myBadges = BADGES.filter(b => earnedBadges.includes(b.id)).slice(-3)
+
+  const rank = leaderboard.findIndex(p => p.id === engineRef.current?.playerId) + 1
+
+  useEffect(() => {
+    if (!engineRef.current) return
+    const orig = engineRef.current.onGoldChange
+    engineRef.current.onGoldChange = (g) => { setGold(g); orig && orig(g) }
+    const origStatus = engineRef.current.onStatusChange
+    engineRef.current.onStatusChange = (s) => { setStatus(prev => ({ ...prev, ...s })); origStatus && origStatus(s) }
+    const origTimer = engineRef.current.onTimerChange
+    engineRef.current.onTimerChange = (t) => { setGameTimer(t); origTimer && origTimer(t) }
+    const origSkill = engineRef.current.onSkillChange
+    engineRef.current.onSkillChange = (sk) => { setSkills({...sk}); origSkill && origSkill(sk) }
+    const origDeath = engineRef.current.onDeath
+    engineRef.current.onDeath = (stats) => { setDeathScreen(stats || {}); setRespawnCountdown(5); origDeath && origDeath(stats) }
+  }, [engineRef.current])
+
+  useEffect(() => {
+    if (!deathScreen) return
+    if (respawnCountdown <= 0) return
+    const t = setTimeout(() => setRespawnCountdown(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [deathScreen, respawnCountdown])
+
+  useEffect(() => {
+    const milestones = [100, 500, 1000, 2000, 5000, 10000, 25000, 50000, 100000]
+    for (const m of milestones) {
+      if (prevScore < m && score >= m) {
+        setMilestone(m >= 1000 ? `${m/1000}K` : m)
+        setTimeout(() => setMilestone(null), 3000)
+        break
+      }
+    }
+    setPrevScore(score)
+  }, [score])
+
+  const uiBg = 'rgba(6,6,18,0.88)'
+  const uiBorder = `rgba(${theme.glowColor},0.22)`
+
+  const panelStyle = {
+    background: uiBg,
+    border: `1px solid ${uiBorder}`,
+    backdropFilter: 'blur(16px)',
+    WebkitBackdropFilter: 'blur(16px)'
+  }
+
+  return (
+    <>
+      <div className="absolute bottom-0 left-0 right-0 flex flex-col" style={{ zIndex: 20, pointerEvents: 'none' }}>
+        <div className="flex items-center px-4 py-1 gap-3"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)' }}>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-xs font-black"
+              style={{ color: prestige > 0 ? '#fbbf24' : theme.uiAccent }}>
+              {prestige > 0 ? `✨${prestige} ` : ''}Lv.{level}
+            </span>
+            {myBadges.slice(-1).map(b => (
+              <span key={b.id} title={b.name} className="text-sm leading-none">{b.icon}</span>
+            ))}
+          </div>
+          <div className="flex-1 h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
+            <motion.div
+              animate={{ width: `${(xp / Math.max(1, xpForLevel(level))) * 100}%` }}
+              transition={{ duration: 0.5 }}
+              className="h-2 rounded-full"
+              style={{
+                background: `linear-gradient(90deg, ${theme.gradientA}, ${theme.gradientB})`,
+                boxShadow: `0 0 10px rgba(${theme.glowColor},0.7)`
+              }}
+            />
+          </div>
+          <span className="text-xs text-gray-500 flex-shrink-0">{xp}/{xpForLevel(level)} XP</span>
+          {myBadges.length > 1 && (
+            <div className="flex gap-1 flex-shrink-0">
+              {myBadges.slice(0,-1).map(b => (
+                <span key={b.id} title={b.name} className="text-xs leading-none opacity-70">{b.icon}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="absolute top-4 left-4 flex flex-col gap-2 pointer-events-none" style={{ zIndex: 10 }}>
+
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold"
+          style={{ ...panelStyle, color: theme.uiAccent }}>
+          {MODE_LABELS[mode] || mode}
+        </div>
+
+        {quests.length > 0 && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold"
+            style={{
+              ...panelStyle,
+              color: completedQuestCount > 0 ? '#4ade80' : theme.uiAccent,
+              border: completedQuestCount > 0 ? '1px solid rgba(74,222,128,0.4)' : undefined
+            }}>
+            📋 {5 - activeQuestCount - completedQuestCount}/{quests.length} Görev
+            {completedQuestCount > 0 && <span className="text-green-400 animate-pulse"> ({completedQuestCount} hazır!)</span>}
+          </div>
+        )}
+
+        <div className="px-4 py-3 rounded-2xl min-w-36" style={panelStyle}>
+          <div className="text-xs text-gray-500 mb-1">Kütle</div>
+          <div className="text-3xl font-black text-white leading-none">{Math.floor(score).toLocaleString()}</div>
+        </div>
+
+        <div className="flex gap-2">
+          <div className="flex-1 px-3 py-2 rounded-xl text-center" style={panelStyle}>
+            <div className="text-xs text-gray-500">Sıra</div>
+            <div className="text-xl font-black" style={{ color: rank === 1 ? '#fbbf24' : rank <= 3 ? '#06b6d4' : theme.uiAccent }}>
+              #{rank || '–'}
+            </div>
+          </div>
+          <div className="flex-1 px-3 py-2 rounded-xl text-center" style={panelStyle}>
+            <div className="text-xs text-gray-500">Oyuncu</div>
+            <div className="flex items-center justify-center gap-1 mt-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-lg font-black text-white">{totalPlayers}</span>
+            </div>
+          </div>
+        </div>
+
+        {gold > 0 && (
+          <div className="px-3 py-2 rounded-xl flex items-center gap-2" style={panelStyle}>
+            <span className="text-yellow-400 text-sm">💰</span>
+            <span className="text-yellow-400 font-black text-sm">{gold}</span>
+            <span className="text-gray-500 text-xs">gold</span>
+          </div>
+        )}
+
+        {(status.autoMove || status.spectating) && (
+          <div className="flex flex-col gap-1">
+            {status.autoMove && (
+              <div className="px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold"
+                style={{ background: 'rgba(251,191,36,0.2)', border: '1px solid rgba(251,191,36,0.4)', color: '#fbbf24' }}>
+                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                Oto Hareket
+              </div>
+            )}
+            {status.spectating && (
+              <div className="px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold"
+                style={{ background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.4)', color: '#a855f7' }}>
+                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                İzleme Modu
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="absolute top-4 right-4 w-60" style={{ zIndex: 10 }}>
+        <div className="rounded-2xl overflow-hidden" style={panelStyle}>
+          <div className="px-3 py-2.5 flex items-center gap-2 border-b" style={{ borderColor: uiBorder }}>
+            <span style={{ color: theme.uiAccent }}>🏆</span>
+            <span className="text-white font-black text-xs flex-1">Sıralama</span>
+            <span className="text-gray-500 text-xs">{leaderboard.length} oyuncu</span>
+          </div>
+          <div className="p-2 space-y-1">
+            {leaderboard.slice(0, 10).map((p, i) => {
+              const isMe = p.id === engineRef.current?.playerId
+              const rankEmoji = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
+              return (
+                <motion.div key={p.id}
+                  initial={{ opacity: 0, x: 15 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.04 }}
+                  className="flex items-center gap-2 px-2 py-2 rounded-xl"
+                  style={{
+                    background: isMe ? `rgba(${theme.glowColor},0.2)` : i === 0 ? 'rgba(251,191,36,0.08)' : 'rgba(255,255,255,0.03)',
+                    border: isMe ? `1px solid rgba(${theme.glowColor},0.5)` : i < 3 ? `1px solid rgba(255,255,255,0.07)` : '1px solid transparent',
+                    boxShadow: isMe ? `0 0 12px rgba(${theme.glowColor},0.15)` : 'none'
+                  }}>
+                  <div className="flex items-center justify-center w-5 text-center flex-shrink-0">
+                    {rankEmoji ? (
+                      <span className="text-base leading-none">{rankEmoji}</span>
+                    ) : (
+                      <span className="text-xs font-black" style={{ color: '#4b5563' }}>{i+1}</span>
+                    )}
+                  </div>
+                  <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black relative"
+                    style={{
+                      background: `radial-gradient(circle at 35% 35%, ${p.color}dd, ${p.color}66)`,
+                      boxShadow: `0 0 8px ${p.color}80`,
+                      border: `2px solid ${p.color}aa`
+                    }}>
+                    {(p.name||'?')[0].toUpperCase()}
+                    {p.isGod && (
+                      <span className="absolute -top-1 -right-1 text-xs leading-none">👑</span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-xs font-bold truncate leading-tight">{p.name}</div>
+                    <div className="text-gray-400 text-xs leading-tight">{Math.floor(p.mass).toLocaleString()}</div>
+                  </div>
+                  {isMe && <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse" style={{ background: theme.uiAccent }} />}
+                </motion.div>
+              )
+            })}
+            {leaderboard.length === 0 && (
+              <div className="text-gray-600 text-xs text-center py-4">Yükleniyor...</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-end gap-3" style={{ zIndex: 10 }}>
+        {[
+          { key: 'speed', icon: '⚡', label: 'HIZLAN', hotkey: 'F', color: '#fbbf24', glowRgb: '251,191,36', duration: 10, cooldownMax: 30 },
+          { key: 'slow', icon: '🌀', label: 'YAVAŞLAT', hotkey: 'G', color: '#8b5cf6', glowRgb: '139,92,246', duration: 5, cooldownMax: 15 },
+          { key: 'shield', icon: '🛡️', label: 'KALKAN', hotkey: 'H', color: '#06b6d4', glowRgb: '6,182,212', duration: 5, cooldownMax: 20 },
+        ].map(sk => {
+          const s = skills[sk.key] || {}
+          const onCD = s.cooldown > 0.1
+          const isActive = s.active
+          const cooldownPct = onCD ? (s.cooldown / sk.cooldownMax) * 100 : 0
+          const timerPct = isActive ? (s.timer / sk.duration) * 100 : 0
+          return (
+            <motion.button
+              key={sk.key}
+              onClick={() => engineRef.current?.[`_activate${sk.key.charAt(0).toUpperCase()+sk.key.slice(1)}`]?.()}
+              whileHover={{ scale: onCD ? 1 : 1.1, y: onCD ? 0 : -3 }}
+              whileTap={{ scale: 0.92 }}
+              className="relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl overflow-hidden"
+              style={{
+                background: isActive ? `rgba(${sk.glowRgb},0.3)` : onCD ? 'rgba(0,0,0,0.5)' : `rgba(${sk.glowRgb},0.15)`,
+                border: `1px solid ${isActive ? sk.color : onCD ? 'rgba(255,255,255,0.1)' : `rgba(${sk.glowRgb},0.5)`}`,
+                boxShadow: isActive ? `0 0 20px rgba(${sk.glowRgb},0.6)` : 'none',
+                opacity: onCD ? 0.6 : 1,
+                minWidth: 64
+              }}>
+              {(isActive || onCD) && (
+                <div className="absolute bottom-0 left-0 h-1 rounded-b-xl transition-all"
+                  style={{
+                    width: `${isActive ? timerPct : 100-cooldownPct}%`,
+                    background: isActive ? sk.color : 'rgba(255,255,255,0.25)'
+                  }} />
+              )}
+              <motion.span
+                className="text-xl leading-none"
+                animate={isActive ? { scale: [1, 1.2, 1] } : {}}
+                transition={{ duration: 0.6, repeat: Infinity }}>
+                {sk.icon}
+              </motion.span>
+              <span className="text-xs font-black leading-none" style={{ color: isActive ? sk.color : onCD ? '#4b5563' : '#e2e8f0' }}>
+                {onCD ? `${Math.ceil(s.cooldown)}s` : sk.label}
+              </span>
+              <kbd className="text-xs px-1 rounded" style={{ background: 'rgba(255,255,255,0.08)', color: '#9ca3af', fontSize: 9 }}>
+                [{sk.hotkey}]
+              </kbd>
+            </motion.button>
+          )
+        })}
+      </div>
+
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-end gap-3" style={{ zIndex: 10 }}>
+        <motion.button onClick={onLeave}
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+          className="px-4 py-2.5 rounded-xl font-bold text-sm"
+          style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5' }}>
+          ← Menü
+        </motion.button>
+
+        <div className="hidden sm:flex items-center gap-2">
+          <motion.button onClick={onSplit}
+            whileHover={{ scale: 1.08, boxShadow: `0 0 25px rgba(${theme.glowColor},0.6)` }}
+            whileTap={{ scale: 0.92 }}
+            className="px-5 py-3 rounded-xl font-black text-white text-sm flex items-center gap-2"
+            style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 15px rgba(${theme.glowColor},0.3)` }}>
+            <span>✂️</span>
+            <div>
+              <div>BÖLDÜR</div>
+              <div className="text-xs opacity-70">SPACE</div>
+            </div>
+          </motion.button>
+          <motion.button onClick={onEject}
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.93 }}
+            className="px-5 py-3 rounded-xl font-bold text-white text-sm flex items-center gap-2"
+            style={panelStyle}>
+            <span>💨</span>
+            <div>
+              <div>FIRLATIR</div>
+              <div className="text-xs opacity-50">W/E/R</div>
+            </div>
+          </motion.button>
+        </div>
+
+        <motion.button
+          onClick={() => setShowKeys(v => !v)}
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+          className="px-3 py-2.5 rounded-xl font-bold text-sm"
+          style={panelStyle}>
+          {showKeys ? '✕' : '⌨️'}
+        </motion.button>
+      </div>
+
+      <div className="sm:hidden absolute bottom-24 right-4 flex flex-col gap-2" style={{ zIndex: 10 }}>
+        <motion.button onClick={onSplit} whileTap={{ scale: 0.9 }}
+          className="w-16 h-16 rounded-full font-black text-white text-xl flex items-center justify-center"
+          style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 20px rgba(${theme.glowColor},0.5)` }}>
+          ✂
+        </motion.button>
+        <motion.button onClick={onEject} whileTap={{ scale: 0.9 }}
+          className="w-16 h-16 rounded-full font-bold text-white text-xl flex items-center justify-center"
+          style={{ background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.25)' }}>
+          💨
+        </motion.button>
+      </div>
+
+      <AnimatePresence>
+        {showKeys && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-2xl p-4"
+            style={{ ...panelStyle, zIndex: 20, minWidth: 360 }}>
+            <div className="text-xs font-black uppercase tracking-widest mb-3" style={{ color: theme.uiAccent }}>
+              ⌨️ Klavye Kontrolleri
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {KEYS.map(({ key, action, color }) => (
+                <div key={key} className="flex items-center gap-2">
+                  <kbd className="px-2 py-1 rounded-lg text-xs font-black min-w-14 text-center flex-shrink-0"
+                    style={{
+                      background: color ? `${color}25` : 'rgba(255,255,255,0.08)',
+                      border: `1px solid ${color || 'rgba(255,255,255,0.15)'}`,
+                      color: color || '#e2e8f0'
+                    }}>
+                    {key}
+                  </kbd>
+                  <span className="text-xs text-gray-400">{action}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {milestone !== null && (
+          <motion.div
+            key={milestone}
+            initial={{ scale: 0.3, opacity: 0, y: 50 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 1.2, opacity: 0, y: -30 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none"
+            style={{ zIndex: 30 }}>
+            <motion.div
+              animate={{ textShadow: [`0 0 30px rgba(${theme.glowColor},0.8)`, `0 0 60px rgba(${theme.glowColor},1)`, `0 0 30px rgba(${theme.glowColor},0.8)`] }}
+              transition={{ duration: 0.5, repeat: 4 }}
+              className="text-5xl font-black text-white">
+              🎉 {milestone} Kütle!
+            </motion.div>
+            <div className="text-lg font-bold mt-2" style={{ color: theme.uiAccent }}>Harika iş!</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deathScreen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ zIndex: 50, background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(16px)' }}>
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 220 }}
+              className="rounded-3xl p-8 text-center max-w-sm w-full mx-4"
+              style={{ background: 'rgba(15,10,30,0.95)', border: '1px solid rgba(239,68,68,0.4)', boxShadow: '0 0 60px rgba(239,68,68,0.2)' }}>
+              <motion.div
+                animate={{ scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] }}
+                transition={{ duration: 0.8, repeat: 2 }}
+                className="text-6xl mb-4">💀</motion.div>
+              <h2 className="text-3xl font-black text-white mb-1">YENİLDİN!</h2>
+              <p className="text-gray-400 text-sm mb-5">Daha iyi şanslar...</p>
+              <div className="grid grid-cols-3 gap-3 mb-6">
+                {[
+                  { label: 'Skor', value: deathScreen.score?.toLocaleString?.() || '0', icon: '⭐' },
+                  { label: 'Öldürme', value: deathScreen.kills || '0', icon: '💀' },
+                  { label: 'Süre', value: deathScreen.time ? `${Math.floor(deathScreen.time/60)}:${String(deathScreen.time%60).padStart(2,'0')}` : '0:00', icon: '⏱' },
+                ].map(stat => (
+                  <div key={stat.label} className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                    <div className="text-xl">{stat.icon}</div>
+                    <div className="text-lg font-black text-white">{stat.value}</div>
+                    <div className="text-xs text-gray-500">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+              <motion.button
+                onClick={() => { setDeathScreen(null); onLeave() }}
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                className="w-full py-4 rounded-2xl font-black text-lg mb-3"
+                style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 25px rgba(${theme.glowColor},0.4)` }}>
+                {respawnCountdown > 0 ? `⏳ ${respawnCountdown}s — Menüye Dön` : '🏠 Menüye Dön'}
+              </motion.button>
+              <motion.button
+                onClick={() => { setDeathScreen(null); onSpectate?.() }}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                className="w-full py-3 rounded-2xl font-bold text-base"
+                style={{ background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', color: '#a78bfa' }}>
+                👁️ Oyunu İzle
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5" style={{ zIndex: 10 }}>
+        <motion.div
+          animate={gameTimer <= 300 ? { scale: [1, 1.05, 1] } : {}}
+          transition={{ duration: 1, repeat: Infinity }}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl font-black text-lg"
+          style={{
+            background: gameTimer <= 60 ? 'rgba(239,68,68,0.35)' : gameTimer <= 300 ? 'rgba(239,68,68,0.25)' : 'rgba(0,0,0,0.6)',
+            border: `1px solid ${gameTimer <= 300 ? 'rgba(239,68,68,0.6)' : `rgba(${theme.glowColor},0.3)`}`,
+            color: gameTimer <= 300 ? '#f87171' : theme.uiAccent,
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)'
+          }}>
+          {mode === 'rush' ? '⚡' : '⏱'} {formatTime(gameTimer)}
+        </motion.div>
+        {(mode === 'teams' || mode === 'clan_war') && playerTeam !== 'none' && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full font-black text-sm"
+            style={{
+              background: playerTeam === 'red' ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.25)',
+              border: `1px solid ${playerTeam === 'red' ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.6)'}`,
+              color: playerTeam === 'red' ? '#f87171' : '#93c5fd'
+            }}>
+            {playerTeam === 'red' ? '🔴 Kırmızı Takım' : '🔵 Mavi Takım'}
+          </div>
+        )}
+        {mode === 'battle_royale' && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full font-bold text-xs"
+            style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', color: '#fca5a5' }}>
+            💥 Battle Royale — Zon Daralıyor!
+          </div>
+        )}
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs"
+          style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.08)', color: '#4b5563' }}>
+          <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          {roomId}
+        </div>
+      </div>
+    </>
+  )
+}
