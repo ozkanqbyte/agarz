@@ -10,12 +10,13 @@ const FOOD_COUNT = 1000
 const VIRUS_COUNT = 40
 const BASE_SPEED = 6.5
 const SPLIT_SPEED = 24
-const MERGE_TIME = 14000
+const MERGE_TIME = 30000
 const MAX_CELLS = 16
-const MIN_MASS_SPLIT = 36
-const EJECT_MASS_SM = 14
-const EJECT_MASS_MD = 26
-const EJECT_MASS_LG = 52
+const MIN_MASS_SPLIT = 35
+const EJECT_MASS_SM = 12
+const EJECT_MASS_MD = 12
+const EJECT_MASS_LG = 12
+const EJECT_COST = 2
 const MIN_EAT_RATIO = 1.15
 const GOLD_PER_CELL_EAT = 5
 const GOLD_BUY_A_COST = 10
@@ -24,6 +25,12 @@ const GOLD_BUY_S_COST = 50
 const GOLD_BUY_S_MASS = 350
 
 function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) }
+function scoreMultiplierForMass(mass) {
+  if (mass >= 2000) return 3
+  if (mass >= 500) return 2
+  if (mass >= 100) return 1.5
+  return 1
+}
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)) }
 function massToRadius(mass) { return Math.sqrt(mass) * 4.5 }
 function lerp(a, b, t) { return a + (b - a) * t }
@@ -63,7 +70,7 @@ class Cell {
 class Food {
   constructor(x, y, color, value = 1) {
     this.x = x; this.y = y; this.color = color; this.value = value
-    this.radius = 8 + Math.random() * 4
+    this.radius = 4 + Math.random() * 3
     this.pulse = Math.random() * Math.PI * 2
     this.id = uuidv4()
     this.poison = false
@@ -74,14 +81,17 @@ class Virus {
   constructor(x, y, type = 'normal') {
     this.x = x; this.y = y
     this.type = type
-    this.mass = VIRUS_TYPES[type].mass
+    this.mass = 100
     this.id = uuidv4()
     this.pulse = Math.random() * Math.PI * 2
     this.rotAngle = 0
     this.dead = false
-    this.respawnTimer = 0
     this.spawnX = x; this.spawnY = y
     this.feedCount = 0
+    this.age = 0
+    this.vx = (Math.random() - 0.5) * 0.8
+    this.vy = (Math.random() - 0.5) * 0.8
+    this.moveTimer = 3 + Math.random() * 4
   }
   get radius() { return massToRadius(this.mass) }
 }
@@ -183,6 +193,7 @@ export class GameEngine {
     this.camera = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, zoom: 1 }
 
     this.score = 0
+    this._bestScore = 0
     this.gold = 0
     this.dead = false
     this.running = false
@@ -265,9 +276,12 @@ export class GameEngine {
     this._pendingFoodEat = []
     this._foodEatTimer = 0
 
+    this._zoomFactor = 1
+    this._lastMoveX = 0; this._lastMoveY = 0; this._isMoving = false
     this._boundKeyDown = this._onKeyDown.bind(this)
     this._boundKeyUp = this._onKeyUp.bind(this)
     this._boundMouseMove = this._onMouseMove.bind(this)
+    this._boundWheel = this._onWheel.bind(this)
     this._boundResize = this._onResize.bind(this)
 
     this.spawnX = 400 + Math.random() * (WORLD_SIZE - 800)
@@ -277,10 +291,14 @@ export class GameEngine {
   async init() {
     this._setupEvents()
     this._onResize()
-    const startMass = this.options.comeback ? 24 : 20
+    const inheritMass = this._bestScore > 0 ? Math.max(0, Math.floor(this._bestScore * 0.10 / scoreMultiplierForMass(this._bestScore))) : 0
+    const startMass = Math.max(this.options.comeback ? 24 : 20, Math.min(inheritMass, 80))
     this.cells = [new Cell(this.spawnX, this.spawnY, startMass, this.playerColor)]
     if (this.options.comeback) {
       setTimeout(() => this._showFloat('+20% COMEBACK! 🔥', '#fbbf24'), 500)
+    }
+    if (inheritMass > 20) {
+      setTimeout(() => this._showFloat(`🏆 Miras: +${Math.floor(startMass - 20)} kütle`, '#a855f7'), 600)
     }
     this.camera.x = this.spawnX
     this.camera.y = this.spawnY
@@ -569,6 +587,7 @@ export class GameEngine {
     window.addEventListener('keyup', this._boundKeyUp)
     this.canvas.addEventListener('mousemove', this._boundMouseMove)
     this.canvas.addEventListener('click', this._boundClick)
+    this.canvas.addEventListener('wheel', this._boundWheel, { passive: false })
     window.addEventListener('resize', this._boundResize)
   }
 
@@ -577,6 +596,7 @@ export class GameEngine {
     window.removeEventListener('keyup', this._boundKeyUp)
     this.canvas.removeEventListener('mousemove', this._boundMouseMove)
     this.canvas.removeEventListener('click', this._boundClick)
+    this.canvas.removeEventListener('wheel', this._boundWheel)
     window.removeEventListener('resize', this._boundResize)
   }
 
@@ -618,12 +638,20 @@ export class GameEngine {
 
   _onKeyUp(e) { this.keys[e.code] = false }
 
+  _onWheel(e) {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? 0.88 : 1.14
+    this._zoomFactor = clamp(this._zoomFactor * delta, 0.04, 3.5)
+  }
+
   _onMouseMove(e) {
     const rect = this.canvas.getBoundingClientRect()
-    this.mouse = {
-      x: (e.clientX - rect.left - this.canvas.width/2) / this.camera.zoom + this.camera.x,
-      y: (e.clientY - rect.top - this.canvas.height/2) / this.camera.zoom + this.camera.y
-    }
+    const px = (e.clientX - rect.left - this.canvas.width/2) / this.camera.zoom + this.camera.x
+    const py = (e.clientY - rect.top - this.canvas.height/2) / this.camera.zoom + this.camera.y
+    const dx = px - this._lastMoveX, dy = py - this._lastMoveY
+    this._isMoving = (dx*dx + dy*dy) > 1
+    this._lastMoveX = px; this._lastMoveY = py
+    this.mouse = { x: px, y: py }
   }
 
   _onResize() {
@@ -750,6 +778,7 @@ export class GameEngine {
     this._updateAbsorbParticles(dt)
     this._checkFoodCollisions()
     this._checkVirusCollisions()
+    this._updateViruses(dt)
     this._checkEjectedFoodConversion()
     this._checkSelfMerge()
     this._updateCellEffects(dt)
@@ -770,9 +799,15 @@ export class GameEngine {
     if (this.modeMessageTimer > 0) this.modeMessageTimer -= dt
 
     const totalMass = this.cells.reduce((s,c) => s+c.mass, 0)
-    if (Math.floor(totalMass) !== Math.floor(this.score)) {
-      this.score = totalMass
-      this.onScoreChange(Math.floor(totalMass))
+    let scoreMultiplier = 1
+    if (totalMass >= 2000) scoreMultiplier = 3
+    else if (totalMass >= 500) scoreMultiplier = 2
+    else if (totalMass >= 100) scoreMultiplier = 1.5
+    const computedScore = totalMass * scoreMultiplier
+    if (Math.floor(computedScore) !== Math.floor(this.score)) {
+      this.score = computedScore
+      if (computedScore > this._bestScore) this._bestScore = computedScore
+      this.onScoreChange(Math.floor(computedScore))
       if (totalMass > this._lastValidMass * 6 && this._lastValidMass > 100) {
         this._handleSuspiciousActivity(totalMass)
       } else {
@@ -933,7 +968,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = BASE_SPEED * Math.pow(Math.max(cell.mass, 1), -0.25) * 90 * speedMult
+      const speed = (6 / Math.pow(Math.max(cell.mass, 1), 0.4)) * 90 * speedMult
 
       if (d > cell.radius / 3) {
         const s = Math.min(speed * dt, d)
@@ -1059,61 +1094,44 @@ export class GameEngine {
     for (const virus of this.viruses) {
       if (virus.dead) continue
       for (const cell of this.cells) {
+        if (dist(cell, virus) >= cell.radius) continue
         const vInfo = VIRUS_TYPES[virus.type]
-        if (cell.mass <= vInfo.mass * 1.1) continue
-        if (dist(cell, virus) < cell.radius - virus.radius * 0.3) {
-          if (this.skills.shield.active) {
-            this._showFloat('🛡️ Korundu!', '#06b6d4')
-            virus.dead = true
-            virus.respawnTimer = 12
-            this._spawnExplosion(virus.x, virus.y, '#06b6d4')
-            cell.mass += virus.mass * 0.5
-            cell.eatPulse = 1
-            this._showFloat(`+${Math.floor(virus.mass*0.5)} 🌿`, '#4ade80')
-            break
-          }
-          const gainedMass = virus.mass * 0.5
-          cell.mass += gainedMass
-          cell.eatPulse = 1.2
-          this.lastEatTime = Date.now()
-          this._showFloat(`+${Math.floor(gainedMass)} 💚`, '#4ade80')
-          this.onXPGain(5)
-          soundSystem.virusEat()
-          this._explodeCell(cell, virus.type === 'super' ? 16 : 8)
-          if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('☠️ Zehirlendi!', '#a855f7') }
-          else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('❄️ Donduruldu!', '#38bdf8') }
-          const foodCount = Math.min(16, Math.floor(virus.mass / 8))
-          const massPerFood = virus.mass / foodCount
-          for (let i = 0; i < foodCount; i++) {
-            const angle = (i / foodCount) * Math.PI * 2
-            const r = virus.radius * 1.1
-            const f = new Food(
-              virus.x + Math.cos(angle) * r,
-              virus.y + Math.sin(angle) * r,
-              vInfo.color, Math.max(2, Math.floor(massPerFood))
-            )
-            f.radius = Math.max(4, massToRadius(massPerFood) * 0.85)
-            this.food.push(f)
-          }
-          this._spawnExplosion(virus.x, virus.y, vInfo.color)
-          virus.dead = true
-          virus.respawnTimer = 10 + Math.random() * 5
+
+        if (this.skills.shield.active) {
+          this._showFloat('🛡️ Korundu!', '#06b6d4')
+          this._spawnExplosion(virus.x, virus.y, '#06b6d4')
+          cell.mass += cell.mass * 0.2
+          cell.eatPulse = 1
+          virus.mass = 100; virus.feedCount = 0
           break
         }
+
+        const gained = cell.mass * 0.2
+        cell.eatPulse = 1.2
+        this.lastEatTime = Date.now()
+        soundSystem.virusEat()
+
+        if (cell.mass > 100) {
+          const splitCount = Math.min(16, Math.floor(cell.mass / 16))
+          this._explodeCell(cell, splitCount)
+          cell.mass += gained
+          this._showFloat(`💥 PATLAMA! +${Math.floor(gained)}`, '#fbbf24')
+          this.onXPGain(10)
+        } else {
+          cell.mass += gained
+          this._showFloat(`+${Math.floor(gained)} 🌿`, '#4ade80')
+          this.onXPGain(3)
+        }
+
+        if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('☠️ Zehirlendi!', '#a855f7') }
+        else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('❄️ Donduruldu!', '#38bdf8') }
+
+        this._spawnExplosion(virus.x, virus.y, vInfo.color)
+        virus.dead = true
+        break
       }
     }
-    for (const virus of this.viruses) {
-      if (!virus.dead) continue
-      virus.respawnTimer -= 0.016
-      if (virus.respawnTimer <= 0) {
-        virus.dead = false
-        virus.x = virus.spawnX + (Math.random()-0.5) * 200
-        virus.y = virus.spawnY + (Math.random()-0.5) * 200
-        virus.x = clamp(virus.x, 100, WORLD_SIZE-100)
-        virus.y = clamp(virus.y, 100, WORLD_SIZE-100)
-        virus.mass = VIRUS_TYPES[virus.type].mass
-      }
-    }
+    this.viruses = this.viruses.filter(v => !v.dead)
   }
 
   _explodeCell(cell, maxSplits) {
@@ -1131,6 +1149,34 @@ export class GameEngine {
     }
     cell.mergeTimer = Date.now() + MERGE_TIME
     this._spawnExplosion(cell.x, cell.y, cell.color)
+  }
+
+  _updateViruses(dt) {
+    const maxViruses = Math.max(50, (this.totalPlayers || 1) * 3)
+    for (const virus of this.viruses) {
+      if (virus.dead) continue
+      virus.age = (virus.age || 0) + dt
+      virus.moveTimer = (virus.moveTimer || 0) - dt
+      if (virus.moveTimer <= 0) {
+        const angle = Math.random() * Math.PI * 2
+        virus.vx = Math.cos(angle) * 0.5
+        virus.vy = Math.sin(angle) * 0.5
+        virus.moveTimer = 3 + Math.random() * 4
+      }
+      virus.x = clamp(virus.x + (virus.vx || 0) * dt * 60, 100, WORLD_SIZE - 100)
+      virus.y = clamp(virus.y + (virus.vy || 0) * dt * 60, 100, WORLD_SIZE - 100)
+      virus.rotAngle = (virus.rotAngle || 0) + dt * 0.5
+    }
+    this.viruses = this.viruses.filter(v => !v.dead)
+    if (this.viruses.length < maxViruses && Math.random() < 0.002) {
+      const cx = this.cells.length ? this.cells[0].x : WORLD_SIZE / 2
+      const cy = this.cells.length ? this.cells[0].y : WORLD_SIZE / 2
+      const angle = Math.random() * Math.PI * 2
+      const dist2 = 400 + Math.random() * 800
+      const nx = clamp(cx + Math.cos(angle) * dist2, 150, WORLD_SIZE - 150)
+      const ny = clamp(cy + Math.sin(angle) * dist2, 150, WORLD_SIZE - 150)
+      this.viruses.push(new Virus(nx, ny))
+    }
   }
 
   _checkEjectedFoodConversion() {
@@ -1156,18 +1202,22 @@ export class GameEngine {
         if (dist(virus, em) < virus.radius + em.radius) {
           ejectedToRemove.add(em.id)
           this._spawnParticle(em.x, em.y, em.color, 3)
+          virus.mass += 13
           virus.feedCount = (virus.feedCount || 0) + 1
           if (virus.feedCount >= 5) {
             virus.feedCount = 0
+            virus.mass = 100
             const angle = Math.random() * Math.PI * 2
-            const newV = new Virus(
-              clamp(virus.x + Math.cos(angle) * virus.radius * 2.5, 150, WORLD_SIZE - 150),
-              clamp(virus.y + Math.sin(angle) * virus.radius * 2.5, 150, WORLD_SIZE - 150),
-              virus.type
-            )
-            newV.feedCount = 0
-            this.viruses.push(newV)
-            this._showFloat('🌿 Diken Çoğaldı!', '#22c55e')
+            const maxViruses = Math.max(50, (this.totalPlayers || 1) * 3)
+            if (this.viruses.filter(v => !v.dead).length < maxViruses) {
+              const newV = new Virus(
+                clamp(virus.x + Math.cos(angle) * virus.radius * 2.5, 150, WORLD_SIZE - 150),
+                clamp(virus.y + Math.sin(angle) * virus.radius * 2.5, 150, WORLD_SIZE - 150),
+                virus.type
+              )
+              this.viruses.push(newV)
+              this._showFloat('🌿 Diken Çoğaldı!', '#22c55e')
+            }
           }
         }
       }
@@ -1200,13 +1250,16 @@ export class GameEngine {
   }
 
   _massDecay(dt) {
-    const idleMs = Date.now() - this.lastEatTime
-    const isIdle = idleMs > 4000
+    const moving = this._isMoving
     for (const cell of this.cells) {
-      if (cell.mass > 150) {
-        const rate = isIdle ? 0.004 : 0.001
-        cell.mass = Math.max(150, cell.mass - cell.mass * rate * dt)
-      }
+      const m = cell.mass
+      let rate = 0
+      if (m <= 50) rate = 0
+      else if (m <= 200) rate = moving ? 0.001 : 0.0005
+      else if (m <= 1000) rate = moving ? 0.002 : 0.001
+      else if (m <= 5000) rate = moving ? 0.003 : 0.0015
+      else rate = moving ? 0.005 : 0.0025
+      if (rate > 0) cell.mass = Math.max(20, cell.mass * Math.pow(1 - rate, dt))
     }
   }
 
@@ -1217,8 +1270,9 @@ export class GameEngine {
     this.camera.x = lerp(this.camera.x, cx, 0.1)
     this.camera.y = lerp(this.camera.y, cy, 0.1)
     const maxR = Math.max(...this.cells.map(c => c.radius), 20)
-    const tz = clamp(Math.min(this.canvas.width/(maxR*5), this.canvas.height/(maxR*5), 1.6), 0.08, 1.6)
-    this.camera.zoom = lerp(this.camera.zoom, tz, 0.05)
+    const autoZoom = clamp(Math.min(this.canvas.width/(maxR*5), this.canvas.height/(maxR*5), 1.6), 0.08, 1.6)
+    const targetZoom = autoZoom * this._zoomFactor
+    this.camera.zoom = lerp(this.camera.zoom, targetZoom, 0.05)
   }
 
   _spawnParticle(x, y, color, count = 4) {
@@ -1432,32 +1486,67 @@ export class GameEngine {
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
-      v.pulse += 0.04; v.rotAngle += 0.015
+      v.pulse = (v.pulse || 0) + 0.04
+      v.rotAngle = (v.rotAngle || 0) + 0.012
       const vInfo = VIRUS_TYPES[v.type]
-      const spikes = v.type === 'super' ? 18 : 14
-      const outerR = v.radius * (1 + 0.06*Math.sin(v.pulse))
-      const innerR = outerR * 0.72
+      const feedPct = (v.feedCount || 0) / 5
+      const growScale = 1 + feedPct * 0.42
+      const baseR = v.radius * growScale
+      const pulseMod = 1 + 0.05 * Math.sin(v.pulse)
+      const outerR = baseR * pulseMod
+      const spikes = v.type === 'super' ? 18 : 12 + Math.floor(feedPct * 4)
+      const spikeDepth = 0.62 + feedPct * 0.12
+      const innerR = outerR * spikeDepth
 
       ctx.save()
       ctx.translate(v.x, v.y)
       ctx.rotate(v.rotAngle)
 
+      const grad = ctx.createRadialGradient(0, 0, innerR * 0.3, 0, 0, outerR)
+      grad.addColorStop(0, lighten(vInfo.color, 60) + 'ee')
+      grad.addColorStop(0.6, vInfo.color + 'cc')
+      grad.addColorStop(1, darken(vInfo.color, 30) + 'aa')
+
       ctx.beginPath()
-      for (let i = 0; i < spikes*2; i++) {
-        const angle = (i/(spikes*2))*Math.PI*2 - Math.PI/2
-        const r = i%2===0 ? outerR : innerR
-        i===0 ? ctx.moveTo(Math.cos(angle)*r, Math.sin(angle)*r) : ctx.lineTo(Math.cos(angle)*r, Math.sin(angle)*r)
+      for (let i = 0; i < spikes * 2; i++) {
+        const angle = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2
+        const r = i % 2 === 0 ? outerR : innerR
+        const px = Math.cos(angle) * r
+        const py = Math.sin(angle) * r
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)
       }
       ctx.closePath()
-      ctx.fillStyle = vInfo.color + 'cc'
-      ctx.shadowBlur = 20; ctx.shadowColor = vInfo.color
+      ctx.fillStyle = grad
+      ctx.shadowBlur = 18 + feedPct * 14; ctx.shadowColor = vInfo.color
       ctx.fill()
-      ctx.strokeStyle = vInfo.border; ctx.lineWidth = 2.5; ctx.stroke()
+      ctx.strokeStyle = vInfo.border
+      ctx.lineWidth = 2 + feedPct * 1.5
+      ctx.stroke()
       ctx.shadowBlur = 0
+
+      ctx.beginPath()
+      ctx.arc(0, 0, innerR * 0.55, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.10)'
+      ctx.fill()
       ctx.restore()
 
+      if (v.feedCount > 0) {
+        const dotR = Math.max(3, outerR * 0.12)
+        for (let i = 0; i < v.feedCount; i++) {
+          const a = (i / 5) * Math.PI * 2 - Math.PI / 2
+          const dr = outerR * 0.72
+          ctx.beginPath()
+          ctx.arc(v.x + Math.cos(a) * dr, v.y + Math.sin(a) * dr, dotR, 0, Math.PI * 2)
+          ctx.fillStyle = '#fbbf24'
+          ctx.shadowBlur = 6; ctx.shadowColor = '#fbbf24'
+          ctx.fill()
+          ctx.shadowBlur = 0
+        }
+      }
+
       if (v.type !== 'normal') {
-        ctx.fillStyle = 'white'; ctx.font = `${v.radius*0.6}px sans-serif`
+        ctx.fillStyle = 'white'
+        ctx.font = `bold ${Math.max(10, outerR * 0.45)}px sans-serif`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
         ctx.fillText(vInfo.label.split(' ')[0], v.x, v.y)
       }
@@ -1838,18 +1927,28 @@ export class GameEngine {
       if (!botKilled) {
         const isAlly = (this.gameMode === 'teams' || this.gameMode === 'clan_war') && bot.team === this.playerTeam
         if (!isAlly) {
+          const cellsToRemove = []
           for (const cell of this.cells) {
             if (bot.mass > cell.mass * MIN_EAT_RATIO && dist(bot, cell) < bot.radius) {
               if (!this.skills.shield.active) {
-                this.deathStats = { score: Math.floor(this.score), kills: this.kills, time: Math.floor(GAME_DURATION - this.gameTime) }
-                this._playDeathAnimation()
+                bot.mass += cell.mass
+                cellsToRemove.push(cell.id)
+                this._spawnExplosion(cell.x, cell.y, cell.color)
+                this._showFloat(`💀 Parça Yenildi!`, '#ef4444')
                 soundSystem.death()
-                this._notifyDeath(bot.id, bot.name)
-                setTimeout(() => { this.dead = true; this.onDeath(this.deathStats) }, 800)
-                return
               } else {
                 this._showFloat('🛡️ Korundu!', '#06b6d4')
               }
+            }
+          }
+          if (cellsToRemove.length > 0) {
+            this.cells = this.cells.filter(c => !cellsToRemove.includes(c.id))
+            if (this.cells.length === 0) {
+              this.deathStats = { score: Math.floor(this.score), kills: this.kills, time: Math.floor(GAME_DURATION - this.gameTime) }
+              this._playDeathAnimation()
+              this._notifyDeath(bot.id, bot.name)
+              setTimeout(() => { this.dead = true; this.onDeath(this.deathStats) }, 800)
+              return
             }
           }
         }
