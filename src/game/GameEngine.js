@@ -35,7 +35,11 @@ function clamp(v, min, max) { return Math.max(min, Math.min(max, v)) }
 function massToRadius(mass) { return Math.sqrt(mass) * 4.5 }
 function lerp(a, b, t) { return a + (b - a) * t }
 function hexToRgb(hex) {
-  const n = parseInt(hex.replace('#',''), 16)
+  if (!hex || typeof hex !== 'string') return { r: 100, g: 100, b: 100 }
+  const clean = hex.replace('#', '').slice(0, 6)
+  if (clean.length < 6) return { r: 100, g: 100, b: 100 }
+  const n = parseInt(clean, 16)
+  if (isNaN(n)) return { r: 100, g: 100, b: 100 }
   return { r: (n>>16)&255, g: (n>>8)&255, b: n&255 }
 }
 function lighten(hex, amt, alpha = 1) {
@@ -49,6 +53,12 @@ function darken(hex, amt, alpha = 1) {
 function hexAlpha(hex, alpha) {
   const {r,g,b} = hexToRgb(hex)
   return `rgba(${r},${g},${b},${alpha})`
+}
+function safeColor(color) {
+  if (!color || typeof color !== 'string') return '#6366f1'
+  if (color.startsWith('#')) return color.slice(0, 7)
+  if (color.startsWith('rgb')) return color
+  return '#6366f1'
 }
 
 const VIRUS_TYPES = {
@@ -72,7 +82,7 @@ class Cell {
 }
 
 class Food {
-  constructor(x, y, color, value = 1) {
+  constructor(x, y, color, value = 5) {
     this.x = x; this.y = y; this.color = color; this.value = value
     this.radius = 4 + Math.random() * 3
     this.pulse = Math.random() * Math.PI * 2
@@ -124,8 +134,9 @@ class EjectedMass {
     this.color = color; this.mass = mass
     this.id = uuidv4(); this.life = 1.0
     this.settled = false
+    this.settledTimer = 0
   }
-  get radius() { return massToRadius(this.mass) }
+  get radius() { return 5 }
 }
 
 class SpatialGrid {
@@ -291,6 +302,7 @@ export class GameEngine {
 
     this.spawnX = 400 + Math.random() * (WORLD_SIZE - 800)
     this.spawnY = 400 + Math.random() * (WORLD_SIZE - 800)
+    this._virusFirstHit = false
   }
 
   async init() {
@@ -336,7 +348,7 @@ export class GameEngine {
         Math.random() * WORLD_SIZE,
         Math.random() * WORLD_SIZE,
         colors[Math.floor(Math.random() * colors.length)],
-        1
+        5
       ))
     }
     const virusTypes = ['normal', 'normal', 'normal', 'normal', 'super', 'poison', 'freeze']
@@ -441,6 +453,87 @@ export class GameEngine {
         o.id = v.id
         this.viruses.push(o)
       })
+      .on('anticheat:warn', (d) => {
+        console.warn('[AntiCheat]', d.reason)
+        this._showFloat('⛔ Hile Tespit! Bağlantı Kesildi.', '#ef4444')
+        this.screenFlash = 1
+        setTimeout(() => {
+          this.dead = true
+          this.onDeath && this.onDeath()
+          socketClient.disconnect()
+        }, 1500)
+      })
+      .on('world:state', (data) => {
+        if (!data?.players) return
+        const activeIds = new Set()
+        for (const p of data.players) {
+          if (p.id === this.playerId) {
+            if (p.cs && p.cs.length) {
+              if (this.cells.length === p.cs.length) {
+                for (let i = 0; i < this.cells.length; i++) {
+                  this.cells[i].x = lerp(this.cells[i].x, p.cs[i].x, 0.25)
+                  this.cells[i].y = lerp(this.cells[i].y, p.cs[i].y, 0.25)
+                  this.cells[i].mass = lerp(this.cells[i].mass, p.cs[i].m, 0.3)
+                }
+              } else if (this.cells.length !== p.cs.length) {
+                const newCells = p.cs.map((c, i) => {
+                  const existing = this.cells[i]
+                  if (existing) {
+                    existing.mass = c.m
+                    return existing
+                  }
+                  const cell = new Cell(c.x, c.y, c.m, this.playerColor)
+                  cell.id = uuidv4()
+                  return cell
+                })
+                this.cells = newCells
+              }
+            }
+            if (p.frozen) this._showFloat('❄️ Donduruldu!', '#38bdf8')
+            if (p.poisoned) this._showFloat('☠️ Zehirlendi!', '#a855f7')
+          } else {
+            activeIds.add(p.id)
+            const cells = p.cs ? p.cs.map(c => ({ x: c.x, y: c.y, mass: c.m })) : []
+            if (this.otherPlayers[p.id]) {
+              const op = this.otherPlayers[p.id]
+              op.targetX = p.x; op.targetY = p.y
+              op.mass = p.m || 20; op.cells = cells
+              op.name = p.n || op.name; op.color = p.c || op.color
+              op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
+            } else {
+              this.otherPlayers[p.id] = {
+                x: p.x, y: p.y, targetX: p.x, targetY: p.y,
+                mass: p.m || 20, cells, name: p.n || '?',
+                color: p.c || '#6366f1', isGod: !!p.g, clan: p.cl || null,
+                frozen: !!p.frozen, poisoned: !!p.poisoned
+              }
+            }
+          }
+        }
+        for (const id of Object.keys(this.otherPlayers)) {
+          if (!activeIds.has(id)) delete this.otherPlayers[id]
+        }
+      })
+      .on('ejected:spawn', (list) => {
+        if (!Array.isArray(list)) return
+        for (const em of list) {
+          if (em.color === this.playerColor) continue
+          this.ejected.push({
+            id: em.id || uuidv4(),
+            x: em.x, y: em.y, vx: em.vx || 0, vy: em.vy || 0,
+            color: em.color, mass: em.mass || 12,
+            settled: false, settledTimer: 0, _pulse: 0
+          })
+        }
+      })
+      .on('food:spawned', (list) => {
+        if (!Array.isArray(list)) return
+        for (const f of list) {
+          const o = new Food(f.x, f.y, f.color, f.value || 5)
+          o.id = f.id; o.radius = f.radius || 8
+          this.food.push(o)
+        }
+      })
 
     this._startSocketSync()
   }
@@ -449,14 +542,9 @@ export class GameEngine {
     if (this.syncInterval) clearInterval(this.syncInterval)
     this.syncInterval = setInterval(() => {
       if (!this.running || this.dead || !socketClient.connected) return
-      let totalMass = 0, sx = 0, sy = 0
-      for (const c of this.cells) { totalMass += c.mass; sx += c.x; sy += c.y }
-      const n = this.cells.length || 1
-      socketClient.sendMove({
-        x: (sx / n) | 0, y: (sy / n) | 0,
-        m: totalMass | 0,
-        cs: this.cells.length > 1 ? this.cells.map(c => ({ x: c.x | 0, y: c.y | 0, m: c.mass | 0 })) : null
-      })
+      const mx = this.mouse?.x ?? this.camera.x
+      const my = this.mouse?.y ?? this.camera.y
+      socketClient.sendInput(mx | 0, my | 0)
     }, 50)
   }
 
@@ -614,9 +702,9 @@ export class GameEngine {
     this.keys[e.code] = true
     const now = Date.now()
 
-    if (e.code === 'Space') { this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now }
+    if (e.code === 'Space') { this._split(); soundSystem.split(); if (this._useSocket) socketClient.sendSplit() }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyR' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -625,9 +713,9 @@ export class GameEngine {
     if (e.code === 'KeyQ') { this.spectating = !this.spectating; this.onStatusChange({ spectating: this.spectating }) }
     if (e.code === 'Digit1') this._spectateChange(-1)
     if (e.code === 'Digit2') this._spectateChange(1)
-    if (e.code === 'KeyF') { this._activateSpeed(); soundSystem.skill() }
-    if (e.code === 'KeyG') { this._activateSlow(); soundSystem.skill() }
-    if (e.code === 'KeyH') { this._activateShield(); soundSystem.skill() }
+    if (e.code === 'KeyF') { this._activateSpeed(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('speed') }
+    if (e.code === 'KeyG') { this._activateSlow(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('slow') }
+    if (e.code === 'KeyH') { this._activateShield(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('shield') }
     if (e.code === 'KeyJ') this._activateFoodTrap()
     if (e.code === 'KeyN') { soundSystem._enabled = !soundSystem._enabled; this._showFloat(soundSystem._enabled ? '🔊 Ses Açık' : '🔇 Ses Kapalı', '#6366f1') }
   }
@@ -762,6 +850,7 @@ export class GameEngine {
     if (this.keys['KeyE'] && now - this.lastEjectTime > 30) {
       this._eject(EJECT_MASS_MD)
       this.lastEjectTime = now
+      if (this._useSocket) socketClient.sendEject()
     }
 
     this._rebuildGrids()
@@ -786,6 +875,7 @@ export class GameEngine {
     this._updateViruses(dt)
     this._virusAutoEat(dt)
     this._checkEjectedFoodConversion()
+    this._checkSelfEatEjected()
     this._checkSelfMerge()
     this._updateCellEffects(dt)
     this._updateCamera(dt)
@@ -931,7 +1021,7 @@ export class GameEngine {
       for (const _ of toAdd) {
         const id = Math.random().toString(36).slice(2, 10)
         const color = colors[(Math.random() * colors.length) | 0]
-        updates[`rooms/${this.roomId}/food/${id}`] = { x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, color, value: 1 }
+        updates[`rooms/${this.roomId}/food/${id}`] = { x: Math.random() * WORLD_SIZE, y: Math.random() * WORLD_SIZE, color, value: 5 }
       }
       try { fbUpdate(ref(db), updates) } catch(_) {}
     }
@@ -1075,7 +1165,7 @@ export class GameEngine {
         for (let i = 0; i < eaten.length; i++) {
           this.food.push(new Food(
             Math.random()*WORLD_SIZE, Math.random()*WORLD_SIZE,
-            colors[(Math.random()*colors.length)|0], 1
+            colors[(Math.random()*colors.length)|0], 5
           ))
         }
       } else if (this._useSocket) {
@@ -1092,7 +1182,7 @@ export class GameEngine {
   _fbRespawnFood() {
     const colors = this.theme.foodColors
     const id = uuidv4().slice(0, 8)
-    const f = { x: Math.random()*WORLD_SIZE, y: Math.random()*WORLD_SIZE, color: colors[Math.floor(Math.random()*colors.length)], value: 1 }
+    const f = { x: Math.random()*WORLD_SIZE, y: Math.random()*WORLD_SIZE, color: colors[Math.floor(Math.random()*colors.length)], value: 5 }
     try { set(ref(db, `rooms/${this.roomId}/food/${id}`), f) } catch(_) {}
   }
 
@@ -1119,6 +1209,16 @@ export class GameEngine {
         cell.eatPulse = 1.2
         this.lastEatTime = Date.now()
         soundSystem.virusEat()
+
+        if (!this._virusFirstHit) {
+          this._virusFirstHit = true
+          const splitCount = Math.max(4, Math.min(16, Math.floor(cell.mass / 12)))
+          this._explodeCell(cell, splitCount)
+          this._showFloat('💥 İLK DİKEN! DAĞILDIN!', '#ef4444')
+          this._spawnExplosion(virus.x, virus.y, vInfo.color)
+          virus.dead = true
+          break
+        }
 
         if (cell.mass > 100) {
           const splitCount = Math.min(16, Math.floor(cell.mass / 16))
@@ -1233,19 +1333,20 @@ export class GameEngine {
           ejectedToRemove.add(em.id)
           this._spawnParticle(em.x, em.y, em.color, 4)
           virus.feedCount = (virus.feedCount || 0) + 1
-          if (virus.feedCount >= 5) {
-            virus.feedCount = 0
+          virus.mass = Math.min(220, 100 + (virus.feedCount % 5) * 20)
+          if (virus.feedCount % 5 === 0) {
             const angle = Math.random() * Math.PI * 2
-            const maxViruses = Math.max(50, (this.totalPlayers || 1) * 3)
-            if (this.viruses.filter(v => !v.dead).length < maxViruses) {
-              const newV = new Virus(
-                clamp(virus.x + Math.cos(angle) * virus.radius * 2.5, 150, WORLD_SIZE - 150),
-                clamp(virus.y + Math.sin(angle) * virus.radius * 2.5, 150, WORLD_SIZE - 150),
-                virus.type
-              )
-              this.viruses.push(newV)
-              this._showFloat('🌿 Diken Çoğaldı!', '#22c55e')
-            }
+            const newV = new Virus(
+              clamp(virus.x + Math.cos(angle) * virus.radius * 2.8, 150, WORLD_SIZE - 150),
+              clamp(virus.y + Math.sin(angle) * virus.radius * 2.8, 150, WORLD_SIZE - 150),
+              virus.type
+            )
+            this.viruses.push(newV)
+            const splitBonus = 200 * (virus.feedCount / 5)
+            this.score += splitBonus
+            this.onScoreChange(Math.floor(this.score))
+            this._showFloat(`🌿 DİKEN AYRILDI! +${Math.floor(splitBonus)} 2X`, '#4ade80')
+            this._spawnExplosion(virus.x, virus.y, '#22c55e')
           }
         }
       }
@@ -1255,6 +1356,25 @@ export class GameEngine {
     }
     if (this.ejected.length > 200) {
       this.ejected = this.ejected.slice(-200)
+    }
+  }
+
+  _checkSelfEatEjected() {
+    if (!this.ejected.length || !this.cells.length) return
+    const toRemove = new Set()
+    for (const cell of this.cells) {
+      for (const em of this.ejected) {
+        if (toRemove.has(em.id)) continue
+        if (!em.settled || em.settledTimer < 0.6) continue
+        if (dist(cell, em) < cell.radius - 4) {
+          toRemove.add(em.id)
+          cell.mass += em.mass
+          if (this.qualityLevel !== 'low') this._spawnParticle(em.x, em.y, em.color, 2)
+        }
+      }
+    }
+    if (toRemove.size > 0) {
+      this.ejected = this.ejected.filter(e => !toRemove.has(e.id))
     }
   }
 
@@ -1277,6 +1397,8 @@ export class GameEngine {
       em.x += em.vx * dt * 60; em.y += em.vy * dt * 60
       em.vx *= 0.91; em.vy *= 0.91
       em.x = clamp(em.x, 0, WORLD_SIZE); em.y = clamp(em.y, 0, WORLD_SIZE)
+      const spd = Math.sqrt(em.vx * em.vx + em.vy * em.vy)
+      if (spd < 0.8) { em.settled = true; em.settledTimer = (em.settledTimer || 0) + dt }
     }
   }
 
@@ -1393,6 +1515,94 @@ export class GameEngine {
       ctx.lineWidth = 6
       ctx.strokeRect(3, 3, W-6, H-6)
     }
+
+    this._drawMinimap()
+  }
+
+  _drawMinimap() {
+    const { ctx, canvas, camera, theme } = this
+    const mapSize = 152
+    const pad = 5
+    const mapX = canvas.width - mapSize - 14
+    const mapY = 14
+    const scale = mapSize / WORLD_SIZE
+    const bx = mapX - pad, by = mapY - pad, bw = mapSize + pad * 2, bh = mapSize + pad * 2
+
+    ctx.save()
+
+    ctx.fillStyle = 'rgba(8,8,18,0.82)'
+    if (ctx.roundRect) {
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10); ctx.fill()
+    } else {
+      ctx.fillRect(bx, by, bw, bh)
+    }
+    ctx.strokeStyle = `rgba(${theme.glowColor || '139,92,246'},0.55)`
+    ctx.lineWidth = 1.5
+    if (ctx.roundRect) {
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10); ctx.stroke()
+    } else {
+      ctx.strokeRect(bx, by, bw, bh)
+    }
+
+    ctx.beginPath(); ctx.rect(mapX, mapY, mapSize, mapSize); ctx.clip()
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)'
+    ctx.lineWidth = 0.5
+    const gStep = mapSize / 6
+    for (let i = 0; i <= 6; i++) {
+      ctx.beginPath(); ctx.moveTo(mapX + i * gStep, mapY); ctx.lineTo(mapX + i * gStep, mapY + mapSize); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(mapX, mapY + i * gStep); ctx.lineTo(mapX + mapSize, mapY + i * gStep); ctx.stroke()
+    }
+
+    ctx.strokeStyle = `rgba(${theme.glowColor || '139,92,246'},0.7)`
+    ctx.lineWidth = 1
+    ctx.strokeRect(mapX, mapY, mapSize, mapSize)
+
+    const sample = this.food.length > 300 ? this.food.filter((_, i) => i % 4 === 0) : this.food
+    for (const f of sample) {
+      ctx.beginPath(); ctx.arc(mapX + f.x * scale, mapY + f.y * scale, 1, 0, Math.PI * 2)
+      ctx.fillStyle = f.color; ctx.fill()
+    }
+
+    for (const v of this.viruses) {
+      if (v.dead) continue
+      ctx.beginPath(); ctx.arc(mapX + v.x * scale, mapY + v.y * scale, 2.5, 0, Math.PI * 2)
+      ctx.fillStyle = '#22c55e'; ctx.fill()
+    }
+
+    for (const p of Object.values(this.otherPlayers)) {
+      const px = mapX + (p.x || 0) * scale
+      const py = mapY + (p.y || 0) * scale
+      ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2)
+      ctx.fillStyle = p.color || '#94a3b8'; ctx.fill()
+    }
+
+    const zoom = camera.zoom
+    const vpW = (canvas.width / zoom) * scale
+    const vpH = (canvas.height / zoom) * scale
+    const vpX = mapX + (camera.x - canvas.width / (2 * zoom)) * scale
+    const vpY = mapY + (camera.y - canvas.height / (2 * zoom)) * scale
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)'
+    ctx.lineWidth = 0.8
+    ctx.strokeRect(vpX, vpY, vpW, vpH)
+
+    for (const cell of this.cells) {
+      const cx = mapX + cell.x * scale
+      const cy = mapY + cell.y * scale
+      ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, Math.PI * 2)
+      ctx.fillStyle = this.playerColor || '#ffffff'
+      ctx.shadowBlur = 8; ctx.shadowColor = this.playerColor || '#ffffff'
+      ctx.fill(); ctx.shadowBlur = 0
+      ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke()
+    }
+
+    ctx.restore()
+
+    ctx.fillStyle = 'rgba(255,255,255,0.38)'
+    ctx.font = 'bold 8px "Exo 2", sans-serif'
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top'
+    ctx.fillText('HARİTA', mapX + mapSize, mapY + mapSize + 4)
   }
 
   _drawBgEffect(W, H) {
@@ -1532,9 +1742,10 @@ export class GameEngine {
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
       v.pulse = (v.pulse || 0) + 0.035
       const vInfo = VIRUS_TYPES[v.type]
-      const feedPct = Math.min((v.feedCount || 0) / 5, 1)
+      const fc = v.feedCount || 0
+      const feedPct = Math.min((fc % 5) / 5, 1)
       const pulseMod = 1 + 0.04 * Math.sin(v.pulse)
-      const baseR = v.radius * (1 + feedPct * 0.35) * pulseMod
+      const baseR = v.radius * (1 + feedPct * 0.35) * pulseMod * 1.35
       const glowSize = 14 + feedPct * 20
 
       ctx.save()
@@ -1562,8 +1773,9 @@ export class GameEngine {
       ctx.fillStyle = 'rgba(255,255,255,0.18)'
       ctx.fill()
 
-      if (v.feedCount > 0) {
-        const arcLen = (v.feedCount / 5) * Math.PI * 2
+      if (fc > 0) {
+        const rem = fc % 5
+        const arcLen = (rem / 5) * Math.PI * 2
         ctx.beginPath()
         ctx.arc(v.x, v.y, baseR + 5, -Math.PI / 2, -Math.PI / 2 + arcLen)
         ctx.strokeStyle = '#fbbf24'
@@ -1575,7 +1787,7 @@ export class GameEngine {
         ctx.fillStyle = '#fbbf24'
         ctx.font = `bold ${Math.max(9, baseR * 0.38)}px sans-serif`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(`${v.feedCount}/5`, v.x, v.y + baseR * 0.55)
+        ctx.fillText(`${rem}/5`, v.x, v.y + baseR * 0.55)
       }
 
       if (v.type !== 'normal') {
@@ -1591,14 +1803,23 @@ export class GameEngine {
 
   _drawEjected() {
     const { ctx } = this
+    const t = Date.now() / 600
     for (const em of this.ejected) {
-      ctx.beginPath(); ctx.arc(em.x, em.y, em.radius, 0, Math.PI*2)
+      em._pulse = (em._pulse || Math.random() * Math.PI * 2) + 0.06
+      const r = 5 + 0.7 * Math.sin(em._pulse)
+      ctx.save()
+      ctx.globalAlpha = em.settled ? 0.7 : 0.95
+      ctx.beginPath()
+      ctx.arc(em.x, em.y, r, 0, Math.PI * 2)
       ctx.fillStyle = em.color
-      ctx.shadowBlur = 8; ctx.shadowColor = em.color
+      if (this.qualityLevel !== 'low') {
+        ctx.shadowBlur = 6
+        ctx.shadowColor = em.color
+      }
       ctx.fill()
-      ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1.5; ctx.stroke()
+      ctx.shadowBlur = 0
+      ctx.restore()
     }
-    ctx.shadowBlur = 0
   }
 
   _drawParticles() {
@@ -1696,10 +1917,11 @@ export class GameEngine {
     ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
     ctx.clip()
 
+    const sc = safeColor(color)
     const grad = ctx.createRadialGradient(x - dr*0.35, y - dr*0.35, dr*0.05, x, y, dr)
-    grad.addColorStop(0, lighten(color, 55))
-    grad.addColorStop(0.6, color)
-    grad.addColorStop(1, darken(color, 35))
+    grad.addColorStop(0, lighten(sc, 55))
+    grad.addColorStop(0.6, hexAlpha(sc, 1))
+    grad.addColorStop(1, darken(sc, 35))
     ctx.fillStyle = grad; ctx.fill()
 
     if (avatar === 'stripes' && dr > 10) {

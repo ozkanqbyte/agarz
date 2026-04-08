@@ -58,6 +58,26 @@ class SocketClient {
     this._socket.volatile.emit('player:move', data)
   }
 
+  sendInput(x, y) {
+    if (!this._socket?.connected) return
+    this._socket.volatile.emit('input:update', { x, y })
+  }
+
+  sendSplit() {
+    if (!this._socket?.connected) return
+    this._socket.emit('input:split')
+  }
+
+  sendEject() {
+    if (!this._socket?.connected) return
+    this._socket.emit('input:eject')
+  }
+
+  sendSkill(skill) {
+    if (!this._socket?.connected) return
+    this._socket.emit('input:skill', { skill })
+  }
+
   eatFood(ids) {
     if (!this._socket?.connected) return
     this._socket.emit('food:eat', { ids: Array.isArray(ids) ? ids : [ids] })
