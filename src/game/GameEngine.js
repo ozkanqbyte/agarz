@@ -1942,11 +1942,11 @@ export class GameEngine {
 
   _drawMyPlayer() {
     for (const cell of this.cells) {
-      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0)
+      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame)
     }
   }
 
-  _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0) {
+  _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0, nameEffect=null, activeFrame=null) {
     const { ctx } = this
     if (radius < 0.5) return
 
@@ -2021,6 +2021,26 @@ export class GameEngine {
       ctx.strokeStyle = `rgba(6,182,212,${0.5 + 0.3*Math.sin(t)})`; ctx.lineWidth = 3; ctx.stroke()
     }
 
+    if (activeFrame && dr > 16) {
+      const FRAME_COLORS = {
+        silver: '#9ca3af', gold: '#f59e0b', diamond: '#38bdf8', legendary: '#ec4899',
+      }
+      const fc = FRAME_COLORS[activeFrame] || '#9ca3af'
+      const t = Date.now() / 800
+      const segments = activeFrame === 'legendary' ? 6 : activeFrame === 'diamond' ? 8 : 12
+      for (let i = 0; i < segments; i++) {
+        const a1 = (i / segments) * Math.PI * 2 + t
+        const a2 = ((i + 0.7) / segments) * Math.PI * 2 + t
+        ctx.beginPath()
+        ctx.arc(x, y, dr + 5, a1, a2)
+        ctx.strokeStyle = fc
+        ctx.lineWidth = activeFrame === 'legendary' ? 4 : 3
+        ctx.shadowBlur = 10; ctx.shadowColor = fc
+        ctx.stroke()
+        ctx.shadowBlur = 0
+      }
+    }
+
     if (dr > 14) {
       const mass = Math.floor((radius / 4.5) ** 2)
       const hasClan = clan && dr > 22
@@ -2034,12 +2054,31 @@ export class GameEngine {
 
       ctx.font = `bold ${fs}px "Exo 2", sans-serif`
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.shadowBlur = 5; ctx.shadowColor = 'rgba(0,0,0,0.9)'
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3
       const nameY = startY + lineIdx * lineH
-      ctx.strokeText(isGod ? '👑 '+name : name, x+1, nameY+1)
-      ctx.fillStyle = 'white'
-      ctx.fillText(isGod ? '👑 '+name : name, x, nameY)
+      const displayName = isGod ? '[GOD] '+name : name
+      const NAME_EFFECT_COLORS = {
+        glow: '#60a5fa', fire: '#ef4444', neon: '#22c55e',
+        electric: '#fbbf24', rainbow: null, galaxy: '#8b5cf6',
+        shadow: '#6b7280', crystal: '#38bdf8',
+      }
+      let nameColor = 'white'
+      let shadowColor = 'rgba(0,0,0,0.9)'
+      let shadowBlurAmt = 5
+      if (nameEffect && NAME_EFFECT_COLORS[nameEffect] !== undefined) {
+        if (nameEffect === 'rainbow') {
+          const t = Date.now() / 400
+          nameColor = `hsl(${(t * 60) % 360},100%,70%)`
+          shadowColor = nameColor; shadowBlurAmt = 14
+        } else {
+          nameColor = NAME_EFFECT_COLORS[nameEffect]
+          shadowColor = nameColor; shadowBlurAmt = 16
+        }
+      }
+      ctx.shadowBlur = shadowBlurAmt; ctx.shadowColor = shadowColor
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3
+      ctx.strokeText(displayName, x+1, nameY+1)
+      ctx.fillStyle = nameColor
+      ctx.fillText(displayName, x, nameY)
       lineIdx++
 
       if (hasClan) {

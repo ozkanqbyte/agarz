@@ -7,155 +7,182 @@ import LuckyBoxModal from './LuckyBoxModal'
 import toast from 'react-hot-toast'
 
 const TABS = [
-  { id: 'boxes', label: '🎰 Şans Kutusu' },
-  { id: 'gold', label: '💰 Gold Al' },
-  { id: 'effects', label: '✨ Efektler' },
-  { id: 'frames', label: '🖼️ Çerçeveler' },
-  { id: 'boosts', label: '⚡ Boost' },
+  { id: 'boxes', label: 'SANS KUTUSU' },
+  { id: 'gold', label: 'GOLD AL' },
+  { id: 'effects', label: 'AD EFEKTI' },
+  { id: 'frames', label: 'CERCEVE' },
+  { id: 'boosts', label: 'BOOST' },
 ]
+
+const FRAME_COLORS = {
+  silver: '#9ca3af', gold: '#f59e0b', diamond: '#38bdf8', legendary: '#ec4899',
+}
+const EFFECT_COLORS = {
+  glow: '#60a5fa', fire: '#ef4444', neon: '#22c55e',
+  electric: '#fbbf24', rainbow: '#ec4899', galaxy: '#8b5cf6',
+  shadow: '#6b7280', crystal: '#38bdf8',
+}
+
+function GoldBar({ amount, color = '#f59e0b' }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      background: 'rgba(245,158,11,0.1)',
+      border: '1px solid rgba(245,158,11,0.35)',
+      borderRadius: 10, padding: '5px 12px',
+    }}>
+      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} />
+      <span style={{ fontWeight: 900, color: '#f59e0b', fontSize: 15 }}>{amount.toLocaleString()}</span>
+    </div>
+  )
+}
 
 export default function ShopPage() {
   const navigate = useNavigate()
-  const { coins, spendCoins, addCoins, isXpBoostActive, activateXpBoost, xpBoostRemaining,
+  const {
+    coins, spendCoins, addCoins,
+    isXpBoostActive, activateXpBoost, xpBoostRemaining,
     ownedNameEffects, ownedFrames, activeNameEffect, activeFrame,
-    setActiveNameEffect, setActiveFrame, addNameEffect, addFrame } = useProgressStore()
+    setActiveNameEffect, setActiveFrame, addNameEffect, addFrame,
+  } = useProgressStore()
+
   const [tab, setTab] = useState('boxes')
   const [openBox, setOpenBox] = useState(null)
-  const [showGoldSuccess, setShowGoldSuccess] = useState(null)
 
   const boostMs = xpBoostRemaining()
   const boostHours = Math.floor(boostMs / 3600000)
   const boostMins = Math.floor((boostMs % 3600000) / 60000)
+  const boostActive = isXpBoostActive()
 
   const handleBuyGold = (pkg) => {
-    toast('💳 Ödeme sistemi yakında aktif!', { icon: '🔜' })
+    toast('Odeme sistemi yakin zamanda aktif!', { duration: 2000 })
     addCoins(pkg.amount)
-    setShowGoldSuccess(pkg)
-    setTimeout(() => setShowGoldSuccess(null), 2500)
   }
 
   const handleBuyEffect = (effect) => {
-    if (ownedNameEffects.includes(effect.id)) {
-      setActiveNameEffect(effect.id)
-      toast.success(`${effect.icon} ${effect.name} aktif edildi!`)
-      return
-    }
-    if (!spendCoins(effect.price)) {
-      toast.error(`Yetersiz Gold! ${effect.price} Gold gerekiyor.`)
-      return
-    }
-    addNameEffect(effect.id)
-    setActiveNameEffect(effect.id)
-    toast.success(`${effect.icon} ${effect.name} satın alındı!`)
+    const owned = ownedNameEffects.includes(effect.id)
+    if (owned) { setActiveNameEffect(effect.id); toast.success(`${effect.name} aktif edildi!`); return }
+    if (!spendCoins(effect.price)) { toast.error(`Yetersiz Gold! ${effect.price} Gold gerekiyor.`); return }
+    addNameEffect(effect.id); setActiveNameEffect(effect.id)
+    toast.success(`${effect.name} satin alindi!`)
   }
 
   const handleBuyFrame = (frame) => {
-    if (ownedFrames.includes(frame.id)) {
-      setActiveFrame(frame.id)
-      toast.success(`${frame.icon} ${frame.name} aktif edildi!`)
-      return
-    }
-    if (!spendCoins(frame.price)) {
-      toast.error(`Yetersiz Gold! ${frame.price} Gold gerekiyor.`)
-      return
-    }
-    addFrame(frame.id)
-    setActiveFrame(frame.id)
-    toast.success(`${frame.icon} ${frame.name} satın alındı!`)
+    const owned = ownedFrames.includes(frame.id)
+    if (owned) { setActiveFrame(frame.id); toast.success(`${frame.name} aktif edildi!`); return }
+    if (!spendCoins(frame.price)) { toast.error(`Yetersiz Gold! ${frame.price} Gold gerekiyor.`); return }
+    addFrame(frame.id); setActiveFrame(frame.id)
+    toast.success(`${frame.name} satin alindi!`)
   }
 
   const handleBuyBoost = () => {
-    if (isXpBoostActive()) {
-      toast('XP Boost zaten aktif!', { icon: '⚡' })
-      return
-    }
-    if (!spendCoins(300)) {
-      toast.error('Yetersiz Gold! 300 Gold gerekiyor.')
-      return
-    }
-    activateXpBoost()
-    toast.success('⚡ XP x2 Boost (24 saat) aktif edildi!')
+    if (boostActive) { toast('XP Boost zaten aktif!'); return }
+    if (!spendCoins(300)) { toast.error('Yetersiz Gold! 300 Gold gerekiyor.'); return }
+    activateXpBoost(); toast.success('XP x2 Boost (24 saat) aktif!')
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#060614' }}>
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3"
-        style={{ background: 'rgba(6,6,20,0.95)', borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)' }}>
-        <motion.button onClick={() => navigate('/menu')}
+    <div style={{ minHeight: '100vh', background: '#07071a', color: '#fff' }}>
+
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 20,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 20px',
+        background: 'rgba(7,7,26,0.97)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        backdropFilter: 'blur(14px)',
+      }}>
+        <motion.button
+          onClick={() => navigate('/menu')}
           whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 text-gray-400 hover:text-white font-bold text-sm">
-          ← Geri
+          style={{
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 10, padding: '8px 16px', color: '#9ca3af',
+            fontWeight: 700, fontSize: 13, cursor: 'pointer', letterSpacing: 1,
+          }}>
+          GERI
         </motion.button>
-        <div className="font-black text-white text-lg tracking-wider">🏪 MAĞAZA</div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
-          style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)' }}>
-          <span className="text-lg">💰</span>
-          <span className="font-black text-yellow-400">{coins.toLocaleString()}</span>
-        </div>
+
+        <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: 4, color: '#fff' }}>MAGAZA</div>
+
+        <GoldBar amount={coins} />
       </div>
 
-      <div className="flex gap-2 px-4 py-3 overflow-x-auto">
+      <div style={{ display: 'flex', gap: 8, padding: '14px 20px', overflowX: 'auto' }}>
         {TABS.map(t => (
           <motion.button key={t.id}
             onClick={() => setTab(t.id)}
             whileTap={{ scale: 0.95 }}
-            className="flex-shrink-0 px-4 py-2 rounded-xl font-bold text-sm transition-all"
             style={{
-              background: tab === t.id ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${tab === t.id ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`,
-              color: tab === t.id ? '#818cf8' : '#9ca3af',
+              flexShrink: 0, padding: '9px 18px', borderRadius: 10,
+              fontWeight: 800, fontSize: 11, letterSpacing: 2, cursor: 'pointer',
+              background: tab === t.id ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${tab === t.id ? 'rgba(99,102,241,0.55)' : 'rgba(255,255,255,0.08)'}`,
+              color: tab === t.id ? '#818cf8' : '#6b7280',
             }}>
             {t.label}
           </motion.button>
         ))}
       </div>
 
-      <div className="px-4 pb-8">
+      <div style={{ padding: '0 20px 60px' }}>
         <AnimatePresence mode="wait">
 
           {tab === 'boxes' && (
-            <motion.div key="boxes" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }} className="space-y-4">
-              <div className="text-gray-400 text-sm text-center py-2">
-                Kutu aç, efsane ödüller kazan! 🎰
+            <motion.div key="boxes"
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+                KUTU AC — EFSANE ODULLER KAZAN
               </div>
               {Object.values(LUCKY_BOXES).map(box => (
                 <motion.div key={box.id}
-                  whileHover={{ scale: 1.01, y: -2 }}
-                  className="rounded-2xl overflow-hidden cursor-pointer"
-                  style={{ background: box.gradient, border: `2px solid ${box.color}40`, boxShadow: `0 4px 24px ${box.glowColor}20` }}
-                  onClick={() => coins >= box.price ? setOpenBox(box.id) : toast.error(`Yetersiz Gold! ${box.price} Gold gerekiyor.`)}>
-                  <div className="p-5 flex items-center gap-4">
-                    <div className="text-6xl">{box.icon}</div>
-                    <div className="flex-1">
-                      <div className="font-black text-white text-xl">{box.name}</div>
-                      <div className="text-sm mt-1" style={{ color: box.glowColor }}>
-                        {box.rewards.map(r => r.icon).slice(0, 6).join(' ')}
+                  whileHover={{ scale: 1.01, y: -1 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => coins >= box.price ? setOpenBox(box.id) : toast.error(`${box.price} Gold gerekiyor!`)}
+                  style={{
+                    borderRadius: 18, overflow: 'hidden', cursor: 'pointer',
+                    border: `1.5px solid ${box.color}33`,
+                    boxShadow: `0 4px 32px ${box.glowColor}12`,
+                  }}>
+                  <div style={{
+                    background: box.gradient, padding: '20px 22px',
+                    display: 'flex', alignItems: 'center', gap: 16,
+                  }}>
+                    <div style={{
+                      width: 56, height: 56, borderRadius: 14,
+                      background: 'rgba(0,0,0,0.3)',
+                      border: `1px solid ${box.color}55`,
+                      boxShadow: `0 0 20px ${box.glowColor}40`,
+                      flexShrink: 0,
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 900, fontSize: 17, letterSpacing: 2 }}>{box.name.toUpperCase()}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 4, fontWeight: 600, letterSpacing: 1 }}>
+                        {box.rewards.length} FARKLI ODUL
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl font-black"
-                        style={{ background: 'rgba(0,0,0,0.4)', color: '#fbbf24', fontSize: 18 }}>
-                        💰 {box.price}
-                      </div>
-                      <motion.div
-                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                        className="px-4 py-2 rounded-xl font-black text-white text-sm"
-                        style={{ background: 'rgba(0,0,0,0.5)', border: `1px solid ${box.color}60` }}>
-                        🎰 AÇ!
-                      </motion.div>
+                    <div style={{
+                      background: 'rgba(0,0,0,0.45)', borderRadius: 10,
+                      padding: '8px 16px', fontWeight: 900, fontSize: 16, letterSpacing: 1,
+                      color: '#fbbf24',
+                    }}>
+                      {box.price} G
                     </div>
                   </div>
-                  <div className="px-5 pb-4 flex gap-2 flex-wrap">
+                  <div style={{
+                    background: 'rgba(0,0,0,0.6)', padding: '10px 22px',
+                    display: 'flex', gap: 6, flexWrap: 'wrap',
+                  }}>
                     {box.rewards.slice(0, 5).map((r, i) => (
-                      <span key={i} className="text-xs px-2 py-0.5 rounded-full font-bold"
-                        style={{ background: `${box.color}20`, color: box.glowColor, border: `1px solid ${box.color}30` }}>
-                        {r.name}
-                      </span>
+                      <span key={i} style={{
+                        fontSize: 10, fontWeight: 700, letterSpacing: 1,
+                        padding: '3px 8px', borderRadius: 6,
+                        background: `${box.color}15`,
+                        color: box.glowColor,
+                        border: `1px solid ${box.color}25`,
+                      }}>{r.name?.toUpperCase() || r.type.toUpperCase()}</span>
                     ))}
-                    <span className="text-xs px-2 py-0.5 rounded-full font-bold text-gray-500">
-                      +{box.rewards.length - 5} daha...
-                    </span>
                   </div>
                 </motion.div>
               ))}
@@ -163,72 +190,97 @@ export default function ShopPage() {
           )}
 
           {tab === 'gold' && (
-            <motion.div key="gold" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }} className="space-y-4">
-              <div className="text-gray-400 text-sm text-center py-2">
-                Gold satın al ve mağazada harca! 💰
+            <motion.div key="gold"
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+                GOLD SATIN AL
               </div>
               {GOLD_PACKAGES.map(pkg => (
                 <motion.div key={pkg.id}
-                  whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }}
-                  className="relative rounded-2xl p-5 flex items-center gap-4 cursor-pointer"
-                  style={{ background: `${pkg.color}12`, border: `2px solid ${pkg.color}35` }}
-                  onClick={() => handleBuyGold(pkg)}>
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => handleBuyGold(pkg)}
+                  style={{
+                    position: 'relative', borderRadius: 16, padding: '20px 22px',
+                    display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer',
+                    background: `${pkg.color}0d`,
+                    border: `1.5px solid ${pkg.color}28`,
+                  }}>
                   {pkg.popular && (
-                    <div className="absolute -top-2 right-4 px-3 py-0.5 rounded-full font-black text-xs text-white"
-                      style={{ background: '#ec4899' }}>EN POPÜLER</div>
+                    <div style={{
+                      position: 'absolute', top: -10, right: 16,
+                      background: '#ec4899', borderRadius: 8,
+                      padding: '3px 12px', fontWeight: 900, fontSize: 10, letterSpacing: 2,
+                    }}>EN POPULER</div>
                   )}
-                  <div className="text-5xl">{pkg.icon}</div>
-                  <div className="flex-1">
-                    <div className="font-black text-white text-xl">{pkg.name}</div>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: 12, flexShrink: 0,
+                    background: `linear-gradient(135deg, ${pkg.color}44, ${pkg.color}22)`,
+                    border: `1.5px solid ${pkg.color}55`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: pkg.color }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 900, fontSize: 18, color: pkg.color }}>{pkg.amount.toLocaleString()} GOLD</div>
                     {pkg.bonus && (
-                      <div className="text-sm font-bold mt-0.5" style={{ color: '#22c55e' }}>
-                        🎁 {pkg.bonus}
+                      <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, marginTop: 2, letterSpacing: 1 }}>
+                        + {pkg.bonus}
                       </div>
                     )}
                   </div>
-                  <div className="font-black text-xl" style={{ color: pkg.color }}>{pkg.price}</div>
+                  <div style={{ fontWeight: 900, fontSize: 20, color: '#fff' }}>{pkg.price}</div>
                 </motion.div>
               ))}
-              <div className="rounded-2xl p-4 text-center text-sm text-gray-500"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                💡 Oyun oynayarak da ücretsiz Gold kazanabilirsin!<br />
-                Yem: +1 Gold • Düşman: +50 Gold • Günlük giriş bonusu
+              <div style={{
+                borderRadius: 14, padding: '14px 18px', marginTop: 4,
+                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+                fontSize: 12, color: '#4b5563', fontWeight: 600, lineHeight: 1.8, letterSpacing: 0.5,
+              }}>
+                UCRETSIZ GOLD KAZAN — Yem: +1 G &nbsp;|&nbsp; Dusman ye: +50 G &nbsp;|&nbsp; Gunluk giris bonusu
               </div>
             </motion.div>
           )}
 
           {tab === 'effects' && (
-            <motion.div key="effects" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }} className="space-y-3">
-              <div className="text-gray-400 text-sm text-center py-2">
-                İsminin üstünde özel efektler göster! ✨
+            <motion.div key="effects"
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+                AD EFEKTLERI — OYUN ICINDE GORUNUR
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {NAME_EFFECTS.map(effect => {
                   const owned = ownedNameEffects.includes(effect.id)
                   const active = activeNameEffect === effect.id
+                  const c = EFFECT_COLORS[effect.id] || '#60a5fa'
                   return (
                     <motion.div key={effect.id}
                       whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                      className="rounded-2xl p-4 flex flex-col items-center gap-2 cursor-pointer"
+                      onClick={() => handleBuyEffect(effect)}
                       style={{
-                        background: active ? `${effect.color}20` : 'rgba(255,255,255,0.04)',
-                        border: `2px solid ${active ? effect.color : 'rgba(255,255,255,0.1)'}`,
-                        boxShadow: active ? `0 0 20px ${effect.color}30` : 'none',
-                      }}
-                      onClick={() => handleBuyEffect(effect)}>
-                      <div className="text-4xl">{effect.icon}</div>
-                      <div className="font-black text-white text-sm">{effect.name}</div>
+                        borderRadius: 14, padding: '16px', cursor: 'pointer',
+                        background: active ? `${c}18` : 'rgba(255,255,255,0.03)',
+                        border: `1.5px solid ${active ? c : 'rgba(255,255,255,0.08)'}`,
+                        boxShadow: active ? `0 0 20px ${c}25` : 'none',
+                        display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start',
+                      }}>
+                      <div style={{
+                        width: '100%', height: 4, borderRadius: 4,
+                        background: `linear-gradient(to right, ${c}, ${c}44)`,
+                      }} />
+                      <div style={{ fontWeight: 900, fontSize: 14, color: c, letterSpacing: 1 }}>
+                        {effect.name.toUpperCase()}
+                      </div>
                       {active ? (
-                        <div className="text-xs font-bold px-2 py-0.5 rounded-full"
-                          style={{ background: `${effect.color}30`, color: effect.color }}>✓ AKTİF</div>
+                        <div style={{
+                          fontSize: 10, fontWeight: 800, letterSpacing: 2, color: c,
+                          background: `${c}18`, padding: '3px 10px', borderRadius: 6,
+                        }}>AKTIF</div>
                       ) : owned ? (
-                        <div className="text-xs font-bold text-gray-400">Sahipsin → Aktif et</div>
+                        <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>SAHIPSIN - AKTİF ET</div>
                       ) : (
-                        <div className="flex items-center gap-1 text-sm font-black" style={{ color: '#fbbf24' }}>
-                          💰 {effect.price}
-                        </div>
+                        <div style={{ fontWeight: 900, fontSize: 14, color: '#f59e0b' }}>{effect.price} GOLD</div>
                       )}
                     </motion.div>
                   )
@@ -238,36 +290,60 @@ export default function ShopPage() {
           )}
 
           {tab === 'frames' && (
-            <motion.div key="frames" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }} className="space-y-3">
-              <div className="text-gray-400 text-sm text-center py-2">
-                Profilinde özel çerçeve göster! 🖼️
+            <motion.div key="frames"
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+                BALONUN ETRAFINDA DONER — OYUN ICINDE GORUNUR
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {FRAMES.map(frame => {
                   const owned = ownedFrames.includes(frame.id)
                   const active = activeFrame === frame.id
+                  const c = FRAME_COLORS[frame.id] || '#9ca3af'
                   return (
                     <motion.div key={frame.id}
                       whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                      className="rounded-2xl p-4 flex flex-col items-center gap-2 cursor-pointer"
+                      onClick={() => handleBuyFrame(frame)}
                       style={{
-                        background: active ? `${frame.color}20` : 'rgba(255,255,255,0.04)',
-                        border: `2px solid ${active ? frame.color : 'rgba(255,255,255,0.1)'}`,
-                        boxShadow: active ? `0 0 20px ${frame.color}30` : 'none',
-                      }}
-                      onClick={() => handleBuyFrame(frame)}>
-                      <div className="text-5xl">{frame.icon}</div>
-                      <div className="font-black text-white text-sm">{frame.name}</div>
+                        borderRadius: 14, padding: '18px', cursor: 'pointer',
+                        background: active ? `${c}14` : 'rgba(255,255,255,0.03)',
+                        border: `1.5px solid ${active ? c : 'rgba(255,255,255,0.08)'}`,
+                        boxShadow: active ? `0 0 24px ${c}22` : 'none',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+                      }}>
+                      <div style={{ position: 'relative', width: 64, height: 64 }}>
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: '50%',
+                          background: 'rgba(255,255,255,0.06)',
+                          border: `3px solid ${c}`,
+                          boxShadow: active ? `0 0 18px ${c}60` : `0 0 8px ${c}30`,
+                        }} />
+                        <svg style={{ position: 'absolute', inset: 0 }} viewBox="0 0 64 64" fill="none">
+                          {[0,1,2,3].map(i => (
+                            <arc key={i}
+                              cx="32" cy="32" r="28"
+                              stroke={c}
+                              strokeWidth="3"
+                              strokeDasharray="14 30"
+                              strokeDashoffset={i * -11}
+                              strokeLinecap="round"
+                            />
+                          ))}
+                        </svg>
+                      </div>
+                      <div style={{ fontWeight: 900, fontSize: 14, color: c, letterSpacing: 2 }}>
+                        {frame.name.toUpperCase()}
+                      </div>
                       {active ? (
-                        <div className="text-xs font-bold px-2 py-0.5 rounded-full"
-                          style={{ background: `${frame.color}30`, color: frame.color }}>✓ AKTİF</div>
+                        <div style={{
+                          fontSize: 10, fontWeight: 800, letterSpacing: 2, color: c,
+                          background: `${c}18`, padding: '3px 12px', borderRadius: 6,
+                        }}>AKTIF</div>
                       ) : owned ? (
-                        <div className="text-xs font-bold text-gray-400">Sahipsin → Aktif et</div>
+                        <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>AKTIF ET</div>
                       ) : (
-                        <div className="flex items-center gap-1 text-sm font-black" style={{ color: '#fbbf24' }}>
-                          💰 {frame.price}
-                        </div>
+                        <div style={{ fontWeight: 900, fontSize: 14, color: '#f59e0b' }}>{frame.price} GOLD</div>
                       )}
                     </motion.div>
                   )
@@ -277,38 +353,53 @@ export default function ShopPage() {
           )}
 
           {tab === 'boosts' && (
-            <motion.div key="boosts" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }} className="space-y-4">
+            <motion.div key="boosts"
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+                BOOST
+              </div>
               <motion.div
-                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                className="rounded-2xl p-6 flex items-center gap-5 cursor-pointer"
+                whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
+                onClick={handleBuyBoost}
                 style={{
-                  background: isXpBoostActive() ? 'rgba(251,191,36,0.12)' : 'rgba(255,255,255,0.04)',
-                  border: `2px solid ${isXpBoostActive() ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                  boxShadow: isXpBoostActive() ? '0 0 30px rgba(251,191,36,0.2)' : 'none',
-                }}
-                onClick={handleBuyBoost}>
-                <div className="text-6xl">⚡</div>
-                <div className="flex-1">
-                  <div className="font-black text-white text-xl">XP x2 Boost</div>
-                  <div className="text-sm text-gray-400 mt-1">24 saat boyunca çift XP kazan!</div>
-                  {isXpBoostActive() && (
-                    <div className="mt-2 font-bold text-sm" style={{ color: '#fbbf24' }}>
-                      ✓ AKTİF — {boostHours}s {boostMins}d kaldı
+                  borderRadius: 18, padding: '24px 22px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 18,
+                  background: boostActive ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.03)',
+                  border: `1.5px solid ${boostActive ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                  boxShadow: boostActive ? '0 0 32px rgba(251,191,36,0.15)' : 'none',
+                }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: 16, flexShrink: 0,
+                  background: boostActive ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.06)',
+                  border: `2px solid ${boostActive ? '#fbbf24' : 'rgba(255,255,255,0.1)'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <div style={{
+                    width: 28, height: 28,
+                    background: boostActive
+                      ? 'linear-gradient(135deg, #fbbf24, #f59e0b)'
+                      : 'rgba(255,255,255,0.15)',
+                    clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)',
+                  }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: 2, color: boostActive ? '#fbbf24' : '#fff' }}>
+                    XP x2 BOOST
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, fontWeight: 600 }}>
+                    24 SAAT — OYUNU KAPATSAN BİLE SAYAR
+                  </div>
+                  {boostActive && (
+                    <div style={{ marginTop: 8, fontWeight: 800, fontSize: 13, color: '#fbbf24', letterSpacing: 1 }}>
+                      AKTIF — {boostHours}s {boostMins}d KALDI
                     </div>
                   )}
                 </div>
-                {!isXpBoostActive() && (
-                  <div className="flex items-center gap-1 font-black text-xl" style={{ color: '#fbbf24' }}>
-                    💰 300
-                  </div>
+                {!boostActive && (
+                  <div style={{ fontWeight: 900, fontSize: 20, color: '#f59e0b' }}>300 G</div>
                 )}
               </motion.div>
-
-              <div className="rounded-2xl p-4 text-center text-sm text-gray-500"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                💡 XP Boost oyunu kapatsan bile 24 saat boyunca aktif kalır!
-              </div>
             </motion.div>
           )}
 
@@ -317,28 +408,7 @@ export default function ShopPage() {
 
       <AnimatePresence>
         {openBox && (
-          <LuckyBoxModal
-            key={openBox}
-            boxType={openBox}
-            onClose={() => setOpenBox(null)}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showGoldSuccess && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 40 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-            <div className="flex flex-col items-center gap-3 rounded-2xl p-8"
-              style={{ background: 'rgba(8,8,20,0.98)', border: '2px solid rgba(251,191,36,0.5)' }}>
-              <div className="text-6xl">💰</div>
-              <div className="font-black text-2xl text-white">+{showGoldSuccess.amount} Gold!</div>
-              <div className="text-yellow-400 font-bold">{showGoldSuccess.name} satın alındı</div>
-            </div>
-          </motion.div>
+          <LuckyBoxModal key={openBox} boxType={openBox} onClose={() => setOpenBox(null)} />
         )}
       </AnimatePresence>
     </div>

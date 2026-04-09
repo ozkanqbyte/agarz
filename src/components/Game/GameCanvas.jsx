@@ -22,7 +22,7 @@ export default function GameCanvas({ onLevelUp }) {
   const { user, profile } = useAuthStore()
   const { setScore, setRank, setTotalPlayers, setLeaderboard, setPlaying, currentTheme, gameMode } = useGameStore()
   const { ownedPackage } = usePremiumStore()
-  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames, addGoldForFood, addGoldForKill, addGoldForGame } = useProgressStore()
+  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames, addGoldForFood, addGoldForKill, addGoldForGame, activeNameEffect, activeFrame } = useProgressStore()
   const { updateProgress } = useQuestStore()
   const { addBPXP } = useBattlePassStore()
   const startTimeRef = useRef(Date.now())
@@ -78,6 +78,8 @@ export default function GameCanvas({ onLevelUp }) {
       isPremium: ownedPackage !== 'free',
       ownedPackage,
       team,
+      nameEffect: activeNameEffect,
+      activeFrame: activeFrame,
       onScoreChange: (score) => {
         setScore(score)
         updateHighScore(score)
