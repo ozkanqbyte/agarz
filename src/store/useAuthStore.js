@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { authRef } from './authRef'
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -47,6 +48,7 @@ const useAuthStore = create((set, get) => ({
           return
         }
         if (firebaseUser) {
+          authRef.uid = firebaseUser.uid
           set({ user: firebaseUser, loading: false, isGuest: firebaseUser.isAnonymous })
           get().loadProfile(firebaseUser.uid)
         } else {

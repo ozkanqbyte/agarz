@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { authRef } from './authRef'
 
 export const PREMIUM_PACKAGES = [
   {
@@ -83,10 +84,7 @@ const usePremiumStore = create((set, get) => ({
     if (packageId === 'god') newSkins = SKINS.map(s => s.id)
     set({ ownedPackage: packageId, ownedSkins: newSkins })
     import('../firebase/syncService').then(({ fbSavePremium }) => {
-      import('./useAuthStore').then(({ default: useAuthStore }) => {
-        const uid = useAuthStore.getState().user?.uid
-        fbSavePremium(uid, { ownedPackage: packageId, ownedSkins: newSkins, coins: get().coins })
-      })
+      fbSavePremium(authRef.uid, { ownedPackage: packageId, ownedSkins: newSkins, coins: get().coins })
     }).catch(() => {})
     return { success: true }
   },
@@ -100,10 +98,7 @@ const usePremiumStore = create((set, get) => ({
     const newCoins = coins - skin.price
     set({ ownedSkins: newSkins, coins: newCoins })
     import('../firebase/syncService').then(({ fbSavePremium }) => {
-      import('./useAuthStore').then(({ default: useAuthStore }) => {
-        const uid = useAuthStore.getState().user?.uid
-        fbSavePremium(uid, { ownedPackage: get().ownedPackage, ownedSkins: newSkins, coins: newCoins })
-      })
+      fbSavePremium(authRef.uid, { ownedPackage: get().ownedPackage, ownedSkins: newSkins, coins: newCoins })
     }).catch(() => {})
     return { success: true }
   },
