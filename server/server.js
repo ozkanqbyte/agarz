@@ -45,7 +45,7 @@ function rndId() { return Math.random().toString(36).slice(2, 12) }
 function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 function massToRadius(mass) { return Math.sqrt(mass) * 4.5 }
-function speedForMass(mass) { return BASE_SPEED / Math.pow(Math.max(20, mass), 0.4) }
+function speedForMass(_mass) { return BASE_SPEED / Math.pow(Math.max(20, 300), 0.4) }
 
 class GameRoom {
   constructor(id, mode) {
@@ -67,6 +67,40 @@ class GameRoom {
     }
     if (mode === 'rush') {
       this.rushTime = 300
+    }
+    if (mode === 'king_of_hill') {
+      this.koth = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, radius: 500, timer: 420, moveTimer: 120, ended: false }
+      this.kothScores = new Map()
+    }
+    if (mode === 'infection') {
+      this.infectionStartTimer = 8
+      this.zombies = new Set()
+      this.infectionEnded = false
+      this.infectionStarted = false
+    }
+    if (mode === 'crystal_hunt') {
+      this.crystals = []
+      this.crystalRespawnTimer = 5
+      this.glowingPlayers = new Map()
+      this.crystalHuntTimer = 600
+      this.crystalHuntEnded = false
+      this.crystalScores = new Map()
+      this._spawnCrystal()
+      this._spawnCrystal()
+      this._spawnCrystal()
+    }
+    if (mode === 'shrink_survival') {
+      this.shrinkEnded = false
+    }
+    if (mode === 'boss_fight') {
+      this.boss = null
+      this.bossRespawnTimer = 5
+      this.bossDamagers = new Map()
+      this.bossDefeated = false
+    }
+    if (mode === 'teams') {
+      this.teamScores = { red: 0, blue: 0 }
+      this.teamEnded = false
     }
 
     this._startLoop()
@@ -135,14 +169,31 @@ class GameRoom {
       if (player.skillSpeedTimer > 0) player.skillSpeedTimer -= dt
       if (player.skillSlowTimer > 0) player.skillSlowTimer -= dt
       if (player.skillShieldTimer > 0) player.skillShieldTimer -= dt
+      if (player.skillMagnetTimer > 0) {
+        player.skillMagnetTimer -= dt
+        for (const food of room.food) {
+          const dx = player.x - food.x, dy = player.y - food.y
+          const d = Math.sqrt(dx*dx+dy*dy)
+          if (d < 600 && d > 1) { food.x += (dx/d)*4; food.y += (dy/d)*4 }
+        }
+      }
+      if (player.skillGhostTimer > 0) player.skillGhostTimer -= dt
     }
 
     this._checkFoodCollisions()
     this._checkPlayerCollisions()
     this._checkVirusCollisions()
+    this._checkCrystalCollisions()
+    this._checkBossCollisions()
     this._respawnFood()
     this._updateBattleRoyale(dt)
     this._updateRush(dt)
+    this._updateKingOfHill(dt)
+    this._updateInfection(dt)
+    this._updateCrystalHunt(dt)
+    this._updateShrinkSurvival(dt)
+    this._updateBossFight(dt)
+    this._updateTeams(dt)
 
     if (this._tick % BROADCAST_EVERY === 0) {
       this._broadcast()
@@ -245,6 +296,7 @@ class GameRoom {
       for (let j = i + 1; j < players.length; j++) {
         const a = players[i], b = players[j]
         if (a.dead || b.dead) continue
+        if (a.skillGhostTimer > 0 || b.skillGhostTimer > 0) continue
         const sameTeam = this.mode === 'teams' && a.team === b.team && a.team !== 'none'
         for (const ac of a.cells) {
           for (const bc of b.cells) {
@@ -252,13 +304,39 @@ class GameRoom {
             const ra = massToRadius(ac.mass), rb = massToRadius(bc.mass)
             if (d < Math.max(ra, rb) * 0.9) {
               if (!sameTeam && ac.mass > bc.mass * MIN_EAT_RATIO) {
+                if (this.mode === 'infection' && this.zombies.has(a.id) && this.zombies.has(b.id)) continue
                 ac.mass += bc.mass
                 b.cells = b.cells.filter(c => c.id !== bc.id)
-                if (!b.cells.length) { b.dead = true; this._notifyKill(a, b) }
+                if (!b.cells.length) {
+                  if (this.mode === 'infection' && this.zombies.has(a.id) && !this.zombies.has(b.id)) {
+                    b.dead = false
+                    b.cells = [{ id: rndId(), x: b.x, y: b.y, mass: 30, mergeTimer: 0 }]
+                    b.mass = 30
+                    b.color = '#7cfc00'
+                    b.isZombie = true
+                    this.zombies.add(b.id)
+                    io.to(this.id).emit('infection:converted', { id: b.id })
+                  } else {
+                    b.dead = true; this._notifyKill(a, b)
+                  }
+                }
               } else if (!sameTeam && bc.mass > ac.mass * MIN_EAT_RATIO) {
+                if (this.mode === 'infection' && this.zombies.has(a.id) && this.zombies.has(b.id)) continue
                 bc.mass += ac.mass
                 a.cells = a.cells.filter(c => c.id !== ac.id)
-                if (!a.cells.length) { a.dead = true; this._notifyKill(b, a) }
+                if (!a.cells.length) {
+                  if (this.mode === 'infection' && this.zombies.has(b.id) && !this.zombies.has(a.id)) {
+                    a.dead = false
+                    a.cells = [{ id: rndId(), x: a.x, y: a.y, mass: 30, mergeTimer: 0 }]
+                    a.mass = 30
+                    a.color = '#7cfc00'
+                    a.isZombie = true
+                    this.zombies.add(a.id)
+                    io.to(this.id).emit('infection:converted', { id: a.id })
+                  } else {
+                    a.dead = true; this._notifyKill(b, a)
+                  }
+                }
               }
             }
           }
@@ -275,7 +353,8 @@ class GameRoom {
         const r = massToRadius(cell.mass)
         for (const virus of this.viruses) {
           if (toRemove.has(virus.id)) continue
-          if (dist(cell, virus) < r * 0.88 && cell.mass > virus.mass) {
+          const virusR = massToRadius(virus.mass)
+          if (dist(cell, virus) < virusR + r * 0.25 && cell.mass > virus.mass) {
             const shield = player.skillShieldTimer > 0
             if (shield) {
               cell.mass += 300
@@ -296,8 +375,13 @@ class GameRoom {
       }
     }
     if (toRemove.size) {
+      for (const vid of toRemove) io.to(this.id).emit('virus:eaten', { id: vid })
       this.viruses = this.viruses.filter(v => !toRemove.has(v.id))
-      while (this.viruses.length < VIRUS_COUNT) this.viruses.push(this._makeVirus())
+      while (this.viruses.length < VIRUS_COUNT) {
+        const nv = this._makeVirus()
+        this.viruses.push(nv)
+        io.to(this.id).emit('virus:spawned', nv)
+      }
     }
   }
 
@@ -355,10 +439,14 @@ class GameRoom {
       if (Math.sqrt(dx * dx + dy * dy) < 80) {
         virus.feedCount = (virus.feedCount || 0) + 1
         if (virus.feedCount % VIRUS_FEED_SPLIT === 0) {
-          const angle = Math.random() * Math.PI * 2
+          const ejectD = Math.sqrt(em.vx * em.vx + em.vy * em.vy) || 1
+          const nx = em.vx / ejectD, ny = em.vy / ejectD
+          const scatter = (Math.random() - 0.5) * 0.6
+          const finalAngle = Math.atan2(ny, nx) + scatter
+          const dist2 = 100 + Math.random() * 80
           const nv = this._makeVirus(
-            clamp(virus.x + Math.cos(angle) * 120, 200, WORLD_SIZE - 200),
-            clamp(virus.y + Math.sin(angle) * 120, 200, WORLD_SIZE - 200),
+            clamp(virus.x + Math.cos(finalAngle) * dist2, 200, WORLD_SIZE - 200),
+            clamp(virus.y + Math.sin(finalAngle) * dist2, 200, WORLD_SIZE - 200),
             virus.type
           )
           this.viruses.push(nv)
@@ -373,7 +461,7 @@ class GameRoom {
     if (player.frozen > 0 || player.cells.length >= MAX_CELLS) return
     const newCells = []
     for (const cell of player.cells) {
-      if (cell.mass < MIN_MASS_SPLIT * 2 || player.cells.length + newCells.length >= MAX_CELLS) continue
+      if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       const dx = (player.inputX || 0) - cell.x
       const dy = (player.inputY || 0) - cell.y
       const d = Math.sqrt(dx * dx + dy * dy) || 1
@@ -389,6 +477,249 @@ class GameRoom {
       })
     }
     player.cells.push(...newCells)
+  }
+
+  _checkCrystalCollisions() {
+    if (this.mode !== 'crystal_hunt' || !this.crystals?.length) return
+    const toEat = []
+    for (const [, player] of this.players) {
+      if (player.dead) continue
+      for (const cell of player.cells) {
+        const r = massToRadius(cell.mass)
+        for (const crystal of this.crystals) {
+          if (dist(cell, crystal) < r + 40) {
+            cell.mass += crystal.mass
+            player.mass += crystal.mass
+            toEat.push(crystal.id)
+            this.glowingPlayers.set(player.id, Date.now() + 30000)
+            const prevScore = this.crystalScores.get(player.id) || 0
+            this.crystalScores.set(player.id, prevScore + 1)
+            io.to(this.id).emit('crystal:eaten', { playerId: player.id, crystalId: crystal.id })
+          }
+        }
+      }
+    }
+    if (toEat.length) {
+      const eaten = new Set(toEat)
+      this.crystals = this.crystals.filter(c => !eaten.has(c.id))
+    }
+  }
+
+  _checkBossCollisions() {
+    if (this.mode !== 'boss_fight' || !this.boss) return
+    for (const [, player] of this.players) {
+      if (player.dead) continue
+      for (const cell of player.cells) {
+        const r = massToRadius(cell.mass)
+        const bd = dist(cell, this.boss)
+        if (bd < r + massToRadius(this.boss.mass) * 0.85) {
+          const dmg = Math.max(1, cell.mass * 0.08)
+          this.boss.mass -= dmg
+          cell.mass = Math.max(20, cell.mass - dmg * 0.2)
+          const prev = this.bossDamagers.get(player.id) || 0
+          this.bossDamagers.set(player.id, prev + dmg)
+          if (this.boss.mass <= 200) {
+            this._bossDefeated()
+          }
+        }
+      }
+    }
+  }
+
+  _spawnCrystal() {
+    const c = {
+      id: rndId(),
+      x: 600 + rnd(WORLD_SIZE - 1200),
+      y: 600 + rnd(WORLD_SIZE - 1200),
+      mass: 400 + Math.random() * 300,
+      color: '#00e5ff'
+    }
+    this.crystals = this.crystals || []
+    this.crystals.push(c)
+    io.to(this.id).emit('crystal:spawned', c)
+  }
+
+  _spawnBoss() {
+    const alivePlayers = Array.from(this.players.values()).filter(p => !p.dead)
+    const target = alivePlayers.length > 0 ? alivePlayers[Math.floor(Math.random() * alivePlayers.length)] : null
+    const bx = target ? clamp(target.x + (Math.random() - 0.5) * 600, 400, WORLD_SIZE - 400) : WORLD_SIZE / 2
+    const by = target ? clamp(target.y + (Math.random() - 0.5) * 600, 400, WORLD_SIZE - 400) : WORLD_SIZE / 2
+    this.boss = {
+      id: 'boss_' + rndId(),
+      x: bx, y: by,
+      mass: 5000,
+      vx: 0, vy: 0,
+      attackTimer: 8,
+      color: '#ff0040',
+      name: 'BOSS'
+    }
+    this.bossDamagers = new Map()
+    io.to(this.id).emit('boss:spawned', this.boss)
+  }
+
+  _bossDefeated() {
+    if (!this.boss) return
+    const topDamager = Array.from(this.bossDamagers.entries()).sort((a, b) => b[1] - a[1])[0]
+    io.to(this.id).emit('boss:defeated', {
+      topDamagerId: topDamager?.[0] || null,
+      topDamagerName: this.players.get(topDamager?.[0])?.name || '?'
+    })
+    for (const [, player] of this.players) {
+      if (!player.dead) io.to(player.socketId).emit('boss:reward', { xp: 500, gold: 100 })
+    }
+    this.boss = null
+    this.bossRespawnTimer = 30
+  }
+
+  _updateKingOfHill(dt) {
+    if (this.mode !== 'king_of_hill' || !this.koth || this.koth.ended) return
+    this.koth.timer -= dt
+    this.koth.moveTimer -= dt
+    if (this.koth.moveTimer <= 0) {
+      this.koth.moveTimer = 120
+      this.koth.x = 800 + Math.random() * (WORLD_SIZE - 1600)
+      this.koth.y = 800 + Math.random() * (WORLD_SIZE - 1600)
+      io.to(this.id).emit('koth:moved', { x: this.koth.x, y: this.koth.y, radius: this.koth.radius })
+    }
+    for (const [, player] of this.players) {
+      if (player.dead) continue
+      const inZone = dist(player, this.koth) < this.koth.radius
+      if (inZone) {
+        const prev = this.kothScores.get(player.id) || 0
+        this.kothScores.set(player.id, prev + 5 * dt)
+      } else {
+        for (const cell of player.cells) {
+          if (cell.mass > 20) cell.mass = Math.max(20, cell.mass - cell.mass * 0.008 * dt)
+        }
+      }
+    }
+    if (this._tick % TICK_RATE === 0) {
+      const scores = Array.from(this.kothScores.entries()).map(([id, score]) => {
+        const p = this.players.get(id)
+        return { id, name: p?.name || '?', score: Math.floor(score) }
+      }).sort((a, b) => b.score - a.score)
+      io.to(this.id).emit('koth:update', { scores, timeLeft: Math.ceil(Math.max(0, this.koth.timer)), zone: { x: this.koth.x, y: this.koth.y, radius: this.koth.radius } })
+    }
+    if (this.koth.timer <= 0) {
+      this.koth.ended = true
+      const sorted = Array.from(this.kothScores.entries()).sort((a, b) => b[1] - a[1])
+      const winnerId = sorted[0]?.[0]
+      const winner = this.players.get(winnerId)
+      io.to(this.id).emit('koth:ended', { winner: winner ? { id: winner.id, name: winner.name } : null })
+    }
+  }
+
+  _updateInfection(dt) {
+    if (this.mode !== 'infection' || this.infectionEnded) return
+    if (!this.infectionStarted) {
+      this.infectionStartTimer -= dt
+      if (this.infectionStartTimer <= 0 && this.players.size > 0) {
+        this.infectionStarted = true
+        const pArr = Array.from(this.players.values()).filter(p => !p.dead)
+        if (pArr.length > 0) {
+          const zombie = pArr[Math.floor(Math.random() * pArr.length)]
+          this.zombies.add(zombie.id)
+          zombie.color = '#7cfc00'
+          zombie.isZombie = true
+          io.to(this.id).emit('infection:start', { zombieId: zombie.id })
+        }
+      }
+    }
+    const humans = Array.from(this.players.values()).filter(p => !p.dead && !this.zombies.has(p.id))
+    if (this.infectionStarted && humans.length === 0 && this.players.size > 0) {
+      this.infectionEnded = true
+      const winner = Array.from(this.zombies).map(id => this.players.get(id)).filter(Boolean).sort((a, b) => b.mass - a.mass)[0]
+      io.to(this.id).emit('infection:ended', { winner: winner ? { id: winner.id, name: winner.name } : null, reason: 'all_infected' })
+    } else if (this.infectionStarted && this.zombies.size > 0) {
+      if (humans.length === 1) {
+        io.to(this.id).emit('infection:lastHuman', { id: humans[0].id, name: humans[0].name })
+      }
+    }
+  }
+
+  _updateCrystalHunt(dt) {
+    if (this.mode !== 'crystal_hunt' || this.crystalHuntEnded) return
+    this.crystalHuntTimer -= dt
+    this.crystalRespawnTimer -= dt
+    if (this.crystalRespawnTimer <= 0 && this.crystals.length < 8) {
+      this._spawnCrystal()
+      this.crystalRespawnTimer = 45
+    }
+    for (const [pid, endTime] of this.glowingPlayers) {
+      if (Date.now() > endTime) this.glowingPlayers.delete(pid)
+    }
+    if (this.crystalHuntTimer <= 0) {
+      this.crystalHuntEnded = true
+      const sorted = Array.from(this.crystalScores.entries()).sort((a, b) => b[1] - a[1])
+      const winnerId = sorted[0]?.[0]
+      const winner = this.players.get(winnerId)
+      io.to(this.id).emit('crystal:ended', { winner: winner ? { id: winner.id, name: winner.name, crystals: sorted[0][1] } : null })
+    }
+  }
+
+  _updateShrinkSurvival(dt) {
+    if (this.mode !== 'shrink_survival' || this.shrinkEnded) return
+    for (const [, player] of this.players) {
+      if (player.dead) continue
+      for (const cell of player.cells) {
+        const decayRate = cell.mass < 100 ? 0.004 : cell.mass < 500 ? 0.010 : cell.mass < 2000 ? 0.018 : 0.028
+        cell.mass = Math.max(20, cell.mass - cell.mass * decayRate * dt)
+      }
+      player.mass = player.cells.reduce((s, c) => s + c.mass, 0)
+    }
+    const alive = Array.from(this.players.values()).filter(p => !p.dead && p.mass > 20)
+    if (alive.length === 1) {
+      this.shrinkEnded = true
+      io.to(this.id).emit('shrink:ended', { winner: { id: alive[0].id, name: alive[0].name } })
+    } else if (alive.length === 0) {
+      this.shrinkEnded = true
+      io.to(this.id).emit('shrink:ended', { winner: null })
+    }
+  }
+
+  _updateBossFight(dt) {
+    if (this.mode !== 'boss_fight') return
+    if (!this.boss && this.bossRespawnTimer > 0) {
+      this.bossRespawnTimer -= dt
+      if (this.bossRespawnTimer <= 0) this._spawnBoss()
+      return
+    }
+    if (!this.boss) return
+    this.boss.attackTimer -= dt
+    const bossSpeed = 180 + Math.random() * 60
+    const nearestPlayer = _findNearestEnemy({ players: this.players }, { id: 'boss', x: this.boss.x, y: this.boss.y })
+    if (nearestPlayer) {
+      const dx = nearestPlayer.x - this.boss.x, dy = nearestPlayer.y - this.boss.y
+      const d = Math.sqrt(dx * dx + dy * dy) || 1
+      this.boss.x = clamp(this.boss.x + (dx / d) * bossSpeed * dt, 200, WORLD_SIZE - 200)
+      this.boss.y = clamp(this.boss.y + (dy / d) * bossSpeed * dt, 200, WORLD_SIZE - 200)
+    }
+    if (this.boss.attackTimer <= 0) {
+      this.boss.attackTimer = 8
+      const blastRadius = massToRadius(this.boss.mass) * 2.5 + 400
+      for (const [, player] of this.players) {
+        if (player.dead) continue
+        if (dist(player, this.boss) < blastRadius) {
+          this._explodePlayer(player, player.cells[0])
+          io.to(player.socketId).emit('boss:blast', { damage: 50 })
+        }
+      }
+      io.to(this.id).emit('boss:attack', { x: this.boss.x, y: this.boss.y, radius: blastRadius })
+    }
+    if (this._tick % TICK_RATE === 0) {
+      io.to(this.id).emit('boss:state', { x: this.boss.x, y: this.boss.y, mass: Math.floor(this.boss.mass), attackTimer: this.boss.attackTimer })
+    }
+  }
+
+  _updateTeams(dt) {
+    if (this.mode !== 'teams' || this.teamEnded) return
+    const redPlayers = Array.from(this.players.values()).filter(p => !p.dead && p.team === 'red')
+    const bluePlayers = Array.from(this.players.values()).filter(p => !p.dead && p.team === 'blue')
+    if (this.players.size > 1 && (redPlayers.length === 0 || bluePlayers.length === 0)) {
+      this.teamEnded = true
+      const winner = redPlayers.length > 0 ? 'red' : 'blue'
+      io.to(this.id).emit('teams:ended', { winner })
+    }
   }
 
   _respawnFood() {
@@ -469,10 +800,26 @@ class GameRoom {
         g: p.isGod ? 1 : 0,
         cl: p.clan || null,
         frozen: p.frozen > 0 ? 1 : 0,
-        poisoned: p.poisoned > 0 ? 1 : 0
+        poisoned: p.poisoned > 0 ? 1 : 0,
+        ghost: p.skillGhostTimer > 0 ? 1 : 0,
+        pk: p.ownedPackage || 'free'
       })
     }
-    io.to(this.id).emit('world:state', { players, tick: this._tick })
+    const modeData = {}
+    if (this.mode === 'crystal_hunt' && this.crystals?.length) {
+      modeData.crystals = this.crystals
+      modeData.glowingPlayers = Array.from(this.glowingPlayers.keys())
+    }
+    if (this.mode === 'boss_fight' && this.boss) {
+      modeData.boss = { x: this.boss.x, y: this.boss.y, mass: Math.floor(this.boss.mass), attackTimer: Math.ceil(this.boss.attackTimer) }
+    }
+    if (this.mode === 'king_of_hill' && this.koth) {
+      modeData.koth = { x: this.koth.x, y: this.koth.y, radius: this.koth.radius }
+    }
+    if (this.mode === 'infection') {
+      modeData.zombies = Array.from(this.zombies)
+    }
+    io.to(this.id).emit('world:state', { players, tick: this._tick, mode: this.mode, modeData })
   }
 
   addPlayer(player) {
@@ -532,19 +879,28 @@ io.on('connection', (socket) => {
       const spawnX = 400 + Math.random() * (WORLD_SIZE - 800)
       const spawnY = 400 + Math.random() * (WORLD_SIZE - 800)
 
+      const VALID_PACKAGES = ['free','trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
+      const ownedPackage = VALID_PACKAGES.includes(data.ownedPackage) ? data.ownedPackage : 'free'
+
+      const spawnMass = room.mode === 'shrink_survival' ? 500 : 300
+      const assignedTeam = room.mode === 'teams'
+        ? (Array.from(room.players.values()).filter(p => p.team === 'red').length <= Array.from(room.players.values()).filter(p => p.team === 'blue').length ? 'red' : 'blue')
+        : (data.team || 'none')
+
       const player = {
         id: playerId,
         socketId: socket.id,
         name: (data.name || 'Player').slice(0, 24),
         color: data.color || '#6366f1',
-        isGod: !!data.isGod,
+        isGod: false,
         clan: data.clan || null,
         isPremium: !!data.isPremium,
-        team: data.team || 'none',
-        mass: 20,
+        ownedPackage,
+        team: assignedTeam,
+        mass: spawnMass,
         x: spawnX,
         y: spawnY,
-        cells: [{ id: rndId(), x: spawnX, y: spawnY, mass: 20, mergeTimer: 0 }],
+        cells: [{ id: rndId(), x: spawnX, y: spawnY, mass: spawnMass, mergeTimer: 0 }],
         kills: 0,
         dead: false,
         inputX: spawnX,
@@ -554,11 +910,19 @@ io.on('connection', (socket) => {
         skillSpeedTimer: 0,
         skillSlowTimer: 0,
         skillShieldTimer: 0,
+        skillMagnetTimer: 0,
+        skillGhostTimer: 0,
         _virusFirstHit: false,
         joinedAt: Date.now(),
-        _skillCooldowns: { speed: 0, shield: 0, slow: 0 },
-        _skillUseCount: { speed: 0, shield: 0, slow: 0 },
-        _skillRateWindow: 0
+        _skillCooldowns: {},
+        _skillUseCount: {},
+        _skillRateWindow: {},
+        _lastSplit: 0,
+        _splitCount5s: 0,
+        _splitWindow: Date.now(),
+        _lastEject: 0,
+        _ejectCount5s: 0,
+        _ejectWindow: Date.now()
       }
 
       room.addPlayer(player)
@@ -573,7 +937,13 @@ io.on('connection', (socket) => {
         isHost: room.hostId === playerId,
         chat: room.chat.slice(-30),
         serverAuth: true,
-        spawnX, spawnY
+        spawnX, spawnY,
+        mode: room.mode,
+        crystals: room.crystals || [],
+        boss: room.boss || null,
+        koth: room.koth || null,
+        zombies: room.zombies ? Array.from(room.zombies) : [],
+        assignedTeam
       }
 
       if (typeof cb === 'function') cb(state)
@@ -602,13 +972,41 @@ io.on('connection', (socket) => {
   socket.on('input:split', () => {
     if (!room || !playerId) return
     const player = room.players.get(playerId)
-    if (player && !player.dead) room._handleSplit(player)
+    if (!player || player.dead) return
+    const now = Date.now()
+    if (!player._lastSplit) player._lastSplit = 0
+    if (!player._splitCount5s) player._splitCount5s = 0
+    if (!player._splitWindow) player._splitWindow = now
+    if (now - player._splitWindow > 5000) { player._splitCount5s = 0; player._splitWindow = now }
+    player._splitCount5s++
+    if (player._splitCount5s > 20) {
+      socket.emit('anticheat:warn', { reason: 'split_spam' })
+      player.dead = true
+      return
+    }
+    if (now - player._lastSplit < 80) return
+    player._lastSplit = now
+    room._handleSplit(player)
   })
 
   socket.on('input:eject', () => {
     if (!room || !playerId) return
     const player = room.players.get(playerId)
-    if (player && !player.dead) room._handleEject(player)
+    if (!player || player.dead) return
+    const now = Date.now()
+    if (!player._lastEject) player._lastEject = 0
+    if (!player._ejectCount5s) player._ejectCount5s = 0
+    if (!player._ejectWindow) player._ejectWindow = now
+    if (now - player._ejectWindow > 5000) { player._ejectCount5s = 0; player._ejectWindow = now }
+    player._ejectCount5s++
+    if (player._ejectCount5s > 80) {
+      socket.emit('anticheat:warn', { reason: 'eject_spam' })
+      player.dead = true
+      return
+    }
+    if (now - player._lastEject < 25) return
+    player._lastEject = now
+    room._handleEject(player)
   })
 
   socket.on('input:skill', (data) => {
@@ -616,24 +1014,39 @@ io.on('connection', (socket) => {
     const player = room.players.get(playerId)
     if (!player || player.dead) return
     const skill = data.skill
-    if (!['speed', 'shield', 'slow'].includes(skill)) return
+    const VALID_SKILLS = ['speed', 'shield', 'slow', 'magnet', 'ghost', 'teleport']
+    if (!VALID_SKILLS.includes(skill)) return
+
+    const tier = player.ownedPackage || 'free'
+    const TIER_ORDER = ['free','trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
+    const tierIdx = TIER_ORDER.indexOf(tier)
+    const LEGEND_SKILLS = ['speed','slow','shield','magnet','ghost','teleport']
+    if (LEGEND_SKILLS.includes(skill) && !player.isGod) {
+      const minTier = TIER_ORDER.indexOf('legend')
+      if (tierIdx < minTier) {
+        socket.emit('skill:denied', { skill, reason: 'package_required', remaining: 0 })
+        return
+      }
+    }
 
     const now = Date.now()
-    if (!player._skillCooldowns) player._skillCooldowns = { speed: 0, shield: 0, slow: 0 }
-    if (!player._skillUseCount) player._skillUseCount = { speed: 0, shield: 0, slow: 0 }
+    if (!player._skillCooldowns) player._skillCooldowns = {}
+    if (!player._skillUseCount) player._skillUseCount = {}
+    if (!player._skillRateWindow) player._skillRateWindow = {}
 
-    const COOLDOWNS = { speed: 20000, shield: 15000, slow: 12000 }
-    const PREMIUM_COOLDOWNS = { speed: 12000, shield: 9000, slow: 7000 }
+    const COOLDOWNS = { speed: 20000, shield: 15000, slow: 12000, magnet: 25000, ghost: 35000, teleport: 45000 }
+    const PREMIUM_COOLDOWNS = { speed: 12000, shield: 9000, slow: 7000, magnet: 16000, ghost: 22000, teleport: 28000 }
     const cooldownMs = player.isPremium ? PREMIUM_COOLDOWNS[skill] : COOLDOWNS[skill]
 
-    if (now - player._skillCooldowns[skill] < cooldownMs) {
+    if (now - (player._skillCooldowns[skill] || 0) < cooldownMs) {
       socket.emit('skill:denied', { skill, remaining: Math.ceil((cooldownMs - (now - player._skillCooldowns[skill])) / 1000) })
       return
     }
 
-    if (now - (player._skillRateWindow || 0) > 5000) {
-      player._skillUseCount = { speed: 0, shield: 0, slow: 0 }
-      player._skillRateWindow = now
+    const window5s = player._skillRateWindow[skill] || 0
+    if (now - window5s > 5000) {
+      player._skillUseCount[skill] = 0
+      player._skillRateWindow[skill] = now
     }
     player._skillUseCount[skill] = (player._skillUseCount[skill] || 0) + 1
     if (player._skillUseCount[skill] > 3) {
@@ -651,6 +1064,21 @@ io.on('connection', (socket) => {
     } else if (skill === 'slow') {
       const nearest = _findNearestEnemy(room, player)
       if (nearest) nearest.skillSlowTimer = player.isPremium ? 5 : 3
+    } else if (skill === 'magnet') {
+      player.skillMagnetTimer = player.isPremium ? 12 : 8
+    } else if (skill === 'ghost') {
+      player.skillGhostTimer = player.isPremium ? 6 : 4
+    } else if (skill === 'teleport') {
+      const angle = Math.random() * Math.PI * 2
+      const dist_t = 800 + Math.random() * 400
+      for (const cell of player.cells) {
+        cell.x = clamp(cell.x + Math.cos(angle) * dist_t, 200, WORLD_SIZE - 200)
+        cell.y = clamp(cell.y + Math.sin(angle) * dist_t, 200, WORLD_SIZE - 200)
+      }
+      const cx = player.cells.reduce((s,c)=>s+c.x,0)/player.cells.length
+      const cy = player.cells.reduce((s,c)=>s+c.y,0)/player.cells.length
+      player.x = cx; player.y = cy
+      player.inputX = cx; player.inputY = cy
     }
 
     socket.emit('skill:activated', { skill, cooldown: cooldownMs })
