@@ -22,7 +22,7 @@ export default function GameCanvas({ onLevelUp }) {
   const { user, profile } = useAuthStore()
   const { setScore, setRank, setTotalPlayers, setLeaderboard, setPlaying, currentTheme, gameMode } = useGameStore()
   const { ownedPackage } = usePremiumStore()
-  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames } = useProgressStore()
+  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames, addGoldForFood, addGoldForKill, addGoldForGame } = useProgressStore()
   const { updateProgress } = useQuestStore()
   const { addBPXP } = useBattlePassStore()
   const startTimeRef = useRef(Date.now())
@@ -52,9 +52,10 @@ export default function GameCanvas({ onLevelUp }) {
 
   const handleKill = useCallback((mass) => {
     addKill()
+    addGoldForKill()
     updateProgress('kills', 1)
     checkBadges()
-  }, [addKill, updateProgress, checkBadges])
+  }, [addKill, addGoldForKill, updateProgress, checkBadges])
 
   useEffect(() => {
     if (!canvasRef.current) return
@@ -81,6 +82,7 @@ export default function GameCanvas({ onLevelUp }) {
         setScore(score)
         updateHighScore(score)
         updateProgress('score', score)
+        if (score > 0 && score % 100 === 0) addGoldForFood()
       },
       onDeath: handleDeath,
       onLeaderboardChange: (lb) => setLeaderboard(lb),
@@ -178,6 +180,8 @@ export default function GameCanvas({ onLevelUp }) {
   const handleSplit = () => engineRef.current?.touchSplit()
   const handleEject = () => engineRef.current?.touchEject()
   const handleLeave = () => {
+    const finalScore = engineRef.current?.score || 0
+    if (finalScore > 0) addGoldForGame(finalScore)
     engineRef.current?.destroy()
     navigate('/menu')
   }

@@ -14,6 +14,7 @@ import PremiumShop from './components/Premium/PremiumShop'
 import BattlePassPage from './components/BattlePass/BattlePassPage'
 import LootBoxModal from './components/LootBox/LootBoxModal'
 import LevelUpModal from './components/Progress/LevelUpModal'
+import ShopPage from './components/Shop/ShopPage'
 
 function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuthStore()
@@ -116,6 +117,9 @@ export default function App() {
         } />
         <Route path="/battlepass" element={
           <ProtectedRoute><BattlePassPage /></ProtectedRoute>
+        } />
+        <Route path="/shop" element={
+          <ProtectedRoute><ShopPage /></ProtectedRoute>
         } />
         <Route path="/" element={<Navigate to="/menu" replace />} />
         <Route path="*" element={<Navigate to="/menu" replace />} />

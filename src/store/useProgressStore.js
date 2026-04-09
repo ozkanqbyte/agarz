@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export const XP_BOOST_HOURS = 24
+
 export const BADGES = [
   { id: 'first_kill', name: 'İlk Kan', desc: 'İlk düşmanını ye', icon: '🗡️', rarity: 'common', condition: (s) => s.totalKills >= 1 },
   { id: 'kill_10', name: 'Avcı', desc: '10 düşman ye', icon: '⚔️', rarity: 'common', condition: (s) => s.totalKills >= 10 },
@@ -36,12 +38,44 @@ const useProgressStore = create(
       pendingGodGames: 0,
       ownedFrames: [],
       pendingBoosts: [],
+      xpBoostEndTime: 0,
+      lastDailyLogin: 0,
+      dailyStreak: 0,
+      ownedNameEffects: [],
+      activeNameEffect: null,
+      activeFrame: null,
+
+      isXpBoostActive: () => Date.now() < get().xpBoostEndTime,
+      activateXpBoost: () => set({ xpBoostEndTime: Date.now() + XP_BOOST_HOURS * 3600 * 1000 }),
+      xpBoostRemaining: () => Math.max(0, get().xpBoostEndTime - Date.now()),
+
+      addNameEffect: (effectId) => set(s => ({ ownedNameEffects: [...new Set([...s.ownedNameEffects, effectId])] })),
+      setActiveNameEffect: (effectId) => set({ activeNameEffect: effectId }),
+      setActiveFrame: (frameId) => set({ activeFrame: frameId }),
+
+      claimDailyLogin: () => {
+        const now = Date.now()
+        const last = get().lastDailyLogin
+        const oneDayMs = 86400000
+        const twoDaysMs = 172800000
+        if (now - last < oneDayMs) return null
+        const streak = now - last < twoDaysMs ? get().dailyStreak + 1 : 1
+        const goldReward = Math.min(10 * streak, 100)
+        set(s => ({ lastDailyLogin: now, dailyStreak: streak, coins: s.coins + goldReward }))
+        return { streak, goldReward }
+      },
+
+      addGoldForFood: () => set(s => ({ coins: s.coins + 1 })),
+      addGoldForKill: () => set(s => ({ coins: s.coins + 50 })),
+      addGoldForGame: (score) => set(s => ({ coins: s.coins + Math.floor(score / 10) })),
 
       addXP: (amount) => {
         const state = get()
+        const boosted = Date.now() < state.xpBoostEndTime
+        const finalAmount = boosted ? amount * 2 : amount
         let { xp, level, prestige, totalXP } = state
-        xp += amount
-        totalXP += amount
+        xp += finalAmount
+        totalXP += finalAmount
         let leveledUp = false
         let newLevel = level
         let newPrestige = prestige
