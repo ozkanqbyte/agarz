@@ -561,37 +561,29 @@ export class GameEngine {
               const serverCount = validCs.length
               const clientCount = this.cells.length
               const now = Date.now()
-              const cellProtected = this._cellProtectUntil && now < this._cellProtectUntil
               const massProtected = this._massProtectUntil && now < this._massProtectUntil
-              if (serverCount !== clientCount) {
-                if (serverCount > clientCount && !cellProtected) {
-                  const newCells = validCs.map((c, i) => {
-                    const existing = this.cells[i]
-                    if (existing) {
-                      if (!massProtected) existing.mass = lerp(existing.mass, c.m, 0.3)
-                      if (existing.mergeTimer === 0) existing.mergeTimer = now + MERGE_TIME
-                      return existing
-                    }
-                    const cell = new Cell(c.x, c.y, c.m, this.playerColor)
-                    cell.id = uuidv4()
-                    cell.mergeTimer = now + MERGE_TIME
-                    return cell
-                  })
-                  this.cells = newCells
-                } else if (serverCount < clientCount && !cellProtected) {
-                  for (let i = 0; i < serverCount; i++) {
-                    if (!massProtected) this.cells[i].mass = lerp(this.cells[i].mass, validCs[i].m, 0.3)
+              const sinceJoin = this._serverJoinTime ? (now - this._serverJoinTime) : 99999
+              if (serverCount > clientCount) {
+                const newCells = validCs.map((c, i) => {
+                  const existing = this.cells[i]
+                  if (existing) {
+                    if (!massProtected && sinceJoin > 3000) existing.mass = lerp(existing.mass, c.m, 0.25)
+                    return existing
                   }
-                  this.cells = this.cells.slice(0, serverCount)
-                }
+                  const cell = new Cell(c.x, c.y, c.m, this.playerColor)
+                  cell.id = uuidv4()
+                  cell.mergeTimer = now + MERGE_TIME
+                  return cell
+                })
+                this.cells = newCells
               } else {
-                const sinceJoin = this._serverJoinTime ? (now - this._serverJoinTime) : 99999
-                for (let i = 0; i < this.cells.length; i++) {
+                const syncCount = Math.min(clientCount, serverCount)
+                for (let i = 0; i < syncCount; i++) {
                   if (massProtected) continue
                   const sm = validCs[i].m
                   const cm = this.cells[i].mass
                   if (sinceJoin < 6000 && sm < cm * 0.5) continue
-                  this.cells[i].mass = lerp(cm, sm, 0.3)
+                  this.cells[i].mass = lerp(cm, sm, 0.25)
                 }
               }
             }
@@ -1569,8 +1561,7 @@ export class GameEngine {
         soundSystem.virusEat && soundSystem.virusEat()
         this._spawnExplosion(virus.x, virus.y, vInfo.color)
 
-        this._massProtectUntil = Date.now() + 4000
-        this._cellProtectUntil = Date.now() + 4000
+        this._massProtectUntil = Date.now() + 12000
 
         if (this.skills.shield.active) {
           cell.mass += 300

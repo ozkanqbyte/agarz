@@ -985,12 +985,8 @@ io.on('connection', (socket) => {
     if (!player || player.dead) return
     if (typeof data.x === 'number') player.inputX = clamp(data.x, 0, WORLD_SIZE)
     if (typeof data.y === 'number') player.inputY = clamp(data.y, 0, WORLD_SIZE)
-    if (typeof data.clientMass === 'number' && data.clientMass > 0) {
-      const serverMass = player.mass || 300
-      const maxAllowed = serverMass * 8
-      if (data.clientMass <= maxAllowed) {
-        player.reportedMass = data.clientMass
-      }
+    if (typeof data.clientMass === 'number' && data.clientMass > 0 && data.clientMass < 500000) {
+      player.reportedMass = data.clientMass
     }
   })
 
