@@ -1140,6 +1140,38 @@ io.on('connection', (socket) => {
 
   socket.on('ping', (cb) => { if (typeof cb === 'function') cb(Date.now()) })
 
+  socket.on('virus:touch', (data) => {
+    if (!room || !playerId) return
+    const player = room.players.get(playerId)
+    if (!player || player.dead) return
+    const virusId = data.id
+    const virusIdx = room.viruses.findIndex(v => v.id === virusId)
+    if (virusIdx === -1) return
+    const virus = room.viruses[virusIdx]
+    const hitCell = player.cells.find(c => {
+      const virusR = massToRadius(virus.mass)
+      const cellR = massToRadius(c.mass)
+      return dist(c, virus) < virusR + cellR * 0.85 && c.mass >= virus.mass
+    })
+    if (!hitCell) return
+    const shield = player.skillShieldTimer > 0
+    if (!shield && hitCell.mass > 100) {
+      room._explodePlayer(player, hitCell)
+    }
+    hitCell.mass += 300
+    player.mass = player.cells.reduce((s, c) => s + c.mass, 0)
+    if (!shield && virus.type === 'poison') player.poisoned = 5
+    if (!shield && virus.type === 'freeze') player.frozen = 4
+    io.to(room.id).emit('virus:eaten', { id: virusId })
+    io.to(socket.id).emit('virus:mass_gain', { amount: 0 })
+    room.viruses.splice(virusIdx, 1)
+    while (room.viruses.length < VIRUS_COUNT) {
+      const nv = room._makeVirus()
+      room.viruses.push(nv)
+      io.to(room.id).emit('virus:spawned', nv)
+    }
+  })
+
   socket.on('disconnect', () => {
     if (!room || !playerId) return
     room.removePlayer(playerId)

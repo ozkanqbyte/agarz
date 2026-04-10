@@ -518,10 +518,11 @@ export class GameEngine {
       })
       .on('virus:eaten', (d) => {
         this.viruses = this.viruses.filter(v => v.id !== d.id)
+        if (this._clientEatenViruses) this._clientEatenViruses.delete(d.id)
       })
       .on('virus:mass_gain', (d) => {
-        const gain = d.amount || 300
-        if (this.cells.length > 0) {
+        const gain = d.amount || 0
+        if (gain > 0 && this.cells.length > 0) {
           this.cells[0].mass += gain
           this.cells[0].eatPulse = 1.3
           this._showFloat(`+${gain}`, '#4ade80')
@@ -1162,6 +1163,7 @@ export class GameEngine {
     this._updateAbsorbParticles(dt)
     this._checkFoodCollisions()
     if (!this._useSocket) this._checkVirusCollisions()
+    else this._checkVirusCollisionsClient()
     this._updateViruses(dt)
     this._virusAutoEat(dt)
     this._checkEjectedFoodConversion()
@@ -1505,16 +1507,6 @@ export class GameEngine {
         this.lastEatTime = Date.now()
         soundSystem.virusEat()
 
-        if (!this._virusFirstHit) {
-          this._virusFirstHit = true
-          const splitCount = Math.max(4, Math.min(16, Math.floor(cell.mass / 12)))
-          this._explodeCell(cell, splitCount)
-          this._showFloat('💥 İLK DİKEN! DAĞILDIN!', '#ef4444')
-          this._spawnExplosion(virus.x, virus.y, vInfo.color)
-          virus.dead = true
-          break
-        }
-
         if (cell.mass > 100) {
           const splitCount = Math.min(16, Math.floor(cell.mass / 16))
           this._explodeCell(cell, splitCount)
@@ -1533,6 +1525,53 @@ export class GameEngine {
 
         this._spawnExplosion(virus.x, virus.y, vInfo.color)
         virus.dead = true
+        break
+      }
+    }
+    this.viruses = this.viruses.filter(v => !v.dead)
+  }
+
+  _checkVirusCollisionsClient() {
+    if (!this.cells.length || !socketClient) return
+    if (!this._clientEatenViruses) this._clientEatenViruses = new Set()
+    for (const virus of this.viruses) {
+      if (virus.dead || this._clientEatenViruses.has(virus.id)) continue
+      for (const cell of this.cells) {
+        const virusR = Math.sqrt(virus.mass) * 4.5
+        const r = cell.radius
+        if (dist(cell, virus) >= virusR + r * 0.8) continue
+        if (cell.mass < virus.mass) continue
+
+        this._clientEatenViruses.add(virus.id)
+        virus.dead = true
+
+        const vInfo = VIRUS_TYPES[virus.type] || VIRUS_TYPES.normal
+        cell.eatPulse = 1.3
+        this.lastEatTime = Date.now()
+        soundSystem.virusEat && soundSystem.virusEat()
+        this._spawnExplosion(virus.x, virus.y, vInfo.color)
+
+        if (this.skills.shield.active) {
+          cell.mass += 300
+          this._showFloat('+300 🛡️', '#06b6d4')
+        } else if (cell.mass > 100) {
+          const splitCount = Math.min(16, Math.floor(cell.mass / 16))
+          this._explodeCell(cell, splitCount)
+          cell.mass += 300
+          this._showFloat('💥 PATLAMA! +300', '#fbbf24')
+        } else {
+          cell.mass += 300
+          this._showFloat('+300 🌿', '#4ade80')
+        }
+
+        if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('☠️ Zehirlendi!', '#a855f7') }
+        else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('❄️ Donduruldu!', '#38bdf8') }
+
+        this.score += 300
+        this.onScoreChange(Math.floor(this.score))
+        this.onXPGain(15)
+
+        socketClient.emit('virus:touch', { id: virus.id, cellMass: Math.floor(cell.mass) })
         break
       }
     }
