@@ -252,12 +252,11 @@ class GameRoom {
 
   _massDecay(player, dt) {
     for (const cell of player.cells) {
-      if (cell.mass <= 20) continue
+      if (cell.mass <= 200) continue
       let rate
-      if (cell.mass < 100) rate = 0.15
-      else if (cell.mass < 500) rate = 0.3
-      else if (cell.mass < 2000) rate = cell.mass * 0.0004
-      else rate = cell.mass * 0.0007
+      if (cell.mass < 1000) rate = cell.mass * 0.00004
+      else if (cell.mass < 5000) rate = cell.mass * 0.00008
+      else rate = cell.mass * 0.00015
       cell.mass = Math.max(20, cell.mass - rate * dt)
     }
   }
@@ -1151,14 +1150,6 @@ io.on('connection', (socket) => {
     const virusId = data.id
     const virusIdx = room.viruses.findIndex(v => v.id === virusId)
     if (virusIdx === -1) return
-    const biggestCell = player.cells.reduce((best, c) => !best || c.mass > best.mass ? c : best, null)
-    if (!biggestCell || biggestCell.mass < (room.viruses[virusIdx]?.mass || 100) * 0.5) return
-    const hitCell = biggestCell
-    const shield = player.skillShieldTimer > 0
-    hitCell.mass += 10
-    player.mass = player.cells.reduce((s, c) => s + c.mass, 0)
-    if (!shield && room.viruses[virusIdx]?.type === 'poison') player.poisoned = 5
-    if (!shield && room.viruses[virusIdx]?.type === 'freeze') player.frozen = 4
     io.to(room.id).emit('virus:eaten', { id: virusId })
     room.viruses.splice(virusIdx, 1)
     while (room.viruses.length < VIRUS_COUNT) {

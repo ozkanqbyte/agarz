@@ -555,38 +555,6 @@ export class GameEngine {
         const activeIds = new Set()
         for (const p of data.players) {
           if (p.id === this.playerId) {
-            if (p.cs && p.cs.length) {
-              const validCs = p.cs.filter(c => isFinite(c.x) && isFinite(c.y) && isFinite(c.m) && c.m > 0)
-              if (!validCs.length) break
-              const serverCount = validCs.length
-              const clientCount = this.cells.length
-              const now = Date.now()
-              const massProtected = this._massProtectUntil && now < this._massProtectUntil
-              const sinceJoin = this._serverJoinTime ? (now - this._serverJoinTime) : 99999
-              if (serverCount > clientCount) {
-                const newCells = validCs.map((c, i) => {
-                  const existing = this.cells[i]
-                  if (existing) {
-                    if (!massProtected && sinceJoin > 3000) existing.mass = lerp(existing.mass, c.m, 0.25)
-                    return existing
-                  }
-                  const cell = new Cell(c.x, c.y, c.m, this.playerColor)
-                  cell.id = uuidv4()
-                  cell.mergeTimer = now + MERGE_TIME
-                  return cell
-                })
-                this.cells = newCells
-              } else {
-                const syncCount = Math.min(clientCount, serverCount)
-                for (let i = 0; i < syncCount; i++) {
-                  if (massProtected) continue
-                  const sm = validCs[i].m
-                  const cm = this.cells[i].mass
-                  if (sinceJoin < 6000 && sm < cm * 0.5) continue
-                  this.cells[i].mass = lerp(cm, sm, 0.25)
-                }
-              }
-            }
             this._serverMass = p.m || 0
             if (p.frozen) this._showFloat('❄️ Donduruldu!', '#38bdf8')
             if (p.poisoned) this._showFloat('☠️ Zehirlendi!', '#a855f7')
@@ -1769,10 +1737,10 @@ export class GameEngine {
     for (const cell of this.cells) {
       if (cell.mass <= 20) continue
       let rate
-      if (cell.mass < 100) rate = 0.15
-      else if (cell.mass < 500) rate = 0.3
-      else if (cell.mass < 2000) rate = cell.mass * 0.0004
-      else rate = cell.mass * 0.0007
+      if (cell.mass < 200) rate = 0
+      else if (cell.mass < 1000) rate = cell.mass * 0.00004
+      else if (cell.mass < 5000) rate = cell.mass * 0.00008
+      else rate = cell.mass * 0.00015
       cell.mass = Math.max(20, cell.mass - rate * dt)
     }
   }
