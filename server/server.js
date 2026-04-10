@@ -142,10 +142,28 @@ class GameRoom {
   }
 
   _makeVirus(x, y, type) {
+    let vx = x != null ? x : 400 + rnd(WORLD_SIZE - 800)
+    let vy = y != null ? y : 400 + rnd(WORLD_SIZE - 800)
+    if (x != null && y != null && this.viruses && this.viruses.length > 0) {
+      let attempts = 0
+      const MIN_VIRUS_DIST = 220
+      while (attempts < 15) {
+        let tooClose = false
+        for (const v of this.viruses) {
+          const dx = vx - v.x, dy = vy - v.y
+          if (Math.sqrt(dx*dx + dy*dy) < MIN_VIRUS_DIST) { tooClose = true; break }
+        }
+        if (!tooClose) break
+        const angle = Math.random() * Math.PI * 2
+        vx = clamp(x + Math.cos(angle) * (MIN_VIRUS_DIST + Math.random() * 150), 200, WORLD_SIZE - 200)
+        vy = clamp(y + Math.sin(angle) * (MIN_VIRUS_DIST + Math.random() * 150), 200, WORLD_SIZE - 200)
+        attempts++
+      }
+    }
     return {
       id: rndId(),
-      x: x != null ? x : 400 + rnd(WORLD_SIZE - 800),
-      y: y != null ? y : 400 + rnd(WORLD_SIZE - 800),
+      x: vx,
+      y: vy,
       type: type || VIRUS_TYPES[(Math.random() * VIRUS_TYPES.length) | 0],
       mass: 100,
       feedCount: 0
@@ -354,7 +372,7 @@ class GameRoom {
         for (const virus of this.viruses) {
           if (toRemove.has(virus.id)) continue
           const virusR = massToRadius(virus.mass)
-          if (dist(cell, virus) < virusR + r * 0.25 && cell.mass > virus.mass) {
+          if (dist(cell, virus) < virusR + r * 0.8 && cell.mass >= virus.mass) {
             const shield = player.skillShieldTimer > 0
             if (shield) {
               cell.mass += 300
@@ -441,9 +459,9 @@ class GameRoom {
         if (virus.feedCount % VIRUS_FEED_SPLIT === 0) {
           const ejectD = Math.sqrt(em.vx * em.vx + em.vy * em.vy) || 1
           const nx = em.vx / ejectD, ny = em.vy / ejectD
-          const scatter = (Math.random() - 0.5) * 0.6
+          const scatter = (Math.random() - 0.5) * 0.5
           const finalAngle = Math.atan2(ny, nx) + scatter
-          const dist2 = 100 + Math.random() * 80
+          const dist2 = 220 + Math.random() * 120
           const nv = this._makeVirus(
             clamp(virus.x + Math.cos(finalAngle) * dist2, 200, WORLD_SIZE - 200),
             clamp(virus.y + Math.sin(finalAngle) * dist2, 200, WORLD_SIZE - 200),
