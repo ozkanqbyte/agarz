@@ -14,9 +14,17 @@ import { auth, db, googleProvider } from '../firebase/config'
 
 let _offlineGuest = false
 
+function generateProfileId() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let id = ''
+  for (let i = 0; i < 4; i++) id += chars[Math.floor(Math.random() * chars.length)]
+  return 'AGARZ#' + id
+}
+
 const makeDefaultProfile = (uid, name) => ({
   uid,
   name: name || 'Player',
+  profileId: generateProfileId(),
   level: 1,
   xp: 0,
   premium: 'free',
@@ -70,7 +78,13 @@ const useAuthStore = create((set, get) => ({
       const profileRef = dbRef(db, `users/${uid}/profile`)
       const unsub = onValue(profileRef, (snap) => {
         if (snap.exists()) {
-          set({ profile: snap.val() })
+          const data = snap.val()
+          if (!data.profileId) {
+            const profileId = generateProfileId()
+            fbSet(dbRef(db, `users/${uid}/profile/profileId`), profileId).catch(() => {})
+            data.profileId = profileId
+          }
+          set({ profile: data })
         } else {
           const defaultProfile = makeDefaultProfile(uid, auth.currentUser?.displayName || 'Player')
           fbSet(profileRef, defaultProfile).catch(() => {})

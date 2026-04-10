@@ -19,10 +19,12 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [open, setOpen] = useState(false)
+  const [copiedId, setCopiedId] = useState(false)
 
   const uid = user?.uid
   const myName = profile?.name || user?.displayName || 'Player'
   const myColor = profile?.color || '#6366f1'
+  const myProfileId = profile?.profileId || ''
 
   useEffect(() => {
     if (!uid || uid.startsWith('guest_')) return
@@ -32,39 +34,35 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
 
     onValue(friendsRef, snap => {
       if (!snap.exists()) { setFriends([]); return }
-      const data = snap.val()
-      setFriends(Object.entries(data).map(([fid, f]) => ({ uid: fid, ...f })))
+      setFriends(Object.entries(snap.val()).map(([fid, f]) => ({ uid: fid, ...f })))
     })
 
     onValue(reqRef, snap => {
       if (!snap.exists()) { setRequests([]); return }
-      const data = snap.val()
-      const list = Object.entries(data)
+      const list = Object.entries(snap.val())
         .map(([fid, r]) => ({ uid: fid, ...r }))
         .filter(r => r.status === 'pending')
       setRequests(list)
     })
 
-    return () => {
-      off(friendsRef)
-      off(reqRef)
-    }
+    return () => { off(friendsRef); off(reqRef) }
   }, [uid])
 
   useEffect(() => {
-    if (!uid || uid.startsWith('guest_')) return
-    if (!myName) return
+    if (!uid || uid.startsWith('guest_') || !myName) return
     try {
       set(ref(db, `userSearch/${uid}`), {
         name: myName,
         nameLower: myName.toLowerCase(),
+        profileId: myProfileId,
+        profileIdLower: myProfileId.toLowerCase(),
         color: myColor,
         uid,
         online: true,
         updatedAt: Date.now()
       }).catch(() => {})
     } catch {}
-  }, [uid, myName, myColor])
+  }, [uid, myName, myColor, myProfileId])
 
   const searchUsers = useCallback(async () => {
     const q = searchQuery.trim().toLowerCase()
@@ -75,9 +73,16 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
       const snap = await get(searchRef)
       if (!snap.exists()) { setSearchResults([]); setSearching(false); return }
       const data = snap.val()
+      const isProfileId = q.startsWith('agarz#') || q.match(/^[a-z0-9]{4,8}$/)
       const results = Object.entries(data)
         .map(([id, u]) => ({ uid: id, ...u }))
-        .filter(u => u.uid !== uid && u.nameLower?.includes(q))
+        .filter(u => {
+          if (u.uid === uid) return false
+          if (isProfileId) {
+            return u.profileIdLower?.includes(q) || u.nameLower?.includes(q)
+          }
+          return u.nameLower?.includes(q) || u.profileIdLower?.includes(q)
+        })
         .slice(0, 10)
       setSearchResults(results)
     } catch { setSearchResults([]) }
@@ -102,10 +107,11 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
       await set(ref(db, `users/${targetUid}/friendRequests/${uid}`), {
         name: myName,
         color: myColor,
+        profileId: myProfileId,
         status: 'pending',
         sentAt: Date.now()
       })
-      toast.success(`${targetName} kişisine arkadaşlık isteği gönderildi!`)
+      toast.success(`${targetName} kişisine istek gönderildi`)
     } catch (e) {
       toast.error('İstek gönderilemedi: ' + (e?.code || 'Hata'))
     }
@@ -119,17 +125,13 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
         set(ref(db, `users/${fromUid}/friends/${uid}`), { name: myName, color: myColor, addedAt: Date.now() }),
         remove(ref(db, `users/${uid}/friendRequests/${fromUid}`))
       ])
-      toast.success(`${fromName} arkadaşlarına eklendi! 🎉`)
-    } catch (e) {
-      toast.error('İstek kabul edilemedi')
-    }
+      toast.success(`${fromName} arkadaşlarına eklendi`)
+    } catch { toast.error('İstek kabul edilemedi') }
   }
 
   const declineRequest = async (fromUid) => {
     if (!uid) return
-    try {
-      await remove(ref(db, `users/${uid}/friendRequests/${fromUid}`))
-    } catch {}
+    try { await remove(ref(db, `users/${uid}/friendRequests/${fromUid}`)) } catch {}
   }
 
   const removeFriend = async (friendUid, friendName) => {
@@ -139,50 +141,291 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
         remove(ref(db, `users/${uid}/friends/${friendUid}`)),
         remove(ref(db, `users/${friendUid}/friends/${uid}`))
       ])
-      toast.success(`${friendName} arkadaş listesinden çıkarıldı`)
+      toast.success(`${friendName} listeden çıkarıldı`)
+    } catch {}
+  }
+
+  const blockUser = async (targetUid, targetName) => {
+    if (!uid) return
+    try {
+      await set(ref(db, `users/${uid}/blocked/${targetUid}`), { name: targetName, blockedAt: Date.now() })
+      await removeFriend(targetUid, targetName)
+      toast.success(`${targetName} engellendi`)
     } catch {}
   }
 
   const inviteFriend = (friendUid, friendName) => {
     if (onInviteToLobby) {
       onInviteToLobby(friendUid)
-      toast.success(`${friendName} lobiye davet edildi!`)
+      toast.success(`${friendName} lobiye davet edildi`)
     } else if (lobbyId) {
       const link = `${window.location.origin}/lobby?room=${lobbyId}`
       navigator.clipboard.writeText(link).then(() => {
-        toast.success(`${friendName} için davet linki kopyalandı!`)
-      }).catch(() => {
-        toast.success(`Davet linki: ${link}`)
-      })
+        toast.success(`Davet linki kopyalandı`)
+      }).catch(() => toast.success(`Davet linki: ${link}`))
     }
+  }
+
+  const copyProfileId = () => {
+    if (!myProfileId) return
+    navigator.clipboard.writeText(myProfileId).then(() => {
+      setCopiedId(true)
+      setTimeout(() => setCopiedId(false), 2000)
+    }).catch(() => {})
   }
 
   const isFriend = (targetUid) => friends.some(f => f.uid === targetUid)
   const hasPendingRequest = (targetUid) => requests.some(r => r.uid === targetUid)
 
   const panelStyle = {
-    background: 'rgba(6,6,20,0.95)',
+    background: 'rgba(6,6,20,0.97)',
     border: `1px solid rgba(${theme.glowColor},0.25)`,
-    backdropFilter: 'blur(20px)',
+    backdropFilter: 'blur(24px)',
   }
 
-  const tabStyle = (active) => ({
-    background: active ? `rgba(${theme.glowColor},0.2)` : 'transparent',
-    color: active ? theme.uiAccent : '#6b7280',
-    border: active ? `1px solid rgba(${theme.glowColor},0.4)` : '1px solid transparent',
-  })
+  const content = (
+    <div>
+      {myProfileId && (
+        <div style={{
+          padding: '10px 14px',
+          background: `rgba(${theme.glowColor},0.06)`,
+          borderBottom: `1px solid rgba(${theme.glowColor},0.12)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <div style={{ color: '#4b5563', fontSize: 9, fontWeight: 800, letterSpacing: 2 }}>PROFIL ID</div>
+            <div style={{ color: theme.uiAccent, fontWeight: 900, fontSize: 13, letterSpacing: 1 }}>{myProfileId}</div>
+          </div>
+          <motion.button onClick={copyProfileId}
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            style={{
+              padding: '4px 12px', borderRadius: 8, fontWeight: 700, fontSize: 11, cursor: 'pointer',
+              background: copiedId ? 'rgba(34,197,94,0.2)' : `rgba(${theme.glowColor},0.15)`,
+              border: `1px solid rgba(${theme.glowColor},0.3)`,
+              color: copiedId ? '#4ade80' : theme.uiAccent,
+            }}>
+            {copiedId ? 'Kopyalandi' : 'Kopyala'}
+          </motion.button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 2, padding: '10px 10px 0', borderBottom: `1px solid rgba(${theme.glowColor},0.12)` }}>
+        {[
+          { id: 'friends', label: `Arkadaslar (${friends.length})` },
+          { id: 'requests', label: `İstekler${requests.length > 0 ? ` (${requests.length})` : ''}` },
+          { id: 'search', label: 'Kullanici Ara' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{
+              flex: 1, padding: '7px 4px', background: 'none', border: 'none', cursor: 'pointer',
+              color: tab === t.id ? '#fff' : '#4b5563',
+              fontWeight: 800, fontSize: 10, letterSpacing: 0.5,
+              borderBottom: tab === t.id ? `2px solid ${theme.uiAccent}` : '2px solid transparent',
+              transition: 'all 0.15s',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding: 10, maxHeight: 320, overflowY: 'auto' }}>
+        {tab === 'friends' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {friends.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#4b5563', fontSize: 13 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.5" style={{ margin: '0 auto' }}>
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                Henüz arkadaşın yok
+              </div>
+            ) : friends.map(f => (
+              <div key={f.uid} style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                  background: f.color || '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 900, fontSize: 14, color: '#fff', boxShadow: `0 0 12px ${f.color || '#6366f1'}66`,
+                }}>
+                  {f.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: '#fff', fontWeight: 800, fontSize: 13 }}>{f.name}</div>
+                  <div style={{ color: '#4b5563', fontSize: 10 }}>Arkadasin</div>
+                </div>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {lobbyId && (
+                    <motion.button onClick={() => inviteFriend(f.uid, f.name)}
+                      whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+                      style={{ padding: '5px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', color: '#4ade80' }}>
+                      Davet
+                    </motion.button>
+                  )}
+                  <motion.button onClick={() => removeFriend(f.uid, f.name)}
+                    whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+                    style={{ padding: '5px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+                    X
+                  </motion.button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'requests' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {requests.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: '#4b5563', fontSize: 13 }}>Bekleyen istek yok</div>
+            ) : requests.map(r => (
+              <motion.div key={r.uid}
+                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12,
+                  background: `rgba(${theme.glowColor},0.07)`, border: `1px solid rgba(${theme.glowColor},0.2)`,
+                }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                  background: r.color || '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 900, fontSize: 14, color: '#fff',
+                }}>
+                  {r.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: '#fff', fontWeight: 800, fontSize: 13 }}>{r.name}</div>
+                  <div style={{ color: '#6b7280', fontSize: 10 }}>{r.profileId || 'Arkadaslik istegi'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <motion.button onClick={() => acceptRequest(r.uid, r.name, r.color)}
+                    whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+                    style={{ padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: 'pointer', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.4)', color: '#4ade80' }}>
+                    Kabul
+                  </motion.button>
+                  <motion.button onClick={() => declineRequest(r.uid)}
+                    whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+                    style={{ padding: '5px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+                    Red
+                  </motion.button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'search' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="İsim veya AGARZ#ID ile ara..."
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 12,
+                  background: 'rgba(255,255,255,0.07)',
+                  border: `1px solid rgba(${theme.glowColor},0.3)`,
+                  color: '#fff', fontSize: 13, fontWeight: 600, outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {searching && (
+                <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#4b5563', fontSize: 11 }}>
+                  Aranıyor...
+                </div>
+              )}
+            </div>
+            <div style={{ fontSize: 10, color: '#374151', textAlign: 'center' }}>
+              İsim ile veya tam Profil ID ile ara (orn: AGARZ#AB3X)
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {searchResults.map(u => (
+                <motion.div key={u.uid}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12,
+                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+                  }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                    background: u.color || '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 900, fontSize: 14, color: '#fff', boxShadow: `0 0 12px ${u.color || '#6366f1'}66`,
+                  }}>
+                    {u.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#fff', fontWeight: 800, fontSize: 13 }}>{u.name}</div>
+                    <div style={{ color: '#4b5563', fontSize: 10 }}>{u.profileId || ''}</div>
+                  </div>
+                  {isFriend(u.uid) ? (
+                    <span style={{ color: '#4ade80', fontSize: 11, fontWeight: 800 }}>Arkadas</span>
+                  ) : hasPendingRequest(u.uid) ? (
+                    <span style={{ color: '#fbbf24', fontSize: 11, fontWeight: 800 }}>Bekliyor</span>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <motion.button
+                        onClick={() => sendRequest(u.uid, u.name, u.color)}
+                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                        style={{
+                          padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                          background: `rgba(${theme.glowColor},0.2)`,
+                          border: `1px solid rgba(${theme.glowColor},0.4)`,
+                          color: theme.uiAccent,
+                        }}>
+                        + Ekle
+                      </motion.button>
+                      <motion.button
+                        onClick={() => blockUser(u.uid, u.name)}
+                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                        style={{
+                          padding: '5px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5',
+                        }}>
+                        Engelle
+                      </motion.button>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+              {!searching && searchQuery.trim().length >= 2 && searchResults.length === 0 && (
+                <div style={{ textAlign: 'center', color: '#4b5563', fontSize: 12, padding: '16px 0' }}>Kullanici bulunamadi</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   if (compact) {
     return (
-      <div className="relative">
+      <div style={{ position: 'relative' }}>
         <motion.button
           onClick={() => setOpen(!open)}
           whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-          className="relative flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-sm"
-          style={{ background: `rgba(${theme.glowColor},0.12)`, border: `1px solid rgba(${theme.glowColor},0.3)`, color: theme.uiAccent }}>
-          👥 Arkadaşlar
+          style={{
+            position: 'relative', display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', borderRadius: 12, fontWeight: 800, fontSize: 13, cursor: 'pointer',
+            background: `rgba(${theme.glowColor},0.12)`,
+            border: `1px solid rgba(${theme.glowColor},0.3)`,
+            color: theme.uiAccent,
+          }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          Arkadaslar
           {requests.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-black">
+            <span style={{
+              position: 'absolute', top: -4, right: -4,
+              width: 18, height: 18, borderRadius: '50%', background: '#ef4444',
+              color: '#fff', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900,
+            }}>
               {requests.length}
             </span>
           )}
@@ -194,19 +437,11 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
               initial={{ opacity: 0, scale: 0.95, y: -10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              className="absolute right-0 top-12 w-80 rounded-2xl z-50 overflow-hidden"
-              style={panelStyle}>
-              <FriendPanel
-                tab={tab} setTab={setTab}
-                friends={friends} requests={requests}
-                searchQuery={searchQuery} setSearchQuery={setSearchQuery}
-                searchResults={searchResults} searching={searching}
-                isFriend={isFriend} hasPendingRequest={hasPendingRequest}
-                sendRequest={sendRequest} acceptRequest={acceptRequest}
-                declineRequest={declineRequest} removeFriend={removeFriend}
-                inviteFriend={inviteFriend}
-                theme={theme} tabStyle={tabStyle} lobbyId={lobbyId}
-              />
+              style={{
+                position: 'absolute', right: 0, top: 48, width: 340, borderRadius: 18, zIndex: 50, overflow: 'hidden',
+                ...panelStyle,
+              }}>
+              {content}
             </motion.div>
           )}
         </AnimatePresence>
@@ -215,166 +450,8 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
   }
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={panelStyle}>
-      <FriendPanel
-        tab={tab} setTab={setTab}
-        friends={friends} requests={requests}
-        searchQuery={searchQuery} setSearchQuery={setSearchQuery}
-        searchResults={searchResults} searching={searching}
-        isFriend={isFriend} hasPendingRequest={hasPendingRequest}
-        sendRequest={sendRequest} acceptRequest={acceptRequest}
-        declineRequest={declineRequest} removeFriend={removeFriend}
-        inviteFriend={inviteFriend}
-        theme={theme} tabStyle={tabStyle} lobbyId={lobbyId}
-      />
-    </div>
-  )
-}
-
-function FriendPanel({ tab, setTab, friends, requests, searchQuery, setSearchQuery,
-  searchResults, searching, isFriend, hasPendingRequest,
-  sendRequest, acceptRequest, declineRequest, removeFriend, inviteFriend,
-  theme, tabStyle, lobbyId }) {
-
-  return (
-    <div>
-      <div className="flex items-center gap-1 p-3 border-b" style={{ borderColor: `rgba(${theme.glowColor},0.15)` }}>
-        {[
-          { id: 'friends', label: `👥 ${friends.length}`, full: 'Arkadaşlar' },
-          { id: 'requests', label: `📨 ${requests.length}`, full: 'İstekler' },
-          { id: 'search', label: '🔍', full: 'Ara' },
-        ].map(t => (
-          <motion.button key={t.id}
-            onClick={() => setTab(t.id)}
-            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            className="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all"
-            style={tabStyle(tab === t.id)}>
-            {t.label} <span className="hidden sm:inline">{t.full}</span>
-          </motion.button>
-        ))}
-      </div>
-
-      <div className="p-3 max-h-72 overflow-y-auto">
-        {tab === 'friends' && (
-          <div className="space-y-1.5">
-            {friends.length === 0 ? (
-              <div className="text-center py-6 text-gray-600 text-sm">
-                <div className="text-3xl mb-2">👥</div>
-                Henüz arkadaşın yok.<br />Aramadan ekle!
-              </div>
-            ) : friends.map(f => (
-              <div key={f.uid} className="flex items-center gap-2 p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0"
-                  style={{ background: f.color || '#6366f1', boxShadow: `0 0 10px ${f.color || '#6366f1'}66` }}>
-                  {f.name?.[0] || '?'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-bold text-sm truncate">{f.name}</div>
-                </div>
-                <div className="flex gap-1">
-                  {lobbyId && (
-                    <motion.button onClick={() => inviteFriend(f.uid, f.name)}
-                      whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                      className="px-2 py-1 rounded-lg text-xs font-bold text-green-400"
-                      style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)' }}
-                      title="Lobiye Davet Et">
-                      🎮
-                    </motion.button>
-                  )}
-                  <motion.button onClick={() => removeFriend(f.uid, f.name)}
-                    whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    className="px-2 py-1 rounded-lg text-xs font-bold text-red-400"
-                    style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}
-                    title="Arkadaşlıktan Çıkar">
-                    ✕
-                  </motion.button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === 'requests' && (
-          <div className="space-y-1.5">
-            {requests.length === 0 ? (
-              <div className="text-center py-6 text-gray-600 text-sm">
-                <div className="text-3xl mb-2">📨</div>
-                Bekleyen istek yok
-              </div>
-            ) : requests.map(r => (
-              <motion.div key={r.uid}
-                initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-2 p-2 rounded-xl"
-                style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0"
-                  style={{ background: r.color || '#6366f1' }}>
-                  {r.name?.[0] || '?'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-bold text-xs truncate">{r.name}</div>
-                  <div className="text-gray-500 text-xs">Arkadaşlık isteği</div>
-                </div>
-                <div className="flex gap-1">
-                  <motion.button onClick={() => acceptRequest(r.uid, r.name, r.color)}
-                    whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    className="px-2 py-1 rounded-lg text-xs font-bold text-green-400"
-                    style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)' }}>
-                    ✓
-                  </motion.button>
-                  <motion.button onClick={() => declineRequest(r.uid)}
-                    whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                    className="px-2 py-1 rounded-lg text-xs font-bold text-red-400"
-                    style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                    ✕
-                  </motion.button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-
-        {tab === 'search' && (
-          <div className="space-y-2">
-            <input
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="İsim ile ara... (min 2 karakter)"
-              className="w-full px-3 py-2 rounded-xl text-white text-sm"
-              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid rgba(${theme.glowColor},0.3)`, outline: 'none', color: 'white' }}
-            />
-            {searching && <div className="text-center text-gray-500 text-xs py-2">Aranıyor...</div>}
-            <div className="space-y-1.5">
-              {searchResults.map(u => (
-                <div key={u.uid} className="flex items-center gap-2 p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-sm flex-shrink-0"
-                    style={{ background: u.color || '#6366f1', boxShadow: `0 0 10px ${u.color || '#6366f1'}66` }}>
-                    {u.name?.[0] || '?'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white font-bold text-sm truncate">{u.name}</div>
-                  </div>
-                  {isFriend(u.uid) ? (
-                    <span className="text-xs text-green-400 font-bold">✓ Arkadaş</span>
-                  ) : hasPendingRequest(u.uid) ? (
-                    <span className="text-xs text-yellow-400 font-bold">⏳ Bekliyor</span>
-                  ) : (
-                    <motion.button
-                      onClick={() => sendRequest(u.uid, u.name, u.color)}
-                      whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                      className="px-3 py-1 rounded-lg text-xs font-bold"
-                      style={{ background: `rgba(${theme.glowColor},0.2)`, border: `1px solid rgba(${theme.glowColor},0.4)`, color: theme.uiAccent }}>
-                      + Ekle
-                    </motion.button>
-                  )}
-                </div>
-              ))}
-              {!searching && searchQuery.trim().length >= 2 && searchResults.length === 0 && (
-                <div className="text-center text-gray-600 text-xs py-3">Sonuç bulunamadı</div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+    <div style={{ borderRadius: 18, overflow: 'hidden', ...panelStyle }}>
+      {content}
     </div>
   )
 }

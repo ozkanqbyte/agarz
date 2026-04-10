@@ -7,7 +7,7 @@ import usePremiumStore from '../../store/usePremiumStore'
 import useProgressStore from '../../store/useProgressStore'
 import useQuestStore from '../../store/useQuestStore'
 import useBattlePassStore from '../../store/useBattlePassStore'
-import { fbSaveProgress, fbSaveBattlePass, fbSaveQuests, fbUpdateLeaderboard } from '../../firebase/syncService'
+import { fbSaveProgress, fbSaveBattlePass, fbSaveQuests, fbUpdateLeaderboard, fbSaveInventory } from '../../firebase/syncService'
 import { ref, set } from 'firebase/database'
 import { db } from '../../firebase/config'
 import GameUI from './GameUI'
@@ -22,7 +22,7 @@ export default function GameCanvas({ onLevelUp }) {
   const { user, profile } = useAuthStore()
   const { setScore, setRank, setTotalPlayers, setLeaderboard, setPlaying, currentTheme, gameMode } = useGameStore()
   const { ownedPackage } = usePremiumStore()
-  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames, addGoldForFood, addGoldForKill, addGoldForGame, activeNameEffect, activeFrame } = useProgressStore()
+  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames, addGoldForFood, addGoldForKill, addGoldForGame, activeNameEffect, activeFrame, ownedSkills } = useProgressStore()
   const { updateProgress } = useQuestStore()
   const { addBPXP } = useBattlePassStore()
   const startTimeRef = useRef(Date.now())
@@ -79,6 +79,7 @@ export default function GameCanvas({ onLevelUp }) {
       ownedPackage,
       team,
       nameEffect: activeNameEffect,
+      ownedSkills: ownedSkills || {},
       activeFrame: activeFrame,
       onScoreChange: (score) => {
         setScore(score)
@@ -120,15 +121,25 @@ export default function GameCanvas({ onLevelUp }) {
         const ps = useProgressStore.getState()
         const bp = useBattlePassStore.getState()
         const qs = useQuestStore.getState()
+        const pms = usePremiumStore.getState()
         fbSaveProgress(uid, ps).catch(() => {})
         fbSaveBattlePass(uid, bp).catch(() => {})
         fbSaveQuests(uid, qs).catch(() => {})
+        fbSaveInventory(uid, {
+          ownedFrames: ps.ownedFrames || [],
+          ownedNameEffects: ps.ownedNameEffects || [],
+          ownedSkills: ps.ownedSkills || {},
+          ownedSkins: pms.ownedSkins || ['default'],
+          activeNameEffect: ps.activeNameEffect || null,
+          activeFrame: ps.activeFrame || null,
+        }).catch(() => {})
         fbUpdateLeaderboard(uid, {
           name: profile?.name || playerName,
           score: ps.highScore,
           level: ps.level,
           prestige: ps.prestige,
           color: profile?.color || '#6366f1',
+          clan: profile?.clan || null,
         }).catch(() => {})
       }
     }

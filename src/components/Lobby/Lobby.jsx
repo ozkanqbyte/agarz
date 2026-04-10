@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
-import { ref, set, onValue, remove, update } from 'firebase/database'
+import { ref, set, onValue, remove, update, get } from 'firebase/database'
 import { signInAnonymously, updateProfile } from 'firebase/auth'
 import { db, auth } from '../../firebase/config'
 import useAuthStore from '../../store/useAuthStore'
@@ -54,6 +54,7 @@ export default function Lobby() {
   const [selectedMode, setSelectedMode] = useState(modeParam || gameMode || 'ffa')
   const [countdown, setCountdown] = useState(null)
   const [ready, setReady] = useState(false)
+  const [selectedPlayer, setSelectedPlayer] = useState(null)
   const chatBottomRef = useRef(null)
 
   const inviteLink = `${window.location.origin}/lobby?room=${roomId}`
@@ -220,6 +221,37 @@ export default function Lobby() {
 
   const readyCount = players.filter(p => p.ready).length
 
+  const sendFriendRequestFromLobby = async (targetPlayer) => {
+    if (!playerId || playerId.startsWith('guest_') || !targetPlayer?.uid) return
+    try {
+      const reqRef = ref(db, `users/${targetPlayer.uid}/friendRequests/${playerId}`)
+      const snap = await get(reqRef)
+      if (snap.exists()) { toast.error('İstek zaten gönderildi'); return }
+      await set(reqRef, {
+        uid: playerId,
+        name: playerName,
+        color: playerColor,
+        status: 'pending',
+        sentAt: Date.now()
+      })
+      toast.success(`${targetPlayer.name} adlı kişiye arkadaşlık isteği gönderildi`)
+      setSelectedPlayer(null)
+    } catch { toast.error('İstek gönderilemedi') }
+  }
+
+  const blockPlayerFromLobby = async (targetPlayer) => {
+    if (!playerId || playerId.startsWith('guest_') || !targetPlayer?.uid) return
+    try {
+      await set(ref(db, `users/${playerId}/blocked/${targetPlayer.uid}`), {
+        uid: targetPlayer.uid,
+        name: targetPlayer.name,
+        blockedAt: Date.now()
+      })
+      toast.success(`${targetPlayer.name} engellendi`)
+      setSelectedPlayer(null)
+    } catch { toast.error('Engellenemedi') }
+  }
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden"
       style={{ background: 'linear-gradient(135deg, #05050f 0%, #0d0d1e 50%, #050510 100%)' }}>
@@ -262,6 +294,82 @@ export default function Lobby() {
               <div className="text-2xl font-bold text-white mt-4">Oyun başlıyor...</div>
               <div className="text-gray-400 mt-2">{selectedMode.toUpperCase()} · {players.length} oyuncu</div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedPlayer && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setSelectedPlayer(null)}
+            className="absolute inset-0 z-40 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}>
+            <motion.div
+              initial={{ scale: 0.85, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.85, y: 20 }}
+              onClick={e => e.stopPropagation()}
+              className="rounded-2xl p-6 w-80 mx-4"
+              style={{ background: 'rgba(10,10,25,0.97)', border: `1px solid rgba(${theme.glowColor},0.4)`, boxShadow: `0 0 40px rgba(${theme.glowColor},0.2)` }}>
+              <div className="flex items-center gap-4 mb-5">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center font-black text-2xl flex-shrink-0"
+                  style={{ background: selectedPlayer.color || '#6366f1', boxShadow: `0 0 20px ${selectedPlayer.color || '#6366f1'}88` }}>
+                  {selectedPlayer.isGod ? '👑' : selectedPlayer.name?.[0] || '?'}
+                </div>
+                <div>
+                  <div className="font-black text-white text-lg">{selectedPlayer.name}</div>
+                  {selectedPlayer.clan && <div className="text-sm text-gray-400">[{selectedPlayer.clan}]</div>}
+                  {selectedPlayer.uid === lobby?.host && (
+                    <div className="text-xs font-bold mt-0.5" style={{ color: '#fbbf24' }}>Host</div>
+                  )}
+                </div>
+                <button onClick={() => setSelectedPlayer(null)}
+                  className="ml-auto w-8 h-8 rounded-full flex items-center justify-center text-gray-500 hover:text-white transition-colors"
+                  style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {!playerId?.startsWith('guest_') && selectedPlayer.uid !== playerId && (
+                  <>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                      onClick={() => sendFriendRequestFromLobby(selectedPlayer)}
+                      className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+                      style={{ background: `rgba(${theme.glowColor},0.2)`, border: `1px solid rgba(${theme.glowColor},0.4)`, color: theme.uiAccent }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" y1="8" x2="20" y2="14"/>
+                        <line x1="23" y1="11" x2="17" y2="11"/>
+                      </svg>
+                      Arkadaş Ekle
+                    </motion.button>
+
+                    <motion.button
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                      onClick={() => blockPlayerFromLobby(selectedPlayer)}
+                      className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+                      style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                      </svg>
+                      Engelle
+                    </motion.button>
+                  </>
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => setSelectedPlayer(null)}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm text-gray-500"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  Kapat
+                </motion.button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -337,6 +445,7 @@ export default function Lobby() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.07 }}
+                    onClick={() => p.uid !== playerId && setSelectedPlayer(p)}
                     className="flex items-center gap-3 p-3 rounded-xl"
                     style={{
                       background: p.uid === playerId
@@ -344,7 +453,8 @@ export default function Lobby() {
                         : 'rgba(255,255,255,0.03)',
                       border: p.uid === playerId
                         ? `1px solid rgba(${theme.glowColor},0.3)`
-                        : '1px solid rgba(255,255,255,0.06)'
+                        : '1px solid rgba(255,255,255,0.06)',
+                      cursor: p.uid !== playerId ? 'pointer' : 'default'
                     }}>
                     <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-lg flex-shrink-0"
                       style={{

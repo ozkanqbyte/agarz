@@ -21,6 +21,7 @@ export const LUCKY_BOXES = {
       { type: 'frame', id: 'silver', weight: 7, icon: '🔘', name: 'Gümüş Çerçeve', rarity: 'rare' },
       { type: 'skin', id: 'fire', weight: 3, icon: '🔥', name: 'Ateş Skin', rarity: 'epic' },
       { type: 'lootbox', amount: 1, weight: 2, icon: '📦', name: 'Ekstra Kutu', rarity: 'epic' },
+      { type: 'skill', id: 'speed', uses: 2, weight: 1, name: 'Hizlanma x2', rarity: 'legendary' },
     ]
   },
   gold: {
@@ -37,6 +38,8 @@ export const LUCKY_BOXES = {
       { type: 'skin', id: 'galaxy', weight: 8, icon: '🌌', name: 'Galaksi Skin', rarity: 'legendary' },
       { type: 'godTemp', games: 1, weight: 5, icon: '👑', name: 'Geçici GOD (1 Oyun)', rarity: 'legendary' },
       { type: 'lootbox', amount: 1, weight: 5, icon: '🏆', name: 'Altın Kutu x1', rarity: 'epic' },
+      { type: 'skill', id: 'slow', uses: 3, weight: 2, name: 'Yavaslatma x3', rarity: 'legendary' },
+      { type: 'skill', id: 'shield', uses: 3, weight: 2, name: 'Kalkan x3', rarity: 'legendary' },
     ]
   },
   legendary: {
@@ -54,8 +57,13 @@ export const LUCKY_BOXES = {
       { type: 'frame', id: 'legendary', weight: 5, icon: '👑', name: 'Efsane Çerçeve', rarity: 'legendary' },
       { type: 'skin', id: 'dragon', weight: 7, icon: '🐉', name: 'Ejderha Skin', rarity: 'legendary' },
       { type: 'skin', id: 'crown', weight: 5, icon: '👑', name: 'Taç Skin', rarity: 'legendary' },
+      { type: 'skin', id: 'crystal', weight: 3, name: 'Kristal Skin', rarity: 'legendary' },
+      { type: 'skin', id: 'rainbow', weight: 2, name: 'Gokuşağı Skin', rarity: 'legendary' },
       { type: 'godTemp', games: 3, weight: 5, icon: '👑', name: 'Geçici GOD (3 Oyun)', rarity: 'legendary' },
       { type: 'lootbox', amount: 2, weight: 5, icon: '💎', name: 'Altın Kutu x2', rarity: 'legendary' },
+      { type: 'skill', id: 'magnet', uses: 3, weight: 3, name: 'Manyetik x3', rarity: 'legendary' },
+      { type: 'skill', id: 'ghost', uses: 2, weight: 2, name: 'Hayalet x2', rarity: 'legendary' },
+      { type: 'skill', id: 'teleport', uses: 2, weight: 2, name: 'Isinlanma x2', rarity: 'legendary' },
     ]
   }
 }

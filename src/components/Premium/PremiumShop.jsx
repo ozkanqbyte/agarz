@@ -20,7 +20,7 @@ export default function PremiumShop() {
     await new Promise(r => setTimeout(r, 1500))
     const result = mockPurchasePackage(pkg.id)
     if (result.success) {
-      await updateProfile({ premium: pkg.id, isGod: pkg.id === 'god' })
+      await updateProfile({ premium: pkg.id, isGod: pkg.id === 'immortal' || pkg.id === 'apex' })
       toast.success(`${pkg.name} satın alındı! ${pkg.icon}`, { duration: 4000 })
     }
     setPurchasing(null)

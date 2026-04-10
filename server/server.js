@@ -346,7 +346,7 @@ class GameRoom {
   }
 
   _checkVirusCollisions() {
-    const toRemove = new Set()
+    const toRemove = new Map()
     for (const [, player] of this.players) {
       if (player.dead) continue
       for (const cell of player.cells) {
@@ -358,9 +358,6 @@ class GameRoom {
             const shield = player.skillShieldTimer > 0
             if (shield) {
               cell.mass += 300
-            } else if (!player._virusFirstHit) {
-              player._virusFirstHit = true
-              this._explodePlayer(player, cell)
             } else if (cell.mass > 100) {
               this._explodePlayer(player, cell)
               cell.mass += 300
@@ -369,13 +366,16 @@ class GameRoom {
             }
             if (virus.type === 'poison' && !shield) player.poisoned = 5
             if (virus.type === 'freeze' && !shield) player.frozen = 4
-            toRemove.add(virus.id)
+            toRemove.set(virus.id, player.socketId)
           }
         }
       }
     }
     if (toRemove.size) {
-      for (const vid of toRemove) io.to(this.id).emit('virus:eaten', { id: vid })
+      for (const [vid, socketId] of toRemove) {
+        io.to(this.id).emit('virus:eaten', { id: vid })
+        if (socketId) io.to(socketId).emit('virus:mass_gain', { amount: 300 })
+      }
       this.viruses = this.viruses.filter(v => !toRemove.has(v.id))
       while (this.viruses.length < VIRUS_COUNT) {
         const nv = this._makeVirus()
@@ -912,7 +912,6 @@ io.on('connection', (socket) => {
         skillShieldTimer: 0,
         skillMagnetTimer: 0,
         skillGhostTimer: 0,
-        _virusFirstHit: false,
         joinedAt: Date.now(),
         _skillCooldowns: {},
         _skillUseCount: {},
@@ -937,7 +936,7 @@ io.on('connection', (socket) => {
         isHost: room.hostId === playerId,
         chat: room.chat.slice(-30),
         serverAuth: true,
-        spawnX, spawnY,
+        spawnX, spawnY, spawnMass,
         mode: room.mode,
         crystals: room.crystals || [],
         boss: room.boss || null,

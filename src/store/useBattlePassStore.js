@@ -2,34 +2,54 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import useProgressStore from './useProgressStore'
 
-export const BP_TIERS = Array.from({ length: 30 }, (_, i) => {
+const FREE_REWARDS = [
+  { type: 'coins', value: 100, label: '100 Coin', rarity: 'common', color: '#f59e0b' },
+  { type: 'xp', value: 500, label: '500 XP', rarity: 'common', color: '#6366f1' },
+  { type: 'coins', value: 200, label: '200 Coin', rarity: 'common', color: '#f59e0b' },
+  { type: 'lootbox', value: 1, label: 'Normal Kutu', rarity: 'rare', color: '#818cf8' },
+  { type: 'xp', value: 1000, label: '1000 XP', rarity: 'rare', color: '#6366f1' },
+  { type: 'coins', value: 350, label: '350 Coin', rarity: 'rare', color: '#f59e0b' },
+  { type: 'lootbox', value: 1, label: 'Altin Kutu', rarity: 'epic', color: '#f59e0b' },
+  { type: 'xp', value: 2000, label: '2000 XP', rarity: 'epic', color: '#8b5cf6' },
+  { type: 'coins', value: 500, label: '500 Coin', rarity: 'epic', color: '#f59e0b' },
+  { type: 'lootbox', value: 2, label: '2x Normal Kutu', rarity: 'legendary', color: '#ec4899' },
+]
+
+const PREMIUM_REWARDS = [
+  { type: 'skin', value: 'fire', label: 'Ates Skin', rarity: 'rare', color: '#ef4444' },
+  { type: 'coins', value: 300, label: '300 Coin', rarity: 'common', color: '#f59e0b' },
+  { type: 'xpBoost', value: 12, label: 'XP Boost 12s', rarity: 'rare', color: '#22c55e' },
+  { type: 'skin', value: 'ice', label: 'Buz Skin', rarity: 'rare', color: '#38bdf8' },
+  { type: 'frame', value: 'silver', label: 'Gumus Cerceve', rarity: 'rare', color: '#9ca3af' },
+  { type: 'coins', value: 600, label: '600 Coin', rarity: 'rare', color: '#f59e0b' },
+  { type: 'skin', value: 'galaxy', label: 'Galaksi Skin', rarity: 'epic', color: '#818cf8' },
+  { type: 'lootbox', value: 2, label: '2x Altin Kutu', rarity: 'epic', color: '#f59e0b' },
+  { type: 'nameEffect', value: 'glow', label: 'Parlaklik Efekti', rarity: 'epic', color: '#60a5fa' },
+  { type: 'frame', value: 'gold', label: 'Altin Cerceve', rarity: 'epic', color: '#f59e0b' },
+  { type: 'skin', value: 'neon', label: 'Neon Skin', rarity: 'epic', color: '#a3e635' },
+  { type: 'coins', value: 1000, label: '1000 Coin', rarity: 'epic', color: '#f59e0b' },
+  { type: 'nameEffect', value: 'fire', label: 'Ates Efekti', rarity: 'legendary', color: '#ef4444' },
+  { type: 'skin', value: 'dragon', label: 'Ejderha Skin', rarity: 'legendary', color: '#dc2626' },
+  { type: 'frame', value: 'diamond', label: 'Elmas Cerceve', rarity: 'legendary', color: '#38bdf8' },
+  { type: 'lootbox', value: 3, label: '3x Efsane Kutu', rarity: 'legendary', color: '#ec4899' },
+  { type: 'skill', value: 'speed', label: 'Hizlanma x5', uses: 5, rarity: 'legendary', color: '#fbbf24' },
+  { type: 'skin', value: 'crown', label: 'Tac Skin', rarity: 'legendary', color: '#fbbf24' },
+  { type: 'nameEffect', value: 'rainbow', label: 'Gokuşagi Efekti', rarity: 'legendary', color: '#ec4899' },
+  { type: 'frame', value: 'legendary', label: 'Efsane Cerceve', rarity: 'legendary', color: '#ec4899' },
+]
+
+export const BP_TIERS = Array.from({ length: 50 }, (_, i) => {
   const tier = i + 1
-  const freeRewards = [
-    { type: 'coins', value: 50, label: '50 Coin', icon: '💰' },
-    { type: 'xp', value: 500, label: '500 XP', icon: '✨' },
-    { type: 'coins', value: 100, label: '100 Coin', icon: '💰' },
-    { type: 'lootbox', value: 1, label: 'Loot Box', icon: '📦' },
-    { type: 'xp', value: 1000, label: '1000 XP', icon: '⭐' },
-    { type: 'coins', value: 200, label: '200 Coin', icon: '💰' },
-  ]
-  const premiumRewards = [
-    { type: 'skin', value: 'fire', label: 'Ateş Skin', icon: '🔥' },
-    { type: 'coins', value: 200, label: '200 Coin', icon: '💰' },
-    { type: 'lootbox', value: 2, label: '2x Loot Box', icon: '📦' },
-    { type: 'skin', value: 'ice', label: 'Buz Skin', icon: '❄️' },
-    { type: 'frame', value: 'gold', label: 'Altın Çerçeve', icon: '🏅' },
-    { type: 'coins', value: 500, label: '500 Coin', icon: '💎' },
-    { type: 'skin', value: 'galaxy', label: 'Galaksi Skin', icon: '🌌' },
-    { type: 'lootbox', value: 3, label: '3x Loot Box', icon: '📦' },
-    { type: 'frame', value: 'diamond', label: 'Elmas Çerçeve', icon: '💠' },
-    { type: 'skin', value: 'crown', label: 'Taç Skin', icon: '👑' },
-  ]
-  return {
-    tier,
-    xpRequired: 500,
-    freeReward: freeRewards[(tier - 1) % freeRewards.length],
-    premiumReward: premiumRewards[(tier - 1) % premiumRewards.length],
-  }
+  let freeReward = FREE_REWARDS[(tier - 1) % FREE_REWARDS.length]
+  if (tier === 10) freeReward = { type: 'lootbox', value: 1, label: 'Altin Kutu', rarity: 'epic', color: '#f59e0b' }
+  if (tier === 25) freeReward = { type: 'lootbox', value: 2, label: '2x Efsane Kutu', rarity: 'legendary', color: '#ec4899' }
+  if (tier === 50) freeReward = { type: 'coins', value: 2000, label: '2000 Coin', rarity: 'legendary', color: '#fbbf24' }
+
+  let premiumReward = PREMIUM_REWARDS[(tier - 1) % PREMIUM_REWARDS.length]
+  if (tier === 25) premiumReward = { type: 'skin', value: 'crystal', label: 'Kristal Skin', rarity: 'legendary', color: '#7df9ff' }
+  if (tier === 50) premiumReward = { type: 'skin', value: 'immortal_skin', label: 'IMMORTAL Skin', rarity: 'legendary', color: '#ec4899' }
+
+  return { tier, xpRequired: 1000, freeReward, premiumReward }
 })
 
 const useBattlePassStore = create(
@@ -47,11 +67,11 @@ const useBattlePassStore = create(
         const state = get()
         let { bpXP, currentTier } = state
         bpXP += amount
-        while (bpXP >= 500 && currentTier < 30) {
-          bpXP -= 500
+        while (bpXP >= 1000 && currentTier < 50) {
+          bpXP -= 1000
           currentTier++
         }
-        if (currentTier >= 30) bpXP = 0
+        if (currentTier >= 50) bpXP = 0
         set({ bpXP, currentTier })
       },
 
@@ -75,9 +95,13 @@ const useBattlePassStore = create(
 
         if (reward.type === 'coins') progressStore.addCoins(reward.value)
         if (reward.type === 'xp') progressStore.addXP(reward.value)
+        if (reward.type === 'xpBoost') progressStore.activateXpBoost()
         if (reward.type === 'lootbox') {
-          for (let i = 0; i < reward.value; i++) progressStore.addLootBox()
+          for (let i = 0; i < (reward.value || 1); i++) progressStore.addLootBox?.()
         }
+        if (reward.type === 'frame') progressStore.addFrame?.(reward.value)
+        if (reward.type === 'nameEffect') progressStore.addNameEffect?.(reward.value)
+        if (reward.type === 'skill') progressStore.addSkillUnlock?.(reward.value, reward.uses || 3)
 
         if (type === 'free') {
           set(s => ({ claimedFree: [...s.claimedFree, tier] }))
@@ -100,7 +124,7 @@ const useBattlePassStore = create(
         }))
       },
     }),
-    { name: 'agarz-battlepass' }
+    { name: 'agarz-battlepass-v2' }
   )
 )
 

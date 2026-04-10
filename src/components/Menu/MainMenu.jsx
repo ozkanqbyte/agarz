@@ -9,7 +9,7 @@ import usePremiumStore from '../../store/usePremiumStore'
 import useProgressStore, { xpForLevel, BADGES } from '../../store/useProgressStore'
 import useQuestStore from '../../store/useQuestStore'
 import { THEME_LIST, getTheme } from '../../themes/themes'
-import { fbGetLeaderboard } from '../../firebase/syncService'
+import { fbGetLeaderboard, fbGetWeeklyLeaderboard, fbGetFriendsLeaderboard, fbGetClanLeaderboard } from '../../firebase/syncService'
 import FriendSystem from '../Friends/FriendSystem'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
@@ -20,6 +20,11 @@ const GAME_MODES = [
   { id: 'battle_royale', name: 'Battle Royale', icon: '💥', desc: 'Alan küçülüyor, son kalan kazanır!', color: '#ef4444', players: '2-30' },
   { id: 'rush', name: 'Rush Mode', icon: '⚡', desc: 'Hızlı büyü, 5 dakika içinde kazan!', color: '#f59e0b', players: '2-20' },
   { id: 'clan_war', name: 'Klan Savaşı', icon: '🏰', desc: 'Klanlar arası büyük savaş!', color: '#10b981', players: '10-50' },
+  { id: 'king_of_hill', name: 'Kral Tepesi', icon: '👑', desc: 'Merkezdeki bölgeyi ele geçir! 7 dakika bölgede kal, en çok puan kazan.', color: '#fbbf24', players: '2-30', badge: 'YENİ' },
+  { id: 'infection', name: 'Enfeksiyon', icon: '🧟', desc: 'Zombi başladı! Son insan hayatta kalırsa kazanır. Enfeksiyon yayılıyor!', color: '#7cfc00', players: '4-50', badge: 'YENİ' },
+  { id: 'crystal_hunt', name: 'Kristal Avı', icon: '💎', desc: 'Haritadaki kristalleri topla! Yiyen parlıyor ve herkesin hedefi olur.', color: '#00e5ff', players: '2-40', badge: 'YENİ' },
+  { id: 'shrink_survival', name: 'Küçülme Modu', icon: '📉', desc: 'Herkes 500 kütle ile başlar ve sürekli küçülür! Yemek ye, hayatta kal!', color: '#a78bfa', players: '2-30', badge: 'YENİ' },
+  { id: 'boss_fight', name: 'Boss Savaşı', icon: '👹', desc: 'Devasa Boss karşınızda! Birlikte saldırın. En çok hasar veren özel ödül alır.', color: '#ff0040', players: '2-50', badge: 'YENİ' },
 ]
 
 const NAV_ITEMS = [
@@ -263,8 +268,14 @@ export default function MainMenu() {
                           {m.icon}
                         </div>
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-white text-sm">{m.name}</span>
+                            {m.badge && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full font-bold"
+                                style={{ background: 'rgba(251,191,36,0.2)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.4)' }}>
+                                {m.badge}
+                              </span>
+                            )}
                             <span className="text-xs px-2 py-0.5 rounded-full"
                               style={{ background: 'rgba(255,255,255,0.08)', color: '#9ca3af' }}>
                               {m.players} oyuncu
@@ -450,7 +461,7 @@ export default function MainMenu() {
           {tab === 'leaderboard' && (
             <motion.div key="lb"
               initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }}>
-              <LeaderboardTab theme={theme} panelStyle={panelStyle} />
+              <LeaderboardTab theme={theme} panelStyle={panelStyle} user={user} profile={profile} />
             </motion.div>
           )}
 
@@ -676,37 +687,26 @@ function LobbyTab({ theme, panelStyle, onCreateLobby, navigate, playerName }) {
   )
 }
 
-const SKIN_LIST = [
-  { id: 'default', name: 'Varsayılan', icon: '⚪', premium: false },
-  { id: 'fire', name: 'Ateş', icon: '🔥', premium: false },
-  { id: 'ice', name: 'Buz', icon: '❄️', premium: false },
-  { id: 'galaxy', name: 'Galaksi', icon: '🌌', premium: true },
-  { id: 'neon', name: 'Neon', icon: '💫', premium: true },
-  { id: 'gold', name: 'Altın', icon: '✨', premium: true },
-  { id: 'dragon', name: 'Ejderha', icon: '🐉', premium: true },
-  { id: 'crown', name: 'Taç', icon: '👑', premium: true },
-  { id: 'demon', name: 'Şeytan', icon: '😈', premium: true },
-  { id: 'angel', name: 'Melek', icon: '😇', premium: true },
-  { id: 'rainbow', name: 'Gökkuşağı', icon: '🌈', premium: true },
-  { id: 'dark', name: 'Karanlık', icon: '🌑', premium: true },
-]
-
-const COLOR_OPTIONS = ['#6366f1','#8b5cf6','#ec4899','#06b6d4','#10b981','#f59e0b','#ef4444','#3b82f6','#14b8a6','#f97316','#a855f7','#84cc16']
+const COLOR_OPTIONS = ['#6366f1','#8b5cf6','#ec4899','#06b6d4','#10b981','#f59e0b','#ef4444','#3b82f6','#14b8a6','#f97316','#a855f7','#84cc16','#f43f5e','#0ea5e9','#d946ef','#65a30d']
 
 function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
   const { updateProfile } = useAuthStore()
   const { ownedSkins, ownedPackage } = usePremiumStore()
+  const { ownedFrames, ownedNameEffects, activeFrame, activeNameEffect, setActiveFrame, setActiveNameEffect, coins, ownedSkills } = useProgressStore()
   const [editName, setEditName] = useState(profile?.name || '')
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [photoUrl, setPhotoUrl] = useState(profile?.photoUrl || '')
+  const [photoEdit, setPhotoEdit] = useState(false)
+  const [profileTab, setProfileTab] = useState('stats')
 
   const stats = [
-    { icon: '⭐', label: 'Seviye', value: profile?.level || 1 },
-    { icon: '✨', label: 'XP', value: (profile?.xp || 0).toLocaleString() },
-    { icon: '🏆', label: 'En Yüksek', value: (profile?.stats?.highScore || 0).toLocaleString() },
-    { icon: '💀', label: 'Öldürme', value: (profile?.stats?.kills || 0).toLocaleString() },
-    { icon: '🎮', label: 'Oyun', value: (profile?.stats?.gamesPlayed || 0).toLocaleString() },
-    { icon: '💰', label: 'Toplam Kütle', value: (profile?.stats?.totalMass || 0).toLocaleString() },
+    { label: 'SEVİYE', value: profile?.level || 1, color: theme.uiAccent },
+    { label: 'EN YÜKSEK', value: (profile?.stats?.highScore || 0).toLocaleString(), color: '#fbbf24' },
+    { label: 'ÖLDÜRME', value: (profile?.stats?.kills || 0).toLocaleString(), color: '#ef4444' },
+    { label: 'OYUN', value: (profile?.stats?.gamesPlayed || 0).toLocaleString(), color: '#10b981' },
+    { label: 'GOLD', value: coins.toLocaleString(), color: '#f59e0b' },
+    { label: 'TOPLAM KÜTLE', value: (profile?.stats?.totalMass || 0).toLocaleString(), color: '#8b5cf6' },
   ]
 
   const handleSaveProfile = async () => {
@@ -715,19 +715,13 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
     await updateProfile({ name: editName.trim().slice(0, 20) })
     setSaving(false)
     setEditMode(false)
-    toast.success('Profil güncellendi! ✅')
+    toast.success('İsim güncellendi!')
   }
 
-  const handleSelectSkin = async (skinId) => {
-    const skin = SKIN_LIST.find(s => s.id === skinId)
-    if (!skin) return
-    if (skin.premium && ownedPackage === 'free' && !ownedSkins.includes(skinId)) {
-      toast.error('Bu skin için Premium gerekli! 💎')
-      setShowShop(true)
-      return
-    }
-    await updateProfile({ skin: skinId })
-    toast.success(`${skin.name} skin seçildi! ${skin.icon}`)
+  const handleSavePhoto = async () => {
+    await updateProfile({ photoUrl: photoUrl.trim() })
+    setPhotoEdit(false)
+    toast.success('Profil fotoğrafı güncellendi!')
   }
 
   const handleSelectColor = async (color) => {
@@ -735,157 +729,288 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
     toast.success('Renk güncellendi!')
   }
 
+  const SKIN_COLORS = {
+    default:'#6366f1',steel:'#94a3b8',fire:'#ef4444',ice:'#38bdf8',forest:'#22c55e',plasma:'#8b5cf6',
+    neon:'#a3e635',galaxy:'#818cf8',toxic:'#84cc16',lava:'#f97316',gold:'#fbbf24',shadow:'#334155',
+    sakura:'#f9a8d4',cyber:'#06b6d4',dragon:'#dc2626',void:'#1e1b4b',crown:'#fbbf24',demon:'#7f1d1d',
+    angel:'#fef9c3',rainbow:'#ec4899',crystal:'#7df9ff',dark:'#0f172a',apex_skin:'#f59e0b',immortal_skin:'#ec4899',
+  }
+  const ALL_SKINS = [
+    {id:'default',name:'Varsayılan',premium:false,tier:0},{id:'steel',name:'Çelik',premium:false,tier:1},{id:'fire',name:'Ateş',premium:false,tier:1},
+    {id:'ice',name:'Buz',premium:false,tier:1},{id:'forest',name:'Orman',premium:false,tier:2},{id:'plasma',name:'Plazma',premium:false,tier:2},
+    {id:'neon',name:'Neon',premium:true,tier:3},{id:'galaxy',name:'Galaksi',premium:true,tier:3},{id:'toxic',name:'Zehir',premium:true,tier:3},
+    {id:'lava',name:'Lav',premium:true,tier:4},{id:'gold',name:'Altın',premium:true,tier:4},{id:'shadow',name:'Gölge',premium:true,tier:4},
+    {id:'sakura',name:'Sakura',premium:true,tier:5},{id:'cyber',name:'Siber',premium:true,tier:5},{id:'dragon',name:'Ejderha',premium:true,tier:6},
+    {id:'void',name:'Void',premium:true,tier:6},{id:'crown',name:'Taç',premium:true,tier:7},{id:'demon',name:'Şeytan',premium:true,tier:7},
+    {id:'angel',name:'Melek',premium:true,tier:7},{id:'rainbow',name:'Gökkuşağı',premium:true,tier:8},{id:'crystal',name:'Kristal',premium:true,tier:8},
+    {id:'dark',name:'Karanlık',premium:true,tier:9},{id:'apex_skin',name:'APEX',premium:true,tier:10},
+  ]
+  const FRAME_CFG = { silver:'#9ca3af', gold:'#f59e0b', diamond:'#38bdf8', legendary:'#ec4899' }
+  const EFFECT_CFG = { glow:'#60a5fa', fire:'#ef4444', neon:'#22c55e', electric:'#fbbf24', rainbow:'#ec4899', galaxy:'#8b5cf6', shadow:'#6b7280', crystal:'#38bdf8' }
+  const SKILL_CFG = { speed:{label:'Hizlanma',color:'#fbbf24'}, slow:{label:'Yavaslatma',color:'#8b5cf6'}, shield:{label:'Kalkan',color:'#06b6d4'}, magnet:{label:'Manyetik',color:'#ec4899'}, ghost:{label:'Hayalet',color:'#a78bfa'}, teleport:{label:'Isinlanma',color:'#38bdf8'} }
+  const PKG_TIER = { free:0, trial:1, starter:2, player:3, pro:4, elite:5, champion:6, master:7, legend:8, apex:9, immortal:10 }
+
+  const currentSkin = profile?.skin || 'default'
+  const skinColor = SKIN_COLORS[currentSkin] || profile?.color || theme.gradientA
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-      <div className="rounded-2xl p-6 flex flex-col items-center text-center" style={panelStyle}>
-        <motion.div
-          animate={{ boxShadow: [`0 0 20px rgba(${theme.glowColor},0.4)`, `0 0 40px rgba(${theme.glowColor},0.7)`, `0 0 20px rgba(${theme.glowColor},0.4)`] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="w-24 h-24 rounded-full flex items-center justify-center text-4xl mb-4 cursor-pointer"
-          style={{ background: profile?.color || `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})` }}
-          onClick={() => setEditMode(m => !m)}>
-          {profile?.isGod ? '👑' : (SKIN_LIST.find(s => s.id === profile?.skin)?.icon || '🫧')}
-        </motion.div>
-
-        {editMode ? (
-          <div className="w-full space-y-2">
-            <input
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
-              maxLength={20}
-              className="w-full px-3 py-2 rounded-xl text-white font-bold text-center text-sm"
-              style={{ background: 'rgba(255,255,255,0.08)', border: `1px solid rgba(${theme.glowColor},0.4)`, outline: 'none' }}
-              placeholder="İsim gir..."
-            />
-            <motion.button onClick={handleSaveProfile} disabled={saving}
-              whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-              className="w-full py-2 rounded-xl font-black text-sm text-white"
-              style={{ background: `linear-gradient(135deg,${theme.gradientA},${theme.gradientB})` }}>
-              {saving ? '...' : '✅ Kaydet'}
-            </motion.button>
-            <motion.button onClick={() => setEditMode(false)}
-              className="w-full py-1.5 rounded-xl font-bold text-xs"
-              style={{ color: '#9ca3af', background: 'rgba(255,255,255,0.04)' }}>
-              İptal
-            </motion.button>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-2">
-              <div className="text-white font-black text-xl">{profile?.name}</div>
-              <button onClick={() => setEditMode(true)} className="text-gray-400 text-xs hover:text-white">✏️</button>
-            </div>
-            <div className="text-gray-400 text-sm mb-2">{user?.email || 'Misafir'}</div>
-          </>
-        )}
-
-        {profile?.isGod && (
-          <div className="px-3 py-1 rounded-full text-xs font-black mb-2 mt-1"
-            style={{ background: 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#000' }}>
-            ⚡ GOD MODE
-          </div>
-        )}
-        {profile?.clan && (
-          <div className="px-3 py-1 rounded-full text-xs font-bold"
-            style={{ background: `rgba(${theme.glowColor},0.2)`, color: theme.uiAccent, border: `1px solid rgba(${theme.glowColor},0.4)` }}>
-            ⚔️ {profile.clan}
-          </div>
-        )}
-        <div className="mt-4 w-full">
-          <div className="text-xs text-gray-400 mb-1 text-left">XP İlerlemesi</div>
-          <div className="w-full h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="rounded-2xl p-5 flex flex-col items-center text-center" style={panelStyle}>
+          <div style={{ position: 'relative', marginBottom: 12 }}>
             <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${((profile?.xp || 0) % 1000) / 10}%` }}
-              transition={{ duration: 1, delay: 0.2 }}
-              className="h-2 rounded-full"
-              style={{ background: `linear-gradient(90deg, ${theme.gradientA}, ${theme.gradientB})` }} />
+              animate={{ boxShadow: [`0 0 18px ${skinColor}55`,`0 0 36px ${skinColor}99`,`0 0 18px ${skinColor}55`] }}
+              transition={{ duration: 2.5, repeat: Infinity }}
+              style={{
+                width: 80, height: 80, borderRadius: '50%', cursor: 'pointer',
+                background: profile?.photoUrl ? 'transparent' : `radial-gradient(circle at 35% 35%, ${skinColor}ee, ${skinColor}66)`,
+                border: `3px solid ${skinColor}cc`,
+                overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 32, fontWeight: 900, color: '#fff',
+              }}
+              onClick={() => setPhotoEdit(p => !p)}>
+              {profile?.photoUrl ? (
+                <img src={profile.photoUrl} alt="pfp" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display='none' }} />
+              ) : (
+                <span style={{ textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>{(profile?.name||'?')[0].toUpperCase()}</span>
+              )}
+            </motion.div>
+            {profile?.isGod && (
+              <div style={{
+                position:'absolute',bottom:-4,right:-4,
+                background:'linear-gradient(135deg,#fbbf24,#f59e0b)',
+                borderRadius:6,padding:'2px 6px',fontSize:8,fontWeight:900,color:'#000',letterSpacing:1,
+              }}>APEX</div>
+            )}
           </div>
-          <div className="text-xs text-gray-500 mt-1 text-right">{(profile?.xp || 0) % 1000}/1000 XP</div>
+
+          {photoEdit && (
+            <div style={{ width:'100%',marginBottom:10,display:'flex',flexDirection:'column',gap:6 }}>
+              <input value={photoUrl} onChange={e=>setPhotoUrl(e.target.value)}
+                placeholder="Fotoğraf URL..."
+                style={{ width:'100%',padding:'7px 10px',borderRadius:10,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',color:'#fff',fontSize:11,outline:'none' }}
+              />
+              <div style={{ display:'flex',gap:6 }}>
+                <button onClick={handleSavePhoto} style={{ flex:1,padding:'7px 0',borderRadius:8,background:`linear-gradient(135deg,${theme.gradientA},${theme.gradientB})`,color:'#fff',fontWeight:900,fontSize:11,border:'none',cursor:'pointer' }}>Kaydet</button>
+                <button onClick={()=>setPhotoEdit(false)} style={{ padding:'7px 10px',borderRadius:8,background:'rgba(255,255,255,0.06)',color:'#9ca3af',border:'none',cursor:'pointer',fontSize:11 }}>X</button>
+              </div>
+            </div>
+          )}
+
+          {editMode ? (
+            <div style={{ width:'100%',display:'flex',flexDirection:'column',gap:6 }}>
+              <input value={editName} onChange={e=>setEditName(e.target.value)} maxLength={20}
+                style={{ width:'100%',padding:'8px',borderRadius:10,background:'rgba(255,255,255,0.08)',border:`1px solid rgba(${theme.glowColor},0.4)`,color:'#fff',fontWeight:700,textAlign:'center',fontSize:13,outline:'none' }}
+                placeholder="İsim gir..."
+              />
+              <button onClick={handleSaveProfile} disabled={saving}
+                style={{ width:'100%',padding:'8px',borderRadius:10,background:`linear-gradient(135deg,${theme.gradientA},${theme.gradientB})`,color:'#fff',fontWeight:900,fontSize:12,border:'none',cursor:'pointer' }}>
+                {saving ? '...' : 'Kaydet'}
+              </button>
+              <button onClick={()=>setEditMode(false)} style={{ padding:'6px',borderRadius:8,background:'rgba(255,255,255,0.04)',color:'#9ca3af',border:'none',cursor:'pointer',fontSize:11 }}>İptal</button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display:'flex',alignItems:'center',gap:6,justifyContent:'center',marginBottom:2 }}>
+                <div style={{ color:'#fff',fontWeight:900,fontSize:16 }}>{profile?.name}</div>
+                <button onClick={()=>setEditMode(true)} style={{ background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:12 }}>✎</button>
+              </div>
+              <div style={{ color:'#4b5563',fontSize:11 }}>{user?.email || 'Misafir'}</div>
+            </div>
+          )}
+
+          {profile?.clan && (
+            <div style={{ marginTop:8,padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:`rgba(${theme.glowColor},0.15)`,color:theme.uiAccent,border:`1px solid rgba(${theme.glowColor},0.35)` }}>
+              {profile.clan}
+            </div>
+          )}
+
+          <div style={{ marginTop:12,width:'100%' }}>
+            <div style={{ fontSize:10,color:'#6b7280',marginBottom:4,fontWeight:700,letterSpacing:1 }}>BALON RENGİ</div>
+            <div style={{ display:'flex',flexWrap:'wrap',gap:5,justifyContent:'center' }}>
+              {COLOR_OPTIONS.map(c => (
+                <button key={c} onClick={()=>handleSelectColor(c)}
+                  style={{ width:22,height:22,borderRadius:'50%',background:c,border:profile?.color===c?'2px solid #fff':'2px solid transparent',boxShadow:profile?.color===c?`0 0 8px ${c}`:undefined,cursor:'pointer',transition:'transform 0.15s' }} />
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className="mt-4 w-full">
-          <div className="text-xs text-gray-400 mb-2 text-left">🎨 Renk Seç</div>
-          <div className="flex flex-wrap gap-2 justify-center">
-            {COLOR_OPTIONS.map(c => (
-              <button key={c} onClick={() => handleSelectColor(c)}
-                className="w-7 h-7 rounded-full transition-transform hover:scale-110"
-                style={{ background: c, boxShadow: profile?.color === c ? `0 0 10px ${c}` : 'none', outline: profile?.color === c ? `2px solid white` : 'none' }} />
-            ))}
+        <div className="rounded-2xl p-4" style={panelStyle}>
+          <div style={{ fontSize:9,fontWeight:900,letterSpacing:2,color:'#4b5563',marginBottom:8 }}>PREMİUM</div>
+          <div style={{ fontSize:13,fontWeight:900,color:theme.uiAccent,marginBottom:4 }}>
+            {!profile?.premium || profile.premium==='free' ? 'ÜCRETSİZ' : profile.premium.toUpperCase()}
           </div>
+          <button onClick={()=>setShowShop(true)}
+            style={{ width:'100%',padding:'9px',borderRadius:10,background:'linear-gradient(135deg,#fbbf24,#d97706)',color:'#000',fontWeight:900,fontSize:12,border:'none',cursor:'pointer' }}>
+            {!profile?.premium||profile.premium==='free'?'SATIN AL':'YÜKSELT'}
+          </button>
         </div>
+
+        <button onClick={logout}
+          style={{ width:'100%',padding:'10px',borderRadius:14,background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',color:'#fca5a5',fontWeight:700,fontSize:12,cursor:'pointer' }}>
+          Cikis Yap
+        </button>
       </div>
 
-      <div className="lg:col-span-2 space-y-4">
-        <div className="grid grid-cols-3 gap-3">
+      <div style={{ display:'flex',flexDirection:'column',gap:12 }}>
+        <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8 }}>
           {stats.map(s => (
-            <motion.div key={s.label}
-              whileHover={{ scale: 1.02, y: -2 }}
-              className="rounded-2xl p-4 text-center"
-              style={panelStyle}>
-              <div className="text-2xl mb-1">{s.icon}</div>
-              <div className="text-white font-black text-lg">{s.value}</div>
-              <div className="text-gray-500 text-xs">{s.label}</div>
-            </motion.div>
+            <div key={s.label} className="rounded-2xl p-4 text-center" style={panelStyle}>
+              <div style={{ color:s.color,fontWeight:900,fontSize:20,lineHeight:1 }}>{s.value}</div>
+              <div style={{ color:'#6b7280',fontSize:9,marginTop:4,fontWeight:700,letterSpacing:1 }}>{s.label}</div>
+            </div>
           ))}
         </div>
 
-        <div className="rounded-2xl p-5" style={panelStyle}>
-          <div className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center justify-between" style={{ color: theme.uiAccent }}>
-            <span>🎭 Skinler</span>
-            <span className="text-gray-500 normal-case font-normal">{SKIN_LIST.filter(s => !s.premium || ownedSkins.includes(s.id)).length}/{SKIN_LIST.length} sahip</span>
+        <div className="rounded-2xl" style={panelStyle}>
+          <div style={{ display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+            {[{id:'skins',label:'SKİNLER'},{id:'frames',label:'ÇERÇEVELER'},{id:'effects',label:'EFEKTLER'},{id:'skills',label:'YETENEKLER'}].map(t => (
+              <button key={t.id} onClick={()=>setProfileTab(t.id)}
+                style={{ flex:1,padding:'10px 0',background:'none',border:'none',cursor:'pointer',
+                  color:profileTab===t.id?'#fff':'#4b5563',fontWeight:900,fontSize:10,letterSpacing:1.5,
+                  borderBottom:profileTab===t.id?`2px solid ${theme.uiAccent}`:'2px solid transparent',
+                }}>
+                {t.label}
+              </button>
+            ))}
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            {SKIN_LIST.map(skin => {
-              const owned = !skin.premium || ownedSkins.includes(skin.id) || ownedPackage !== 'free'
-              const selected = profile?.skin === skin.id || (!profile?.skin && skin.id === 'default')
-              return (
-                <motion.button key={skin.id} onClick={() => handleSelectSkin(skin.id)}
-                  whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                  className="rounded-xl p-2 flex flex-col items-center gap-1 relative"
-                  style={{
-                    background: selected ? `rgba(${theme.glowColor},0.2)` : 'rgba(255,255,255,0.04)',
-                    border: selected ? `2px solid rgba(${theme.glowColor},0.8)` : '2px solid transparent',
-                    opacity: owned ? 1 : 0.5
-                  }}>
-                  <div className="text-2xl">{skin.icon}</div>
-                  <div className="text-xs text-white font-bold truncate w-full text-center">{skin.name}</div>
-                  {!owned && <div className="absolute top-1 right-1 text-xs">🔒</div>}
-                  {skin.premium && <div className="absolute top-1 left-1 text-xs">💎</div>}
-                </motion.button>
-              )
-            })}
+
+          <div style={{ padding:14 }}>
+            {profileTab === 'skins' && (
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:7 }}>
+                {ALL_SKINS.map(skin => {
+                  const owned = !skin.premium || ownedSkins.includes(skin.id) || (PKG_TIER[ownedPackage] || 0) >= (skin.tier || 99)
+                  const selected = currentSkin === skin.id
+                  const sc = SKIN_COLORS[skin.id] || '#6366f1'
+                  return (
+                    <motion.button key={skin.id}
+                      onClick={async()=>{
+                        if(!owned){toast.error('Premium gerekli!');setShowShop(true);return}
+                        await updateProfile({skin:skin.id,color:sc})
+                        toast.success(`${skin.name} seçildi!`)
+                      }}
+                      whileHover={{scale:1.08}} whileTap={{scale:0.94}}
+                      style={{
+                        borderRadius:10,padding:'8px 4px',display:'flex',flexDirection:'column',alignItems:'center',gap:5,
+                        background:selected?`${sc}22`:'rgba(255,255,255,0.03)',
+                        border:`1.5px solid ${selected?sc:'rgba(255,255,255,0.08)'}`,
+                        boxShadow:selected?`0 0 14px ${sc}40`:undefined,
+                        opacity:owned?1:0.45,cursor:'pointer',position:'relative',
+                      }}>
+                      <div style={{ width:28,height:28,borderRadius:'50%',background:`radial-gradient(circle at 35% 35%,${sc}ee,${sc}66)`,border:`2px solid ${sc}cc` }} />
+                      <div style={{ fontSize:8,color:'#e2e8f0',fontWeight:700,textAlign:'center',lineHeight:1.1 }}>{skin.name}</div>
+                      {!owned&&<div style={{ position:'absolute',top:3,right:3,width:8,height:8,borderRadius:'50%',background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:6,color:'#fbbf24' }}>P</div>}
+                    </motion.button>
+                  )
+                })}
+              </div>
+            )}
+
+            {profileTab === 'frames' && (
+              <div>
+                {ownedFrames.length === 0 ? (
+                  <div style={{ color:'#4b5563',fontSize:12,textAlign:'center',padding:'20px 0',fontWeight:700,letterSpacing:1 }}>
+                    HENUZ CERCEVE YOK — MAGAZA&apos;DAN SATIN AL
+                  </div>
+                ) : (
+                  <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10 }}>
+                    {ownedFrames.map(fid => {
+                      const fc = FRAME_CFG[fid] || '#9ca3af'
+                      const active = activeFrame === fid
+                      return (
+                        <motion.button key={fid}
+                          onClick={()=>{ setActiveFrame(active?null:fid); toast.success(active?'Çerçeve kaldırıldı!':'Çerçeve aktif!') }}
+                          whileHover={{scale:1.06}} whileTap={{scale:0.94}}
+                          style={{ borderRadius:12,padding:'14px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,
+                            background:active?`${fc}18`:'rgba(255,255,255,0.03)',
+                            border:`1.5px solid ${active?fc:'rgba(255,255,255,0.08)'}`,
+                            boxShadow:active?`0 0 20px ${fc}30`:undefined,cursor:'pointer',
+                          }}>
+                          <div style={{ position:'relative',width:44,height:44 }}>
+                            <div style={{ position:'absolute',inset:0,borderRadius:'50%',background:'rgba(255,255,255,0.06)',border:`3px solid ${fc}`,boxShadow:`0 0 10px ${fc}60` }} />
+                          </div>
+                          <div style={{ fontSize:9,fontWeight:900,color:fc,letterSpacing:1 }}>{fid.toUpperCase()}</div>
+                          {active&&<div style={{ fontSize:8,fontWeight:900,color:fc,background:`${fc}18`,padding:'2px 8px',borderRadius:4,letterSpacing:1 }}>AKTİF</div>}
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {profileTab === 'effects' && (
+              <div>
+                {ownedNameEffects.length === 0 ? (
+                  <div style={{ color:'#4b5563',fontSize:12,textAlign:'center',padding:'20px 0',fontWeight:700,letterSpacing:1 }}>
+                    HENUZ EFEKT YOK — MAGAZA&apos;DAN SATIN AL
+                  </div>
+                ) : (
+                  <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10 }}>
+                    {ownedNameEffects.map(eid => {
+                      const ec = EFFECT_CFG[eid] || '#60a5fa'
+                      const active = activeNameEffect === eid
+                      return (
+                        <motion.button key={eid}
+                          onClick={()=>{ setActiveNameEffect(active?null:eid); toast.success(active?'Efekt kaldırıldı!':'Efekt aktif!') }}
+                          whileHover={{scale:1.06}} whileTap={{scale:0.94}}
+                          style={{ borderRadius:12,padding:'14px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:6,
+                            background:active?`${ec}18`:'rgba(255,255,255,0.03)',
+                            border:`1.5px solid ${active?ec:'rgba(255,255,255,0.08)'}`,
+                            boxShadow:active?`0 0 20px ${ec}30`:undefined,cursor:'pointer',
+                          }}>
+                          <div style={{ height:4,width:'80%',borderRadius:4,background:`linear-gradient(to right,${ec},${ec}44)` }} />
+                          <div style={{ fontSize:10,fontWeight:900,color:ec,letterSpacing:1 }}>{eid.toUpperCase()}</div>
+                          {active&&<div style={{ fontSize:8,fontWeight:900,color:ec,background:`${ec}18`,padding:'2px 8px',borderRadius:4,letterSpacing:1 }}>AKTİF</div>}
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {profileTab === 'skills' && (
+              <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
+                <div style={{ color:'#6b7280',fontSize:10,fontWeight:700,letterSpacing:1,marginBottom:4 }}>
+                  KUTUDAN KAZANILAN YETENEKLER (Sonraki Oyun)
+                </div>
+                {Object.entries(SKILL_CFG).map(([sid, cfg]) => {
+                  const boxUses = (ownedSkills||{})[sid] || 0
+                  const hasPkg = ['legend','apex','immortal'].includes(ownedPackage)
+                  const total = hasPkg ? '∞ (Paket)' : boxUses > 0 ? `${boxUses}x` : '0x'
+                  const color = boxUses > 0 || hasPkg ? cfg.color : '#4b5563'
+                  return (
+                    <div key={sid} style={{ display:'flex',alignItems:'center',gap:10,padding:'9px 12px',borderRadius:10,
+                      background: boxUses>0||hasPkg ? `${cfg.color}0e` : 'rgba(255,255,255,0.02)',
+                      border:`1px solid ${boxUses>0||hasPkg?cfg.color+'40':'rgba(255,255,255,0.06)'}` }}>
+                      <div style={{ width:32,height:32,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',
+                        background:`${cfg.color}18`,border:`1.5px solid ${cfg.color}50`,fontSize:14 }}>
+                        {sid==='speed'?'⚡':sid==='slow'?'🌀':sid==='shield'?'🛡️':sid==='magnet'?'🧲':sid==='ghost'?'👻':'✨'}
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ color:'#e2e8f0',fontWeight:700,fontSize:12 }}>{cfg.label}</div>
+                        <div style={{ color:'#6b7280',fontSize:10,marginTop:1 }}>
+                          {hasPkg ? 'Efsane+ Paketi — Sınırsız' : boxUses > 0 ? `${boxUses} kullanım hakkı mevcut` : 'Kutulardan kazan!'}
+                        </div>
+                      </div>
+                      <div style={{ fontWeight:900,fontSize:14,color,minWidth:36,textAlign:'right' }}>{total}</div>
+                    </div>
+                  )
+                })}
+                <div style={{ marginTop:6,padding:'10px 12px',borderRadius:10,background:'rgba(251,191,36,0.06)',border:'1px solid rgba(251,191,36,0.2)' }}>
+                  <div style={{ color:'#fbbf24',fontSize:10,fontWeight:700,letterSpacing:0.5 }}>
+                    Efsane+ paketi al — tum yetenekler sınırsız kullanım!
+                  </div>
+                  <div style={{ color:'#6b7280',fontSize:9,marginTop:3 }}>
+                    Veya Şans Kutularından nadir olarak kazan.
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
-        <div className="rounded-2xl p-5" style={panelStyle}>
-          <div className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: theme.uiAccent }}>
-            💎 Premium Paket
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <div className="text-white font-bold">
-                {!profile?.premium || profile.premium === 'free' ? 'Ücretsiz' : profile.premium.toUpperCase()}
-              </div>
-              <div className="text-gray-400 text-sm">
-                {!profile?.premium || profile.premium === 'free' ? 'Tüm özelliklere erişmek için Premium al!' : 'Premium üyesin! Tüm özellikler aktif.'}
-              </div>
-            </div>
-            <motion.button onClick={() => setShowShop(true)}
-              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-              className="px-5 py-3 rounded-xl font-black text-sm"
-              style={{ background: 'linear-gradient(135deg,#fbbf24,#d97706)', color: '#000' }}>
-              {!profile?.premium || profile.premium === 'free' ? 'Satın Al' : 'Yükselt'}
-            </motion.button>
-          </div>
-        </div>
-
-        <motion.button onClick={logout}
-          whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
-          className="w-full py-3 rounded-xl font-bold text-sm"
-          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5' }}>
-          🚪 Çıkış Yap
-        </motion.button>
       </div>
     </div>
   )
@@ -990,90 +1115,196 @@ function QuestsTab({ theme, panelStyle, quests }) {
   )
 }
 
-function LeaderboardTab({ theme, panelStyle }) {
-  const medals = ['🥇', '🥈', '🥉']
+const LB_RANK_COLORS = ['#fbbf24', '#94a3b8', '#f97316']
+const LB_RANK_LABELS = ['1', '2', '3']
+
+function LBRankBadge({ rank }) {
+  if (rank < 3) {
+    const colors = ['linear-gradient(135deg,#fbbf24,#f59e0b)', 'linear-gradient(135deg,#94a3b8,#64748b)', 'linear-gradient(135deg,#f97316,#ea580c)']
+    return (
+      <div className="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white flex-shrink-0"
+        style={{ background: colors[rank], boxShadow: `0 0 12px ${LB_RANK_COLORS[rank]}66` }}>
+        {rank + 1}
+      </div>
+    )
+  }
+  return (
+    <div className="w-8 text-center font-black text-sm flex-shrink-0" style={{ color: '#4b5563' }}>
+      #{rank + 1}
+    </div>
+  )
+}
+
+function LBRow({ p, i, theme, myUid }) {
+  const isMe = p.uid === myUid
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -15 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: i * 0.03 }}
+      whileHover={{ x: 3 }}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+      style={{
+        background: isMe
+          ? `rgba(${theme.glowColor},0.12)`
+          : i < 3 ? `rgba(${theme.glowColor},0.06)` : 'rgba(255,255,255,0.02)',
+        border: isMe
+          ? `1px solid rgba(${theme.glowColor},0.4)`
+          : i < 3 ? `1px solid rgba(${theme.glowColor},0.15)` : '1px solid transparent'
+      }}>
+      <LBRankBadge rank={i} />
+      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0"
+        style={{ background: p.color || '#6366f1', boxShadow: `0 0 10px ${p.color || '#6366f1'}55` }}>
+        {p.name?.[0] || '?'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-bold text-sm truncate" style={{ color: isMe ? theme.uiAccent : '#fff' }}>
+          {p.name}{isMe && <span className="ml-1.5 text-xs opacity-60">(Sen)</span>}
+        </div>
+        <div className="text-xs text-gray-600">
+          {p.level > 1 ? `Lv.${p.level}` : ''}{p.clan ? ` · [${p.clan}]` : ''}
+        </div>
+      </div>
+      <div className="text-right flex-shrink-0">
+        <div className="font-black text-sm" style={{ color: i === 0 ? '#fbbf24' : theme.uiAccent }}>
+          {(p.score || 0).toLocaleString()}
+        </div>
+        <div className="text-xs text-gray-600">puan</div>
+      </div>
+    </motion.div>
+  )
+}
+
+function LeaderboardTab({ theme, panelStyle, user, profile }) {
+  const [lbTab, setLbTab] = useState('global')
   const [lbData, setLbData] = useState([])
   const [lbLoading, setLbLoading] = useState(true)
+  const myUid = user?.uid
 
   useEffect(() => {
     setLbLoading(true)
-    fbGetLeaderboard(50).then(data => {
-      if (data.length > 0) {
-        setLbData(data)
-      } else {
-        setLbData(MOCK_LEADERBOARD.map(p => ({ name: p.name, score: p.mass, color: p.color, level: 1 })))
-      }
-      setLbLoading(false)
-    }).catch(() => {
-      setLbData(MOCK_LEADERBOARD.map(p => ({ name: p.name, score: p.mass, color: p.color, level: 1 })))
-      setLbLoading(false)
-    })
-  }, [])
+    setLbData([])
+    const fallback = MOCK_LEADERBOARD.map(p => ({ name: p.name, score: p.mass, color: p.color, level: 1 }))
+
+    if (lbTab === 'global') {
+      fbGetLeaderboard(50).then(d => {
+        setLbData(d.length > 0 ? d : fallback)
+        setLbLoading(false)
+      }).catch(() => { setLbData(fallback); setLbLoading(false) })
+    } else if (lbTab === 'weekly') {
+      fbGetWeeklyLeaderboard(50).then(d => {
+        setLbData(d.length > 0 ? d : fallback.slice(0, 5))
+        setLbLoading(false)
+      }).catch(() => { setLbData([]); setLbLoading(false) })
+    } else if (lbTab === 'friends') {
+      const friendUids = Object.keys(profile?.friends || {})
+      if (myUid) friendUids.push(myUid)
+      fbGetFriendsLeaderboard(friendUids).then(d => {
+        setLbData(d)
+        setLbLoading(false)
+      }).catch(() => { setLbData([]); setLbLoading(false) })
+    } else if (lbTab === 'clan') {
+      const clanName = profile?.clan
+      fbGetClanLeaderboard(clanName, 50).then(d => {
+        setLbData(d)
+        setLbLoading(false)
+      }).catch(() => { setLbData([]); setLbLoading(false) })
+    }
+  }, [lbTab, myUid])
+
+  const tabs = [
+    { id: 'global', label: 'Küresel' },
+    { id: 'weekly', label: 'Haftalık' },
+    { id: 'friends', label: 'Arkadaşlar' },
+    { id: 'clan', label: 'Klan' },
+  ]
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 rounded-2xl overflow-hidden" style={panelStyle}>
-        <div className="px-5 py-4 flex items-center gap-2 border-b" style={{ borderColor: `rgba(${theme.glowColor},0.2)` }}>
-          <span className="text-xl">🏆</span>
-          <span className="text-white font-black">Küresel Sıralama</span>
+        <div className="px-4 py-3 flex items-center gap-3 border-b flex-wrap" style={{ borderColor: `rgba(${theme.glowColor},0.2)` }}>
+          <div className="flex gap-1">
+            {tabs.map(t => (
+              <button key={t.id}
+                onClick={() => setLbTab(t.id)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                style={{
+                  background: lbTab === t.id ? `rgba(${theme.glowColor},0.25)` : 'rgba(255,255,255,0.05)',
+                  border: lbTab === t.id ? `1px solid rgba(${theme.glowColor},0.5)` : '1px solid transparent',
+                  color: lbTab === t.id ? theme.uiAccent : '#6b7280'
+                }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
           <div className="ml-auto flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             <span className="text-green-400 text-xs font-bold">CANLI</span>
           </div>
         </div>
-        <div className="p-3 space-y-1">
+        <div className="p-3 space-y-1" style={{ minHeight: 300 }}>
           {lbLoading ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-16">
               <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: theme.uiAccent }} />
             </div>
+          ) : lbData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-600">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3 opacity-40">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <div className="text-sm">
+                {lbTab === 'friends' ? 'Arkadaş sıralama verisi bulunamadı' :
+                 lbTab === 'clan' ? 'Klan üyesi sıralaması bulunamadı' :
+                 lbTab === 'weekly' ? 'Bu hafta henüz veri yok' : 'Sıralama verisi bulunamadı'}
+              </div>
+            </div>
           ) : lbData.map((p, i) => (
-            <motion.div key={p.uid || p.name}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.04 }}
-              whileHover={{ x: 4 }}
-              className="flex items-center gap-3 px-3 py-3 rounded-xl"
-              style={{
-                background: i < 3 ? `rgba(${theme.glowColor},0.08)` : 'rgba(255,255,255,0.02)',
-                border: i < 3 ? `1px solid rgba(${theme.glowColor},0.2)` : '1px solid transparent'
-              }}>
-              <div className="w-8 text-center font-black text-sm">
-                {i < 3 ? medals[i] : <span style={{ color: '#4b5563' }}>#{i+1}</span>}
-              </div>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
-                style={{ background: p.color || '#6366f1', boxShadow: `0 0 10px ${p.color || '#6366f1'}66` }}>
-                {p.name?.[0] || '?'}
-              </div>
-              <div className="flex-1">
-                <div className="text-white font-bold text-sm">{p.name}</div>
-                {p.level > 1 && <div className="text-xs text-gray-500">Lv.{p.level}{p.prestige > 0 ? ` ✦${p.prestige}` : ''}</div>}
-              </div>
-              <div className="text-right">
-                <div className="font-black text-sm" style={{ color: i === 0 ? '#fbbf24' : theme.uiAccent }}>
-                  {(p.score || 0).toLocaleString()}
-                </div>
-                <div className="text-xs text-gray-500">skor</div>
-              </div>
-            </motion.div>
+            <LBRow key={p.uid || p.name + i} p={p} i={i} theme={theme} myUid={myUid} />
           ))}
         </div>
       </div>
 
       <div className="space-y-4">
+        {myUid && (
+          <div className="rounded-2xl p-4" style={panelStyle}>
+            <div className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: theme.uiAccent }}>
+              Benim Yerim
+            </div>
+            {(() => {
+              const myRank = lbData.findIndex(p => p.uid === myUid)
+              const myEntry = lbData.find(p => p.uid === myUid)
+              return (
+                <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: `rgba(${theme.glowColor},0.1)`, border: `1px solid rgba(${theme.glowColor},0.3)` }}>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm" style={{ background: profile?.color || '#6366f1' }}>
+                    {(profile?.name || 'P')[0]}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-white text-sm">{profile?.name || 'Sen'}</div>
+                    <div className="text-xs" style={{ color: theme.uiAccent }}>{myEntry ? `#${myRank + 1} sırada` : 'Listede yok'}</div>
+                  </div>
+                  <div className="font-black text-sm" style={{ color: theme.uiAccent }}>
+                    {(myEntry?.score || 0).toLocaleString()}
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        )}
+
         <div className="rounded-2xl p-5" style={panelStyle}>
           <div className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: theme.uiAccent }}>
-            📊 İstatistikler
+            Istatistikler
           </div>
           {[
-            { label: 'Aktif Oyuncu', value: '1,247', icon: '👥', color: '#22c55e' },
-            { label: 'Aktif Oda', value: '89', icon: '🏠', color: '#06b6d4' },
-            { label: 'Bugün Oynanan', value: '14,392', icon: '🎮', color: '#8b5cf6' },
-            { label: 'Toplam Oyuncu', value: '2.4M', icon: '🌍', color: '#f59e0b' },
+            { label: 'Toplam Oyuncu', value: lbData.length + '+', color: '#22c55e' },
+            { label: 'En Yüksek Skor', value: lbData[0] ? (lbData[0].score || 0).toLocaleString() : '-', color: '#fbbf24' },
+            { label: 'Ortalama Skor', value: lbData.length ? Math.round(lbData.reduce((s,p)=>s+(p.score||0),0)/lbData.length).toLocaleString() : '-', color: '#a78bfa' },
           ].map(s => (
-            <div key={s.label} className="flex items-center gap-3 py-2 border-b last:border-0"
-              style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              <span className="text-lg">{s.icon}</span>
-              <div className="flex-1 text-xs text-gray-400">{s.label}</div>
+            <div key={s.label} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <div className="text-xs text-gray-400">{s.label}</div>
               <div className="font-black text-sm" style={{ color: s.color }}>{s.value}</div>
             </div>
           ))}

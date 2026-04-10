@@ -44,12 +44,15 @@ const useProgressStore = create(
       ownedNameEffects: [],
       activeNameEffect: null,
       activeFrame: null,
+      ownedSkills: {},
 
       isXpBoostActive: () => Date.now() < get().xpBoostEndTime,
       activateXpBoost: () => set({ xpBoostEndTime: Date.now() + XP_BOOST_HOURS * 3600 * 1000 }),
       xpBoostRemaining: () => Math.max(0, get().xpBoostEndTime - Date.now()),
 
       addNameEffect: (effectId) => set(s => ({ ownedNameEffects: [...new Set([...s.ownedNameEffects, effectId])] })),
+      addSkillUnlock: (skillId, uses = 2) => set(s => ({ ownedSkills: { ...s.ownedSkills, [skillId]: (s.ownedSkills[skillId] || 0) + uses } })),
+      consumeSkillUses: (skillId, count = 1) => set(s => ({ ownedSkills: { ...s.ownedSkills, [skillId]: Math.max(0, (s.ownedSkills[skillId] || 0) - count) } })),
       setActiveNameEffect: (effectId) => set({ activeNameEffect: effectId }),
       setActiveFrame: (frameId) => set({ activeFrame: frameId }),
 
@@ -93,7 +96,12 @@ const useProgressStore = create(
             }
           } else break
         }
-        set({ xp, level, prestige: newPrestige, totalXP })
+        if (leveledUp) {
+          const goldBonus = newLevel * 5
+          set(s => ({ xp, level, prestige: newPrestige, totalXP, coins: s.coins + goldBonus }))
+        } else {
+          set({ xp, level, prestige: newPrestige, totalXP })
+        }
         return { leveledUp, newLevel, prestige: newPrestige }
       },
 
@@ -153,7 +161,7 @@ const useProgressStore = create(
           level: data.level ?? s.level,
           prestige: data.prestige ?? s.prestige,
           totalXP: data.totalXP ?? s.totalXP,
-          coins: Math.max(s.coins, data.coins ?? 0),
+          coins: data.coins != null ? Math.min(Math.max(s.coins, data.coins), data.coins * 2 + 500) : s.coins,
           totalKills: Math.max(s.totalKills, data.totalKills ?? 0),
           highScore: Math.max(s.highScore, data.highScore ?? 0),
           gamesPlayed: Math.max(s.gamesPlayed, data.gamesPlayed ?? 0),
@@ -161,6 +169,23 @@ const useProgressStore = create(
           totalPlayTime: Math.max(s.totalPlayTime, data.totalPlayTime ?? 0),
           earnedBadges: [...new Set([...s.earnedBadges, ...(data.earnedBadges || [])])],
           pendingLootBoxes: Math.max(s.pendingLootBoxes, data.pendingLootBoxes ?? 0),
+        }))
+      },
+
+      _hydrateInventory: (data) => {
+        if (!data) return
+        set(s => ({
+          ownedFrames: [...new Set([...s.ownedFrames, ...(data.ownedFrames || [])])],
+          ownedNameEffects: [...new Set([...s.ownedNameEffects, ...(data.ownedNameEffects || [])])],
+          ownedSkills: (() => {
+            const merged = { ...s.ownedSkills }
+            for (const [k, v] of Object.entries(data.ownedSkills || {})) {
+              merged[k] = Math.max(merged[k] || 0, v || 0)
+            }
+            return merged
+          })(),
+          activeNameEffect: data.activeNameEffect || s.activeNameEffect,
+          activeFrame: data.activeFrame || s.activeFrame,
         }))
       },
     }),

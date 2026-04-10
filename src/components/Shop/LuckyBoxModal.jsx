@@ -3,7 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { LUCKY_BOXES, getRandomReward } from '../../store/useShopStore'
 import useProgressStore from '../../store/useProgressStore'
 import usePremiumStore from '../../store/usePremiumStore'
+import useAuthStore from '../../store/useAuthStore'
+import { fbSaveInventory } from '../../firebase/syncService'
 import toast from 'react-hot-toast'
+
+const SKILL_NAMES = { speed: 'Hizlanma', slow: 'Yavaslatma', shield: 'Kalkan', magnet: 'Manyetik', ghost: 'Hayalet', teleport: 'Isinlanma' }
 
 const RARITY_CFG = {
   common:    { label: 'NORMAL',  color: '#60a5fa', bg: '#1e3a5f' },
@@ -21,6 +25,7 @@ const TYPE_ICONS = {
   skin:      (r) => `SKIN: ${(r.id||'').toUpperCase()}`,
   nameEffect:(r) => `EFEKT: ${(r.id||'').toUpperCase()}`,
   lootbox:   (r) => `EKSTRA KUTU x${r.amount||1}`,
+  skill:     (r) => `YETENEK: ${SKILL_NAMES[r.id]||r.id} x${r.uses||2}`,
 }
 
 function RewardCard({ reward, size = 'md', active = false }) {
@@ -56,8 +61,9 @@ function RewardCard({ reward, size = 'md', active = false }) {
 
 export default function LuckyBoxModal({ boxType, onClose }) {
   const box = LUCKY_BOXES[boxType]
-  const { spendCoins, coins, addCoins, addXP, addPendingGod, addFrame, addLootBox, activateXpBoost, addNameEffect } = useProgressStore()
-  const { _hydrate: premiumHydrate } = usePremiumStore()
+  const { spendCoins, coins, addCoins, addXP, addPendingGod, addFrame, addLootBox, activateXpBoost, addNameEffect, addSkillUnlock, ownedFrames, ownedNameEffects, ownedSkills, activeNameEffect, activeFrame } = useProgressStore()
+  const { _hydrate: premiumHydrate, ownedSkins } = usePremiumStore()
+  const { user } = useAuthStore()
 
   const [phase, setPhase] = useState('idle')
   const [reward, setReward] = useState(null)
@@ -117,10 +123,30 @@ export default function LuckyBoxModal({ boxType, onClose }) {
     if (r.type === 'xp') addXP(r.amount)
     if (r.type === 'xpBoost') activateXpBoost()
     if (r.type === 'godTemp') addPendingGod(r.games || 1)
-    if (r.type === 'frame') addFrame(r.id)
-    if (r.type === 'skin') premiumHydrate({ ownedSkins: [r.id] })
-    if (r.type === 'nameEffect') addNameEffect(r.id)
+    if (r.type === 'frame') { addFrame(r.id); toast.success(`Yeni çerçeve kazandın: ${r.id}`) }
+    if (r.type === 'skin') {
+      premiumHydrate({ ownedSkins: [r.id] })
+      toast.success(`Yeni skin kazandın: ${r.id}`)
+    }
+    if (r.type === 'nameEffect') { addNameEffect(r.id); toast.success(`Yeni isim efekti kazandın!`) }
     if (r.type === 'lootbox') for (let i = 0; i < (r.amount || 1); i++) addLootBox()
+    if (r.type === 'skill') { addSkillUnlock(r.id, r.uses || 2); toast.success(`Yetenek kazandın: ${SKILL_NAMES[r.id] || r.id} x${r.uses || 2}`) }
+
+    const uid = user?.uid
+    if (uid && !uid.startsWith('guest_')) {
+      setTimeout(() => {
+        const ps = useProgressStore.getState()
+        const pms = usePremiumStore.getState()
+        fbSaveInventory(uid, {
+          ownedFrames: ps.ownedFrames,
+          ownedNameEffects: ps.ownedNameEffects,
+          ownedSkills: ps.ownedSkills,
+          ownedSkins: pms.ownedSkins,
+          activeNameEffect: ps.activeNameEffect,
+          activeFrame: ps.activeFrame,
+        }).catch(() => {})
+      }, 300)
+    }
   }
 
   const rc = reward ? RARITY_CFG[reward.rarity] : { color: box.color, label: '' }
@@ -175,12 +201,19 @@ export default function LuckyBoxModal({ boxType, onClose }) {
           {phase === 'idle' && (
             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               style={{ padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8,
-              }}>
-                {box.rewards.slice(0, 8).map((r, i) => (
-                  <RewardCard key={i} reward={r} size="sm" />
-                ))}
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', letterSpacing: 2, marginBottom: 8 }}>
+                  OLASI ODULLER ({box.rewards.length} cesit)
+                </div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6,
+                  maxHeight: 200, overflowY: 'auto',
+                  paddingRight: 4,
+                }}>
+                  {box.rewards.map((r, i) => (
+                    <RewardCard key={i} reward={r} size="sm" />
+                  ))}
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <motion.button

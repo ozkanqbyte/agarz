@@ -25,12 +25,12 @@ const KEYS = [
   { key: 'Z', action: 'Macro x2', color: '#ec4899' },
   { key: 'X', action: 'Macro Max', color: '#ec4899' },
   { key: 'T', action: 'Oto Hareket' },
-  { key: 'Q', action: 'İzle' },
-  { key: '1/2', action: 'Hedef Değiştir' },
   { key: 'F', action: '⚡ Hızlan', color: '#fbbf24' },
   { key: 'G', action: '🌀 Yavaşlat', color: '#8b5cf6' },
   { key: 'H', action: '🛡️ Kalkan', color: '#06b6d4' },
-  { key: 'J', action: '⚠️ Yem Tuzağı' },
+  { key: 'I', action: '🧲 Manyetik', color: '#ec4899' },
+  { key: 'J', action: '👻 Hayalet', color: '#a78bfa' },
+  { key: 'K', action: '⚡ Işınlan', color: '#38bdf8' },
   { key: 'N', action: '🔊 Ses Aç/Kapat' },
 ]
 
@@ -213,105 +213,139 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
         )}
       </div>
 
-      <div className="absolute top-4 right-4 w-60" style={{ zIndex: 10 }}>
+      <div className="absolute top-4 right-4" style={{ zIndex: 10, width: 220 }}>
         <div className="rounded-2xl overflow-hidden" style={panelStyle}>
-          <div className="px-3 py-2.5 flex items-center gap-2 border-b" style={{ borderColor: uiBorder }}>
-            <span style={{ color: theme.uiAccent }}>🏆</span>
-            <span className="text-white font-black text-xs flex-1">Sıralama</span>
-            <span className="text-gray-500 text-xs">{leaderboard.length} oyuncu</span>
+          <div style={{
+            padding: '10px 12px 8px', display: 'flex', alignItems: 'center', gap: 8,
+            borderBottom: `1px solid ${uiBorder}`,
+          }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fbbf24', boxShadow: '0 0 8px #fbbf24' }} />
+            <span style={{ color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: 2, flex: 1 }}>SIRALAMA</span>
+            <span style={{ color: '#4b5563', fontSize: 10, fontWeight: 700 }}>{leaderboard.length}P</span>
           </div>
-          <div className="p-2 space-y-1">
+          <div style={{ padding: '6px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
             {leaderboard.slice(0, 10).map((p, i) => {
               const isMe = p.id === engineRef.current?.playerId
-              const rankEmoji = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
+              const rankColors = ['#fbbf24','#9ca3af','#cd7c2f']
+              const rc = rankColors[i] || '#374151'
               return (
                 <motion.div key={p.id}
-                  initial={{ opacity: 0, x: 15 }}
+                  initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  className="flex items-center gap-2 px-2 py-2 rounded-xl"
+                  transition={{ delay: i * 0.03 }}
                   style={{
-                    background: isMe ? `rgba(${theme.glowColor},0.2)` : i === 0 ? 'rgba(251,191,36,0.08)' : 'rgba(255,255,255,0.03)',
-                    border: isMe ? `1px solid rgba(${theme.glowColor},0.5)` : i < 3 ? `1px solid rgba(255,255,255,0.07)` : '1px solid transparent',
-                    boxShadow: isMe ? `0 0 12px rgba(${theme.glowColor},0.15)` : 'none'
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '5px 8px', borderRadius: 10,
+                    background: isMe ? `rgba(${theme.glowColor},0.18)` : i === 0 ? 'rgba(251,191,36,0.07)' : 'rgba(255,255,255,0.025)',
+                    border: `1px solid ${isMe ? `rgba(${theme.glowColor},0.45)` : i < 3 ? `${rc}30` : 'transparent'}`,
+                    boxShadow: isMe ? `0 0 10px rgba(${theme.glowColor},0.12)` : 'none',
                   }}>
-                  <div className="flex items-center justify-center w-5 text-center flex-shrink-0">
-                    {rankEmoji ? (
-                      <span className="text-base leading-none">{rankEmoji}</span>
-                    ) : (
-                      <span className="text-xs font-black" style={{ color: '#4b5563' }}>{i+1}</span>
-                    )}
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: i < 3 ? `${rc}22` : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${i < 3 ? rc + '66' : 'rgba(255,255,255,0.08)'}`,
+                  }}>
+                    <span style={{ fontSize: 9, fontWeight: 900, color: i < 3 ? rc : '#6b7280' }}>{i+1}</span>
                   </div>
-                  <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black relative"
-                    style={{
-                      background: `radial-gradient(circle at 35% 35%, ${p.color}dd, ${p.color}66)`,
-                      boxShadow: `0 0 8px ${p.color}80`,
-                      border: `2px solid ${p.color}aa`
-                    }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 900, color: '#fff', position: 'relative',
+                    background: `radial-gradient(circle at 35% 35%, ${p.color}cc, ${p.color}55)`,
+                    boxShadow: `0 0 7px ${p.color}70`,
+                    border: `1.5px solid ${p.color}99`,
+                  }}>
                     {(p.name||'?')[0].toUpperCase()}
                     {p.isGod && (
-                      <span className="absolute -top-1 -right-1 text-xs leading-none">👑</span>
+                      <div style={{
+                        position: 'absolute', top: -4, right: -5,
+                        background: 'linear-gradient(135deg,#fbbf24,#f59e0b)',
+                        borderRadius: 3, padding: '1px 3px',
+                        fontSize: 6, fontWeight: 900, color: '#000', letterSpacing: 0.5,
+                        lineHeight: 1.2,
+                      }}>APEX</div>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white text-xs font-bold truncate leading-tight">{p.name}</div>
-                    <div className="text-gray-400 text-xs leading-tight">{Math.floor(p.mass).toLocaleString()}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: isMe ? '#fff' : '#e2e8f0', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                      {p.name}
+                    </div>
+                    <div style={{ color: '#6b7280', fontSize: 9, fontWeight: 600, letterSpacing: 0.5 }}>
+                      {Math.floor(p.mass).toLocaleString()}
+                    </div>
                   </div>
-                  {isMe && <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse" style={{ background: theme.uiAccent }} />}
+                  {isMe && (
+                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: theme.uiAccent, boxShadow: `0 0 6px ${theme.uiAccent}`, flexShrink: 0 }} />
+                  )}
                 </motion.div>
               )
             })}
             {leaderboard.length === 0 && (
-              <div className="text-gray-600 text-xs text-center py-4">Yükleniyor...</div>
+              <div style={{ color: '#374151', fontSize: 11, textAlign: 'center', padding: '12px 0', fontWeight: 700, letterSpacing: 1 }}>YUKLENIYOR...</div>
             )}
           </div>
         </div>
       </div>
 
-      <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-end gap-3" style={{ zIndex: 10 }}>
+      <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex items-end gap-2" style={{ zIndex: 10 }}>
         {[
-          { key: 'speed', icon: '⚡', label: 'HIZLAN', hotkey: 'F', color: '#fbbf24', glowRgb: '251,191,36', duration: 10, cooldownMax: 30 },
-          { key: 'slow', icon: '🌀', label: 'YAVAŞLAT', hotkey: 'G', color: '#8b5cf6', glowRgb: '139,92,246', duration: 5, cooldownMax: 15 },
-          { key: 'shield', icon: '🛡️', label: 'KALKAN', hotkey: 'H', color: '#06b6d4', glowRgb: '6,182,212', duration: 5, cooldownMax: 20 },
+          { key: 'speed',    icon: '⚡', label: 'HIZLAN',   hotkey: 'F', color: '#fbbf24', glowRgb: '251,191,36',  duration: 10, cooldownMax: 30 },
+          { key: 'slow',     icon: '🌀', label: 'YAVAŞLAT', hotkey: 'G', color: '#8b5cf6', glowRgb: '139,92,246',  duration: 5,  cooldownMax: 15 },
+          { key: 'shield',   icon: '🛡️', label: 'KALKAN',   hotkey: 'H', color: '#06b6d4', glowRgb: '6,182,212',   duration: 5,  cooldownMax: 20 },
+          { key: 'magnet',   icon: '🧲', label: 'MANYETİK', hotkey: 'I', color: '#ec4899', glowRgb: '236,72,153',  duration: 8,  cooldownMax: 25 },
+          { key: 'ghost',    icon: '👻', label: 'HAYALET',   hotkey: 'J', color: '#a78bfa', glowRgb: '167,139,250', duration: 4,  cooldownMax: 35 },
+          { key: 'teleport', icon: '✨', label: 'IŞINLAN',   hotkey: 'K', color: '#38bdf8', glowRgb: '56,189,248',  duration: 0,  cooldownMax: 45 },
         ].map(sk => {
           const s = skills[sk.key] || {}
           const onCD = s.cooldown > 0.1
           const isActive = s.active
+          const noUses = s.usesLeft === 0 && s.maxUses > 0
+          const locked = s.maxUses === 0
           const cooldownPct = onCD ? (s.cooldown / sk.cooldownMax) * 100 : 0
-          const timerPct = isActive ? (s.timer / sk.duration) * 100 : 0
+          const timerPct = isActive && sk.duration > 0 ? (s.timer / sk.duration) * 100 : 0
+          const usesInfinite = s.usesLeft === Infinity || s.maxUses === Infinity
           return (
             <motion.button
               key={sk.key}
               onClick={() => engineRef.current?.[`_activate${sk.key.charAt(0).toUpperCase()+sk.key.slice(1)}`]?.()}
-              whileHover={{ scale: onCD ? 1 : 1.1, y: onCD ? 0 : -3 }}
+              whileHover={{ scale: (onCD || noUses || locked) ? 1 : 1.08, y: (onCD || noUses || locked) ? 0 : -3 }}
               whileTap={{ scale: 0.92 }}
-              className="relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl overflow-hidden"
+              className="relative flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl overflow-hidden"
               style={{
-                background: isActive ? `rgba(${sk.glowRgb},0.3)` : onCD ? 'rgba(0,0,0,0.5)' : `rgba(${sk.glowRgb},0.15)`,
-                border: `1px solid ${isActive ? sk.color : onCD ? 'rgba(255,255,255,0.1)' : `rgba(${sk.glowRgb},0.5)`}`,
+                background: isActive ? `rgba(${sk.glowRgb},0.3)` : locked ? 'rgba(0,0,0,0.6)' : onCD || noUses ? 'rgba(0,0,0,0.5)' : `rgba(${sk.glowRgb},0.15)`,
+                border: `1px solid ${isActive ? sk.color : locked ? 'rgba(255,255,255,0.07)' : onCD || noUses ? 'rgba(255,255,255,0.1)' : `rgba(${sk.glowRgb},0.5)`}`,
                 boxShadow: isActive ? `0 0 20px rgba(${sk.glowRgb},0.6)` : 'none',
-                opacity: onCD ? 0.6 : 1,
-                minWidth: 64
+                opacity: locked ? 0.4 : noUses ? 0.5 : onCD ? 0.65 : 1,
+                minWidth: 56,
               }}>
               {(isActive || onCD) && (
                 <div className="absolute bottom-0 left-0 h-1 rounded-b-xl transition-all"
-                  style={{
-                    width: `${isActive ? timerPct : 100-cooldownPct}%`,
-                    background: isActive ? sk.color : 'rgba(255,255,255,0.25)'
-                  }} />
+                  style={{ width: `${isActive && sk.duration > 0 ? timerPct : 100-cooldownPct}%`, background: isActive ? sk.color : 'rgba(255,255,255,0.25)' }} />
               )}
-              <motion.span
-                className="text-xl leading-none"
+              {locked && (
+                <div className="absolute inset-0 flex items-center justify-center rounded-xl" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                  <span style={{ fontSize: 14 }}>🔒</span>
+                </div>
+              )}
+              <motion.span className="text-lg leading-none"
                 animate={isActive ? { scale: [1, 1.2, 1] } : {}}
                 transition={{ duration: 0.6, repeat: Infinity }}>
                 {sk.icon}
               </motion.span>
-              <span className="text-xs font-black leading-none" style={{ color: isActive ? sk.color : onCD ? '#4b5563' : '#e2e8f0' }}>
-                {onCD ? `${Math.ceil(s.cooldown)}s` : sk.label}
+              <span className="text-xs font-black leading-none" style={{ color: isActive ? sk.color : onCD || noUses ? '#4b5563' : '#e2e8f0', fontSize: 8 }}>
+                {onCD ? `${Math.ceil(s.cooldown)}s` : noUses ? 'BİTTİ' : locked ? 'KİLİTLİ' : sk.label}
               </span>
-              <kbd className="text-xs px-1 rounded" style={{ background: 'rgba(255,255,255,0.08)', color: '#9ca3af', fontSize: 9 }}>
-                [{sk.hotkey}]
-              </kbd>
+              <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                <kbd style={{ background: 'rgba(255,255,255,0.08)', color: '#9ca3af', fontSize: 8, padding: '1px 4px', borderRadius: 3 }}>
+                  [{sk.hotkey}]
+                </kbd>
+                {!locked && (
+                  <span style={{ fontSize: 7, fontWeight: 900, color: usesInfinite ? '#fbbf24' : s.usesLeft > 0 ? sk.color : '#4b5563', letterSpacing: 0.5 }}>
+                    {usesInfinite ? 'INF' : `${s.usesLeft || 0}x`}
+                  </span>
+                )}
+              </div>
             </motion.button>
           )
         })}

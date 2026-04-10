@@ -125,6 +125,18 @@ const SKILL_SLOW_DURATION = 5
 const SKILL_SLOW_COOLDOWN = 15
 const SKILL_SHIELD_DURATION = 5
 const SKILL_SHIELD_COOLDOWN = 20
+const SKILL_MAGNET_DURATION = 8
+const SKILL_MAGNET_COOLDOWN = 25
+const SKILL_GHOST_DURATION = 4
+const SKILL_GHOST_COOLDOWN = 35
+const SKILL_TELEPORT_COOLDOWN = 45
+const SKILL_PACKAGES = ['legend','apex','immortal']
+function getSkillUses(pkg) {
+  if (pkg === 'immortal') return Infinity
+  if (pkg === 'apex') return 5
+  if (pkg === 'legend') return 3
+  return 0
+}
 const BOT_NAMES = ['Zephyr','NeonBlob','CellKing','AgarPro','BlobZilla','MassHunter','VirusKing','StarEater','CyberCell','NightCrawler','ShadowCell','PhantomBlob','IronCore','ThunderMass','VoidEater','SilverFang','GoldenCell','DarkMatter','CrimsonBlob','AzureCell','VenomBlob','FrostKing','PlasmaCore','UltraCell','OmegaBlob','TitanMass','HyperBlob','MegaCell','SuperNova','InfiniteCell']
 const BOT_COLORS = ['#6366f1','#ec4899','#f59e0b','#06b6d4','#10b981','#8b5cf6','#ef4444','#38bdf8','#a855f7','#22c55e','#f97316','#14b8a6','#e11d48','#7c3aed','#0ea5e9','#16a34a','#dc2626','#2563eb','#9333ea','#0d9488','#b45309','#7e22ce','#0284c7','#15803d','#991b1b','#1d4ed8','#6b21a8','#0e7490','#92400e','#3b0764']
 
@@ -241,11 +253,22 @@ export class GameEngine {
     this.goldTimer = 0
     this.gameTime = GAME_DURATION
     this.bgTime = 0
-    this.skills = {
-      speed: { active: false, timer: 0, cooldown: 0 },
-      slow: { active: false, timer: 0, cooldown: 0, targetId: null },
-      shield: { active: false, timer: 0, cooldown: 0 }
+    const _pkgUses = getSkillUses(options.ownedPackage || 'free')
+    const _ownedSkills = options.ownedSkills || {}
+    const _skillUses = (name) => {
+      const fromBox = _ownedSkills[name] || 0
+      if (_pkgUses === Infinity) return Infinity
+      return _pkgUses + fromBox
     }
+    this.skills = {
+      speed:    { active: false, timer: 0, cooldown: 0, usesLeft: _skillUses('speed'),    maxUses: _skillUses('speed') },
+      slow:     { active: false, timer: 0, cooldown: 0, targetId: null, usesLeft: _skillUses('slow'), maxUses: _skillUses('slow') },
+      shield:   { active: false, timer: 0, cooldown: 0, usesLeft: _skillUses('shield'),   maxUses: _skillUses('shield') },
+      magnet:   { active: false, timer: 0, cooldown: 0, usesLeft: _skillUses('magnet'),   maxUses: _skillUses('magnet') },
+      ghost:    { active: false, timer: 0, cooldown: 0, usesLeft: _skillUses('ghost'),    maxUses: _skillUses('ghost') },
+      teleport: { active: false, timer: 0, cooldown: 0, usesLeft: _skillUses('teleport'), maxUses: _skillUses('teleport') },
+    }
+    this._ghostActive = false
     this.slowedEntities = {}
     this.clickTarget = null
     this.deathParticles = []
@@ -269,6 +292,19 @@ export class GameEngine {
     this.rushTime = RUSH_DURATION
     this.modeMessage = null
     this.modeMessageTimer = 0
+    this.modeBanner = null
+    this.modeBannerTimer = 0
+    this.infectionCountdown = 0
+    this.zombieParticles = []
+    this.modeCrystals = []
+    this.modeBoss = null
+    this.kothZone = null
+    this.kothScores = []
+    this.kothTimeLeft = 0
+    this.infectionZombies = new Set()
+    this.glowingPlayerIds = new Set()
+    this.crystalGlowing = 0
+    this.bossBlastEffect = null
 
     this._virusAutoTimer = 7
     this.onScoreChange = options.onScoreChange || (() => {})
@@ -293,6 +329,7 @@ export class GameEngine {
     this._pendingFoodEat = []
     this._foodEatTimer = 0
 
+    this._serverMass = 0
     this._zoomFactor = 1
     this._lastMoveX = 0; this._lastMoveY = 0; this._isMoving = false
     this._boundKeyDown = this._onKeyDown.bind(this)
@@ -303,25 +340,27 @@ export class GameEngine {
 
     this.spawnX = 400 + Math.random() * (WORLD_SIZE - 800)
     this.spawnY = 400 + Math.random() * (WORLD_SIZE - 800)
-    this._virusFirstHit = false
+    this._waitingForServer = false
+    this._serverJoinTime = null
   }
 
   async init() {
     this._setupEvents()
     this._onResize()
     const inheritMass = this._bestScore > 0 ? Math.max(0, Math.floor(this._bestScore * 0.25 / scoreMultiplierForMass(this._bestScore))) : 0
-    const startMass = Math.max(this.options.comeback ? 24 : 20, Math.min(inheritMass, 80))
+    const startMass = Math.max(this.options.comeback ? 320 : 300, Math.min(inheritMass + 300, 450))
     this.cells = [new Cell(this.spawnX, this.spawnY, startMass, this.playerColor)]
     if (this.options.comeback) {
       setTimeout(() => this._showFloat('+20% COMEBACK! 🔥', '#fbbf24'), 500)
     }
     if (inheritMass > 20) {
-      setTimeout(() => this._showFloat(`🏆 Miras: +${Math.floor(startMass - 20)} kütle`, '#a855f7'), 600)
+      setTimeout(() => this._showFloat(`🏆 Miras: +${Math.floor(startMass - 300)} kütle`, '#a855f7'), 600)
     }
     this.camera.x = this.spawnX
     this.camera.y = this.spawnY
     this._initOffline()
     this._initBots()
+    this._waitingForServer = true
     this.running = true
     this.lastTime = performance.now()
     this.frameId = requestAnimationFrame(this._loop.bind(this))
@@ -329,12 +368,14 @@ export class GameEngine {
     try {
       await socketClient.connect()
       await this._initSocket()
+      this._waitingForServer = false
     } catch (_socketErr) {
       try {
         const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000))
         await Promise.race([this._initFirebase(), timeout])
         if (this.running) { this.offline = false }
       } catch (_) {}
+      this._waitingForServer = false
     }
   }
 
@@ -378,6 +419,7 @@ export class GameEngine {
       isGod: this.isGod,
       clan: this.options.clan || null,
       isPremium: this.options.isPremium || false,
+      ownedPackage: this.options.ownedPackage || 'free',
       team: this.playerTeam
     })
 
@@ -403,6 +445,24 @@ export class GameEngine {
     if (state?.chat?.length && this.onChatMessage) {
       for (const msg of state.chat) this.onChatMessage(msg)
     }
+    if (state?.crystals?.length) this.modeCrystals = state.crystals
+    if (state?.boss) this.modeBoss = { ...state.boss, pulse: 0 }
+    if (state?.koth) this.kothZone = state.koth
+    if (state?.zombies?.length) this.infectionZombies = new Set(state.zombies)
+    if (state?.assignedTeam) this.playerTeam = state.assignedTeam
+    if (state?.spawnX != null && state?.spawnY != null && this.cells.length > 0) {
+      this.cells[0].x = state.spawnX
+      this.cells[0].y = state.spawnY
+      this.camera.x = state.spawnX
+      this.camera.y = state.spawnY
+      if (state.spawnMass) {
+        this.cells[0].mass = state.spawnMass
+        this.spawnX = state.spawnX
+        this.spawnY = state.spawnY
+      }
+      this._serverJoinTime = Date.now()
+    }
+    this._showModeBanner()
 
     socketClient
       .on('player:update', (p) => {
@@ -450,9 +510,25 @@ export class GameEngine {
         if (this.onChatMessage) this.onChatMessage(msg)
       })
       .on('virus:spawned', (v) => {
-        const o = new Virus(v.x, v.y, v.type || 'normal')
-        o.id = v.id
-        this.viruses.push(o)
+        if (!this.viruses.find(x => x.id === v.id)) {
+          const o = new Virus(v.x, v.y, v.type || 'normal')
+          o.id = v.id
+          this.viruses.push(o)
+        }
+      })
+      .on('virus:eaten', (d) => {
+        this.viruses = this.viruses.filter(v => v.id !== d.id)
+      })
+      .on('virus:mass_gain', (d) => {
+        const gain = d.amount || 300
+        if (this.cells.length > 0) {
+          this.cells[0].mass += gain
+          this.cells[0].eatPulse = 1.3
+          this._showFloat(`+${gain}`, '#4ade80')
+          this.score += gain
+          this.onScoreChange(Math.floor(this.score))
+          this.onXPGain(15)
+        }
       })
       .on('anticheat:warn', (d) => {
         console.warn('[AntiCheat]', d.reason)
@@ -466,32 +542,54 @@ export class GameEngine {
       })
       .on('world:state', (data) => {
         if (!data?.players) return
+        if (data.modeData?.crystals) this.modeCrystals = data.modeData.crystals
+        if (data.modeData?.boss) {
+          if (!this.modeBoss) this.modeBoss = { pulse: 0 }
+          Object.assign(this.modeBoss, data.modeData.boss)
+        }
+        if (data.modeData?.zombies) this.infectionZombies = new Set(data.modeData.zombies)
+        if (data.modeData?.glowingPlayers) this.glowingPlayerIds = new Set(data.modeData.glowingPlayers)
+        if (data.modeData?.koth) this.kothZone = data.modeData.koth
         const activeIds = new Set()
         for (const p of data.players) {
           if (p.id === this.playerId) {
             if (p.cs && p.cs.length) {
               const validCs = p.cs.filter(c => isFinite(c.x) && isFinite(c.y) && isFinite(c.m) && c.m > 0)
               if (!validCs.length) break
-              if (this.cells.length === validCs.length) {
-                for (let i = 0; i < this.cells.length; i++) {
-                  this.cells[i].x = lerp(this.cells[i].x, validCs[i].x, 0.25)
-                  this.cells[i].y = lerp(this.cells[i].y, validCs[i].y, 0.25)
-                  this.cells[i].mass = lerp(this.cells[i].mass, validCs[i].m, 0.3)
+              const serverCount = validCs.length
+              const clientCount = this.cells.length
+              if (serverCount !== clientCount) {
+                if (serverCount > clientCount) {
+                  const newCells = validCs.map((c, i) => {
+                    const existing = this.cells[i]
+                    if (existing) {
+                      existing.mass = lerp(existing.mass, c.m, 0.3)
+                      if (existing.mergeTimer === 0) existing.mergeTimer = Date.now() + MERGE_TIME
+                      return existing
+                    }
+                    const cell = new Cell(c.x, c.y, c.m, this.playerColor)
+                    cell.id = uuidv4()
+                    cell.mergeTimer = Date.now() + MERGE_TIME
+                    return cell
+                  })
+                  this.cells = newCells
+                } else {
+                  for (let i = 0; i < serverCount; i++) {
+                    this.cells[i].mass = lerp(this.cells[i].mass, validCs[i].m, 0.3)
+                  }
+                  this.cells = this.cells.slice(0, serverCount)
                 }
               } else {
-                const newCells = validCs.map((c, i) => {
-                  const existing = this.cells[i]
-                  if (existing) {
-                    existing.mass = c.m
-                    return existing
-                  }
-                  const cell = new Cell(c.x, c.y, c.m, this.playerColor)
-                  cell.id = uuidv4()
-                  return cell
-                })
-                this.cells = newCells
+                const sinceJoin = this._serverJoinTime ? (Date.now() - this._serverJoinTime) : 99999
+                for (let i = 0; i < this.cells.length; i++) {
+                  const sm = validCs[i].m
+                  const cm = this.cells[i].mass
+                  if (sinceJoin < 3000 && sm < cm * 0.7) continue
+                  this.cells[i].mass = lerp(cm, sm, 0.3)
+                }
               }
             }
+            this._serverMass = p.m || 0
             if (p.frozen) this._showFloat('❄️ Donduruldu!', '#38bdf8')
             if (p.poisoned) this._showFloat('☠️ Zehirlendi!', '#a855f7')
           } else {
@@ -503,12 +601,13 @@ export class GameEngine {
               op.mass = p.m || 20; op.cells = cells
               op.name = p.n || op.name; op.color = p.c || op.color
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
+              op.ownedPackage = p.pk || 'free'
             } else {
               this.otherPlayers[p.id] = {
                 x: p.x, y: p.y, targetX: p.x, targetY: p.y,
                 mass: p.m || 20, cells, name: p.n || '?',
                 color: p.c || '#6366f1', isGod: !!p.g, clan: p.cl || null,
-                frozen: !!p.frozen, poisoned: !!p.poisoned
+                frozen: !!p.frozen, poisoned: !!p.poisoned, ownedPackage: p.pk || 'free'
               }
             }
           }
@@ -569,6 +668,135 @@ export class GameEngine {
           o.id = f.id; o.radius = f.radius || 8
           this.food.push(o)
         }
+      })
+      .on('koth:update', (d) => {
+        this.kothScores = d.scores || []
+        this.kothTimeLeft = d.timeLeft || 0
+        if (d.zone) this.kothZone = d.zone
+        this.onTimerChange(d.timeLeft)
+      })
+      .on('koth:moved', (zone) => {
+        this.kothZone = zone
+        this._showFloat('BÖLGE TAŞINDI!', '#fbbf24')
+        this.modeBanner = { title: 'BÖLGE TAŞINDI!', subtitle: 'Yeni altın bölgeyi bul!', color: '#fbbf24', icon: '👑' }
+        this.modeBannerTimer = 3
+      })
+      .on('koth:ended', (d) => {
+        const isWinner = d.winner?.id === this.playerId
+        this._showFloat(isWinner ? 'KRAL SEN! KAZANDIN!' : `Kral: ${d.winner?.name || '?'}`, isWinner ? '#fbbf24' : '#a78bfa')
+        this.modeMessage = `KRAL: ${d.winner?.name || '?'} KAZANDI!`
+        this.modeMessageTimer = 8
+        if (isWinner) { this.screenFlash = 0.8; soundSystem.levelUp?.() }
+        setTimeout(() => { if (!this.dead) { this.dead = true; this.onDeath?.() } }, 5000)
+      })
+      .on('infection:start', (d) => {
+        this.infectionZombies = new Set([d.zombieId])
+        this.infectionCountdown = 0
+        const isZombie = d.zombieId === this.playerId
+        if (isZombie) {
+          this.playerColor = '#7cfc00'
+          this.screenFlash = 0.6
+          this.modeBanner = { title: 'ZOMBİ OLDUN!', subtitle: 'Tüm insanları enfekte et!', color: '#7cfc00', icon: '🧟' }
+        } else {
+          this.modeBanner = { title: 'ENFEKSİYON BAŞLADI!', subtitle: 'Zombilerden kaç!', color: '#ef4444', icon: '🧟' }
+        }
+        this.modeBannerTimer = 4
+        this.modeMessage = isZombie ? 'ZOMBİ' : 'HAYATTA KAL!'
+        this.modeMessageTimer = 4
+      })
+      .on('infection:converted', (d) => {
+        if (!this.infectionZombies) this.infectionZombies = new Set()
+        this.infectionZombies.add(d.id)
+        if (d.id === this.playerId) {
+          this.playerColor = '#7cfc00'
+          this._showFloat('ZOMBİYE DÖNÜŞTÜN!', '#7cfc00')
+          this.modeMessage = 'ZOMBİ'
+          this.modeMessageTimer = 3
+        }
+      })
+      .on('infection:ended', (d) => {
+        const isWinner = d.winner?.id === this.playerId
+        this._showFloat(isWinner ? 'ZOMBİ KAZANDI!' : `Son zombi: ${d.winner?.name || '?'}`, isWinner ? '#7cfc00' : '#a78bfa')
+        this.modeMessage = `ZOMBİ: ${d.winner?.name || '?'} KAZANDI!`
+        this.modeMessageTimer = 8
+        if (isWinner) { this.screenFlash = 0.8; soundSystem.levelUp?.() }
+        setTimeout(() => { if (!this.dead) { this.dead = true; this.onDeath?.() } }, 5000)
+      })
+      .on('infection:lastHuman', (d) => {
+        const isMe = d.id === this.playerId
+        if (isMe) this._showFloat('SON İNSAN SEN! HAYATTA KAL!', '#fbbf24')
+        else this._showFloat(`Son insan: ${d.name}`, '#f59e0b')
+      })
+      .on('crystal:spawned', (c) => {
+        if (!this.modeCrystals) this.modeCrystals = []
+        this.modeCrystals.push(c)
+      })
+      .on('crystal:eaten', (d) => {
+        if (this.modeCrystals) this.modeCrystals = this.modeCrystals.filter(c => c.id !== d.crystalId)
+        if (d.playerId === this.playerId) {
+          this._showFloat('+400 KÜTLE! 30sn PARLAYOR!', '#00e5ff')
+          this.crystalGlowing = Date.now() + 30000
+        }
+      })
+      .on('crystal:ended', (d) => {
+        const isWinner = d.winner?.id === this.playerId
+        this._showFloat(isWinner ? 'KRİSTAL KAZANDIN!' : `Kazanan: ${d.winner?.name || '?'} (${d.winner?.crystals || 0} kristal)`, isWinner ? '#00e5ff' : '#a78bfa')
+        this.modeMessage = `${d.winner?.name || '?'} KAZANDI! (${d.winner?.crystals || 0} Kristal)`
+        this.modeMessageTimer = 8
+        if (isWinner) { this.screenFlash = 0.8; soundSystem.levelUp?.() }
+        setTimeout(() => { if (!this.dead) { this.dead = true; this.onDeath?.() } }, 5000)
+      })
+      .on('boss:spawned', (b) => {
+        this.modeBoss = { ...b, pulse: 0 }
+        this._showFloat('BOSS GELDİ! Birlikte saldırın!', '#ff0040')
+        this.modeBanner = { title: 'BOSS GELDİ!', subtitle: 'Birlikte saldırın — en çok hasar = büyük ödül!', color: '#ff0040', icon: '👹' }
+        this.modeBannerTimer = 5
+        this.modeMessage = 'BOSS: 5000 KÜTLE'
+        this.modeMessageTimer = 4
+        this.screenFlash = 0.4
+      })
+      .on('boss:state', (b) => {
+        if (this.modeBoss) {
+          this.modeBoss.x = b.x; this.modeBoss.y = b.y
+          this.modeBoss.mass = b.mass; this.modeBoss.attackTimer = b.attackTimer
+        }
+      })
+      .on('boss:attack', (d) => {
+        this.bossBlastEffect = { x: d.x, y: d.y, radius: d.radius, timer: 0.6 }
+        this._showFloat('BOSS SALDIRIYOR!', '#ff0040')
+        this.screenFlash = 0.3
+      })
+      .on('boss:blast', () => {
+        this._showFloat('BOSS ÇARPTIRDI!', '#ff6600')
+        this.screenFlash = 0.5
+      })
+      .on('boss:defeated', (d) => {
+        this.modeBoss = null
+        const isTopDamager = d.topDamagerId === this.playerId
+        this._showFloat(isTopDamager ? 'EN FAZLA HASAR! +500XP +100GOLD!' : `Boss yenildi! ${d.topDamagerName} birinci!`, isTopDamager ? '#fbbf24' : '#7cfc00')
+        this.modeMessage = `BOSS YENILDİ! ${d.topDamagerName} birinci!`
+        this.modeMessageTimer = 6
+        if (isTopDamager) { this.screenFlash = 0.8; soundSystem.levelUp?.() }
+      })
+      .on('boss:reward', (d) => {
+        this.onXPGain?.(d.xp || 500)
+        this._showFloat(`+${d.xp} XP +${d.gold} GOLD!`, '#fbbf24')
+      })
+      .on('shrink:ended', (d) => {
+        const isWinner = d.winner?.id === this.playerId
+        this._showFloat(isWinner ? 'SON KALAN SEN! KAZANDIN!' : `Kazanan: ${d.winner?.name || '?'}`, isWinner ? '#fbbf24' : '#a78bfa')
+        this.modeMessage = `${d.winner?.name || '?'} KAZANDI!`
+        this.modeMessageTimer = 8
+        if (isWinner) { this.screenFlash = 0.8; soundSystem.levelUp?.() }
+        setTimeout(() => { if (!this.dead) { this.dead = true; this.onDeath?.() } }, 5000)
+      })
+      .on('teams:ended', (d) => {
+        const teamColor = d.winner === 'red' ? '#ef4444' : '#3b82f6'
+        this._showFloat(`${d.winner === 'red' ? 'KIRMIZI' : 'MAVİ'} TAKIM KAZANDI!`, teamColor)
+        this.modeMessage = `${d.winner === 'red' ? 'KIRMIZI' : 'MAVİ'} KAZANDI!`
+        this.modeMessageTimer = 8
+        this.screenFlash = 0.5
+        setTimeout(() => { if (!this.dead) { this.dead = true; this.onDeath?.() } }, 5000)
       })
 
     this._startSocketSync()
@@ -738,7 +966,7 @@ export class GameEngine {
     this.keys[e.code] = true
     const now = Date.now()
 
-    if (e.code === 'Space') { this._split(); soundSystem.split(); if (this._useSocket) socketClient.sendSplit() }
+    if (e.code === 'Space') { this._split(); soundSystem.split() }
     if (e.code === 'KeyW' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyR' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
@@ -752,7 +980,9 @@ export class GameEngine {
     if (e.code === 'KeyF') { this._activateSpeed(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('speed') }
     if (e.code === 'KeyG') { this._activateSlow(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('slow') }
     if (e.code === 'KeyH') { this._activateShield(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('shield') }
-    if (e.code === 'KeyJ') this._activateFoodTrap()
+    if (e.code === 'KeyI') { this._activateMagnet(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('magnet') }
+    if (e.code === 'KeyJ') { this._activateGhost(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('ghost') }
+    if (e.code === 'KeyK') { this._activateTeleport(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('teleport') }
     if (e.code === 'KeyN') { soundSystem._enabled = !soundSystem._enabled; this._showFloat(soundSystem._enabled ? '🔊 Ses Açık' : '🔇 Ses Kapalı', '#6366f1') }
   }
 
@@ -789,6 +1019,10 @@ export class GameEngine {
   }
 
   _split() {
+    if (this._useSocket) {
+      socketClient.sendSplit()
+      return
+    }
     if (this.cells.length >= MAX_CELLS) return
     const newCells = []
     for (const cell of [...this.cells]) {
@@ -806,7 +1040,7 @@ export class GameEngine {
       cell.mergeTimer = Date.now() + MERGE_TIME
       newCells.push(nc)
     }
-    this.cells.push(...newCells)
+    if (newCells.length > 0) this.cells.push(...newCells)
   }
 
   _macroDoubleSplit() {
@@ -850,6 +1084,26 @@ export class GameEngine {
     this._showFloat(`+${mass} Kütle 💰`, '#4ade80')
     this.onGoldChange(this.gold)
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#fbbf24')
+  }
+
+  _showModeBanner() {
+    const configs = {
+      ffa:            { title: 'FREE FOR ALL', subtitle: 'Herkesi ye, en büyük ol!', color: '#6366f1', icon: '⚔️' },
+      teams:          { title: 'TAKIM MODU', subtitle: `Takımın: ${this.playerTeam === 'red' ? 'KIRMIZI' : 'MAVİ'} — birlikte kazan!`, color: this.playerTeam === 'red' ? '#ef4444' : '#3b82f6', icon: '🛡️' },
+      battle_royale:  { title: 'BATTLE ROYALE', subtitle: 'Alan küçülüyor — son kalan kazanır!', color: '#ef4444', icon: '💥' },
+      rush:           { title: 'RUSH MODU', subtitle: '5 dakikada en büyük ol!', color: '#f59e0b', icon: '⚡' },
+      king_of_hill:   { title: 'KRAL TEPESİ', subtitle: 'Altın bölgeyi ele geçir, 7 dakika en çok puanı topla!', color: '#fbbf24', icon: '👑' },
+      infection:      { title: 'ENFEKSİYON', subtitle: 'Zombi başlıyor! Son insan hayatta kalırsa kazanır.', color: '#7cfc00', icon: '🧟' },
+      crystal_hunt:   { title: 'KRİSTAL AVI', subtitle: 'Kristalleri topla — yiyince parlarsın ve hedef olursun!', color: '#00e5ff', icon: '💎' },
+      shrink_survival:{ title: 'KÜÇÜLME MODU', subtitle: 'Herkes küçülüyor! Yemek ye, hayatta kal!', color: '#a78bfa', icon: '📉' },
+      boss_fight:     { title: 'BOSS SAVAŞI', subtitle: 'Devasa boss yakında gelecek! Birlikte saldırın!', color: '#ff0040', icon: '👹' },
+      clan_war:       { title: 'KLAN SAVAŞI', subtitle: 'Klanlar arası büyük savaş başlıyor!', color: '#10b981', icon: '🏰' },
+    }
+    const cfg = configs[this.gameMode]
+    if (cfg) {
+      this.modeBanner = cfg
+      this.modeBannerTimer = 5
+    }
   }
 
   _spectateChange(dir) {
@@ -907,7 +1161,7 @@ export class GameEngine {
     this._updatePremiumEffects(dt)
     this._updateAbsorbParticles(dt)
     this._checkFoodCollisions()
-    this._checkVirusCollisions()
+    if (!this._useSocket) this._checkVirusCollisions()
     this._updateViruses(dt)
     this._virusAutoEat(dt)
     this._checkEjectedFoodConversion()
@@ -929,8 +1183,12 @@ export class GameEngine {
       if (cell.eatPulse > 0) cell.eatPulse = Math.max(0, cell.eatPulse - dt * 5)
     }
     if (this.modeMessageTimer > 0) this.modeMessageTimer -= dt
+    if (this.modeBannerTimer > 0) this.modeBannerTimer -= dt
+    this._updateZombieParticles(dt)
 
-    const totalMass = this.cells.reduce((s,c) => s+c.mass, 0)
+    const totalMass = this._useSocket && this._serverMass > 0
+      ? this._serverMass
+      : this.cells.reduce((s,c) => s+c.mass, 0)
     let scoreMultiplier = 1
     if (totalMass >= 2000) scoreMultiplier = 3
     else if (totalMass >= 500) scoreMultiplier = 2
@@ -940,9 +1198,9 @@ export class GameEngine {
       this.score = computedScore
       if (computedScore > this._bestScore) this._bestScore = computedScore
       this.onScoreChange(Math.floor(computedScore))
-      if (totalMass > this._lastValidMass * 6 && this._lastValidMass > 100) {
+      if (!this._useSocket && totalMass > this._lastValidMass * 6 && this._lastValidMass > 100) {
         this._handleSuspiciousActivity(totalMass)
-      } else {
+      } else if (!this._useSocket) {
         this._lastValidMass = totalMass
       }
     }
@@ -1319,6 +1577,7 @@ export class GameEngine {
 
   _virusAutoEat(dt) {
     if (!this.cells.length) return
+    if (this._useSocket) return
     this._virusAutoTimer -= dt
     if (this._virusAutoTimer > 0) return
     this._virusAutoTimer = 7
@@ -1477,12 +1736,13 @@ export class GameEngine {
     if (!this.cells.length) return
     const cx = this.cells.reduce((s,c) => s+c.x, 0) / this.cells.length
     const cy = this.cells.reduce((s,c) => s+c.y, 0) / this.cells.length
-    this.camera.x = lerp(this.camera.x, cx, 0.1)
-    this.camera.y = lerp(this.camera.y, cy, 0.1)
-    const maxR = Math.max(...this.cells.map(c => c.radius), 20)
-    const autoZoom = clamp(Math.min(this.canvas.width/(maxR*5), this.canvas.height/(maxR*5), 1.6), 0.08, 1.6)
-    const targetZoom = autoZoom * this._zoomFactor
-    this.camera.zoom = lerp(this.camera.zoom, targetZoom, 0.05)
+    this.camera.x = lerp(this.camera.x, cx, 0.15)
+    this.camera.y = lerp(this.camera.y, cy, 0.15)
+    const totalMassForZoom = this.cells.reduce((s,c) => s + c.mass, 0)
+    const avgR = Math.sqrt(totalMassForZoom / this.cells.length) * 4.5
+    const autoZoom = clamp(Math.min(this.canvas.width / (avgR * 4.5), this.canvas.height / (avgR * 4.5)), 0.07, 1.8)
+    const targetZoom = clamp(autoZoom * this._zoomFactor, 0.04, 4.0)
+    this.camera.zoom = lerp(this.camera.zoom, targetZoom, 0.12)
   }
 
   _spawnParticle(x, y, color, count = 4) {
@@ -1530,9 +1790,14 @@ export class GameEngine {
     this._drawGrid()
     this._drawBorder()
     this._drawBattleRoyaleZone()
+    this._drawKothZone()
+    this._drawCrystals()
+    this._drawBoss()
+    this._drawBossBlast()
     this._drawFood()
     this._drawViruses()
     this._drawEjected()
+    this._drawZombieParticles()
     this._drawAbsorbParticles()
     this._drawParticles()
     this._drawOtherPlayers()
@@ -1561,13 +1826,31 @@ export class GameEngine {
     }
 
     this._drawMinimap()
+    this._drawModeHUD()
+    this._drawModeBanner()
+    this._drawDirectionArrows()
+
+    if (this._waitingForServer) {
+      ctx.fillStyle = 'rgba(0,0,0,0.72)'
+      ctx.fillRect(0, 0, W, H)
+      const t = Date.now() / 500
+      const dots = '.'.repeat(1 + Math.floor(t % 3))
+      ctx.font = 'bold 28px "Exo 2", sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.shadowBlur = 20
+      ctx.shadowColor = '#6366f1'
+      ctx.fillStyle = '#e0e7ff'
+      ctx.fillText('Sunucuya bağlanılıyor' + dots, W / 2, H / 2)
+      ctx.shadowBlur = 0
+    }
   }
 
   _drawMinimap() {
     const { ctx, canvas, camera, theme } = this
     const mapSize = 152
     const pad = 5
-    const mapX = canvas.width - mapSize - 14
+    const mapX = 14
     const mapY = 14
     const scale = mapSize / WORLD_SIZE
     const bx = mapX - pad, by = mapY - pad, bw = mapSize + pad * 2, bh = mapSize + pad * 2
@@ -1641,12 +1924,256 @@ export class GameEngine {
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.2; ctx.stroke()
     }
 
+    if (this.modeCrystals?.length) {
+      for (const c of this.modeCrystals) {
+        ctx.beginPath(); ctx.arc(mapX + c.x * scale, mapY + c.y * scale, 4, 0, Math.PI * 2)
+        ctx.fillStyle = '#00e5ff'; ctx.shadowBlur = 8; ctx.shadowColor = '#00e5ff'; ctx.fill(); ctx.shadowBlur = 0
+      }
+    }
+    if (this.modeBoss) {
+      const bt = Date.now() / 300
+      ctx.beginPath(); ctx.arc(mapX + this.modeBoss.x * scale, mapY + this.modeBoss.y * scale, 5 + 2 * Math.sin(bt), 0, Math.PI * 2)
+      ctx.fillStyle = '#ff0040'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff0040'; ctx.fill(); ctx.shadowBlur = 0
+    }
+    if (this.kothZone && this.gameMode === 'king_of_hill') {
+      ctx.beginPath(); ctx.arc(mapX + this.kothZone.x * scale, mapY + this.kothZone.y * scale, this.kothZone.radius * scale, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(251,191,36,0.6)'; ctx.lineWidth = 1.5; ctx.stroke()
+    }
+
     ctx.restore()
 
     ctx.fillStyle = 'rgba(255,255,255,0.38)'
     ctx.font = 'bold 8px "Exo 2", sans-serif'
     ctx.textAlign = 'right'; ctx.textBaseline = 'top'
     ctx.fillText('HARİTA', mapX + mapSize, mapY + mapSize + 4)
+  }
+
+  _drawModeHUD() {
+    const { ctx, canvas } = this
+    const W = canvas.width, H = canvas.height
+    const mode = this.gameMode
+    if (!mode || mode === 'ffa') return
+
+    const modeColors = {
+      teams: this.playerTeam === 'red' ? '#ef4444' : '#3b82f6',
+      battle_royale: '#ef4444', rush: '#f59e0b', king_of_hill: '#fbbf24',
+      infection: '#7cfc00', crystal_hunt: '#00e5ff', shrink_survival: '#a78bfa',
+      boss_fight: '#ff0040', clan_war: '#10b981'
+    }
+    const modeIcons = {
+      teams: '🛡️', battle_royale: '💥', rush: '⚡', king_of_hill: '👑',
+      infection: '🧟', crystal_hunt: '💎', shrink_survival: '📉', boss_fight: '👹', clan_war: '🏰'
+    }
+    const color = modeColors[mode] || '#6366f1'
+    const icon = modeIcons[mode] || '🎮'
+
+    ctx.save()
+    const boxX = 14, boxY = 14
+    const boxW = 220, boxH = mode === 'king_of_hill' ? 100 : mode === 'boss_fight' ? 90 : 70
+    ctx.fillStyle = 'rgba(8,8,20,0.82)'
+    ctx.beginPath()
+    if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 12); else ctx.rect(boxX, boxY, boxW, boxH)
+    ctx.fill()
+    ctx.strokeStyle = color + 'aa'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 12); else ctx.rect(boxX, boxY, boxW, boxH)
+    ctx.stroke()
+
+    ctx.font = 'bold 13px "Exo 2",sans-serif'
+    ctx.fillStyle = color
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    const modeNames = {
+      teams:'TAKIM MODU', battle_royale:'BATTLE ROYALE', rush:'RUSH MODU',
+      king_of_hill:'KRAL TEPESİ', infection:'ENFEKSİYON', crystal_hunt:'KRİSTAL AVI',
+      shrink_survival:'KÜÇÜLME MODU', boss_fight:'BOSS SAVAŞI', clan_war:'KLAN SAVAŞI'
+    }
+    ctx.shadowBlur = 8; ctx.shadowColor = color
+    ctx.fillText(`${icon}  ${modeNames[mode] || mode.toUpperCase()}`, boxX + 12, boxY + 12)
+    ctx.shadowBlur = 0
+
+    ctx.font = '11px "Exo 2",sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+
+    if (mode === 'king_of_hill') {
+      const mins = Math.floor((this.kothTimeLeft || 0) / 60)
+      const secs = (this.kothTimeLeft || 0) % 60
+      ctx.fillText(`Süre: ${mins}:${secs < 10 ? '0' : ''}${secs}`, boxX + 12, boxY + 34)
+      if (this.kothScores?.length) {
+        ctx.fillText(`1. ${this.kothScores[0]?.name || '?'} — ${this.kothScores[0]?.score || 0} puan`, boxX + 12, boxY + 52)
+        if (this.kothScores[1]) ctx.fillText(`2. ${this.kothScores[1]?.name || '?'} — ${this.kothScores[1]?.score || 0} puan`, boxX + 12, boxY + 68)
+      }
+      const myScore = this.kothScores?.find(s => s.id === this.playerId)
+      if (myScore) ctx.fillText(`Senin puanın: ${myScore.score}`, boxX + 12, boxY + 84)
+    } else if (mode === 'boss_fight') {
+      if (this.modeBoss) {
+        const hpPct = Math.max(0, (this.modeBoss.mass || 0) / 5000)
+        ctx.fillText(`Boss HP: ${Math.floor(hpPct * 100)}%`, boxX + 12, boxY + 34)
+        ctx.fillText(`Saldırı: ${Math.ceil(this.modeBoss.attackTimer || 0)}s`, boxX + 12, boxY + 52)
+        ctx.fillStyle = 'rgba(255,0,64,0.3)'
+        ctx.fillRect(boxX + 12, boxY + 66, (boxW - 24) * hpPct, 8)
+        ctx.strokeStyle = '#ff0040'; ctx.lineWidth = 1
+        ctx.strokeRect(boxX + 12, boxY + 66, boxW - 24, 8)
+      } else {
+        const timer = this.bossRespawnCountdown || 0
+        ctx.fillText(timer > 0 ? `Boss geliyor... ${Math.ceil(timer)}s` : 'Boss bekleniyor...', boxX + 12, boxY + 34)
+      }
+    } else if (mode === 'infection') {
+      const zombieCount = this.infectionZombies?.size || 0
+      const isZombie = this.infectionZombies?.has(this.playerId)
+      ctx.fillStyle = isZombie ? '#7cfc00' : '#ef4444'
+      ctx.fillText(isZombie ? `ZOMBİSİN! Zombi: ${zombieCount}` : `HAYATTA KAL! Zombi: ${zombieCount}`, boxX + 12, boxY + 34)
+    } else if (mode === 'crystal_hunt') {
+      const myScore = (this.kothScores || []).find(s => s.id === this.playerId)
+      ctx.fillText(`Kristal: ${this.modeCrystals?.length || 0} haritada`, boxX + 12, boxY + 34)
+      if (myScore) ctx.fillText(`Senin kristallerin: ${myScore.score || 0}`, boxX + 12, boxY + 52)
+    } else if (mode === 'shrink_survival') {
+      ctx.fillText('Hayatta kal! Küçülme devam ediyor...', boxX + 12, boxY + 34)
+    } else if (mode === 'rush') {
+      const mins = Math.floor((this.rushTime || 0) / 60)
+      const secs = Math.floor((this.rushTime || 0) % 60)
+      ctx.fillText(`Kalan süre: ${mins}:${secs < 10 ? '0' : ''}${secs}`, boxX + 12, boxY + 34)
+    } else if (mode === 'teams') {
+      ctx.fillStyle = this.playerTeam === 'red' ? '#ef4444' : '#3b82f6'
+      ctx.fillText(`Takımın: ${this.playerTeam === 'red' ? 'KIRMIZI' : 'MAVİ'}`, boxX + 12, boxY + 34)
+    }
+
+    ctx.restore()
+  }
+
+  _drawModeBanner() {
+    if (!this.modeBanner || this.modeBannerTimer <= 0) return
+    const { ctx, canvas } = this
+    const W = canvas.width, H = canvas.height
+    const alpha = Math.min(1, this.modeBannerTimer / 0.5)
+    const { title, subtitle, color, icon } = this.modeBanner
+
+    ctx.save()
+    ctx.globalAlpha = alpha * 0.92
+
+    const bannerH = 110
+    const bannerY = H / 2 - bannerH / 2
+    const bannerW = Math.min(600, W - 60)
+    const bannerX = (W - bannerW) / 2
+
+    ctx.fillStyle = 'rgba(5,5,15,0.9)'
+    ctx.beginPath()
+    if (ctx.roundRect) ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 16); else ctx.rect(bannerX, bannerY, bannerW, bannerH)
+    ctx.fill()
+
+    ctx.strokeStyle = color
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    if (ctx.roundRect) ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 16); else ctx.rect(bannerX, bannerY, bannerW, bannerH)
+    ctx.stroke()
+
+    ctx.shadowBlur = 25; ctx.shadowColor = color
+    ctx.fillStyle = color
+    ctx.font = 'bold 28px "Exo 2",sans-serif'
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(`${icon}  ${title}`, W / 2, bannerY + 38)
+    ctx.shadowBlur = 0
+
+    ctx.font = '15px "Exo 2",sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.82)'
+    ctx.fillText(subtitle, W / 2, bannerY + 76)
+
+    ctx.restore()
+  }
+
+  _drawDirectionArrows() {
+    const { ctx, canvas, camera } = this
+    const W = canvas.width, H = canvas.height
+    const zoom = camera.zoom
+    const cx = camera.x, cy = camera.y
+    const viewW = W / zoom, viewH = H / zoom
+    const margin = 40
+
+    const drawArrow = (wx, wy, color, label) => {
+      const sx = (wx - cx) * zoom + W / 2
+      const sy = (wy - cy) * zoom + H / 2
+      if (sx > 0 && sx < W && sy > 0 && sy < H) return
+
+      const angle = Math.atan2(sy - H / 2, sx - W / 2)
+      const ax = W / 2 + Math.cos(angle) * (Math.min(W, H) / 2 - margin)
+      const ay = H / 2 + Math.sin(angle) * (Math.min(W, H) / 2 - margin)
+
+      ctx.save()
+      ctx.translate(ax, ay)
+      ctx.rotate(angle)
+      ctx.fillStyle = color
+      ctx.shadowBlur = 12; ctx.shadowColor = color
+      ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, 9); ctx.lineTo(-8, -9); ctx.closePath()
+      ctx.fill(); ctx.shadowBlur = 0
+      ctx.rotate(-angle)
+      ctx.font = 'bold 11px "Exo 2",sans-serif'
+      ctx.fillStyle = '#fff'
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText(label, 0, 12)
+      ctx.restore()
+    }
+
+    if (this.modeBoss && this.gameMode === 'boss_fight') {
+      drawArrow(this.modeBoss.x, this.modeBoss.y, '#ff0040', 'BOSS')
+    }
+    if (this.kothZone && this.gameMode === 'king_of_hill') {
+      drawArrow(this.kothZone.x, this.kothZone.y, '#fbbf24', 'BÖLGE')
+    }
+    if (this.modeCrystals?.length && this.gameMode === 'crystal_hunt') {
+      let nearest = null, nearestDist = Infinity
+      const px = this.cells[0]?.x || cx, py = this.cells[0]?.y || cy
+      for (const c of this.modeCrystals) {
+        const d = Math.sqrt((c.x - px) ** 2 + (c.y - py) ** 2)
+        if (d < nearestDist) { nearestDist = d; nearest = c }
+      }
+      if (nearest) drawArrow(nearest.x, nearest.y, '#00e5ff', 'KRİSTAL')
+    }
+  }
+
+  _drawZombieParticles() {
+    if (!this.zombieParticles?.length) return
+    const { ctx } = this
+    ctx.save()
+    for (const p of this.zombieParticles) {
+      ctx.globalAlpha = p.life * 0.7
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+      ctx.fillStyle = p.color
+      ctx.shadowBlur = 8; ctx.shadowColor = p.color
+      ctx.fill()
+    }
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1
+    ctx.restore()
+  }
+
+  _updateZombieParticles(dt) {
+    if (this.gameMode !== 'infection' || !this.infectionZombies?.size) return
+    this.zombieParticles = (this.zombieParticles || []).filter(p => p.life > 0)
+    for (const p of this.zombieParticles) {
+      p.x += p.vx * dt * 60; p.y += p.vy * dt * 60
+      p.vx *= 0.92; p.vy *= 0.92
+      p.life -= dt * 1.2
+      p.size *= 0.97
+    }
+    const allZombies = []
+    for (const [id, op] of Object.entries(this.otherPlayers)) {
+      if (this.infectionZombies.has(id)) allZombies.push(op)
+    }
+    if (this.infectionZombies.has(this.playerId)) {
+      for (const c of this.cells) allZombies.push({ x: c.x, y: c.y })
+    }
+    if (Math.random() < 0.3) {
+      for (const z of allZombies) {
+        const angle = Math.random() * Math.PI * 2
+        this.zombieParticles.push({
+          x: z.x + (Math.random() - 0.5) * 30,
+          y: z.y + (Math.random() - 0.5) * 30,
+          vx: Math.cos(angle) * (0.5 + Math.random()),
+          vy: Math.sin(angle) * (0.5 + Math.random()) - 1,
+          color: '#7cfc00', life: 1, size: 4 + Math.random() * 4
+        })
+      }
+    }
+    if (this.zombieParticles.length > 400) this.zombieParticles.splice(0, 100)
   }
 
   _drawBgEffect(W, H) {
@@ -1784,61 +2311,91 @@ export class GameEngine {
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
-      v.pulse = (v.pulse || 0) + 0.035
+      v.pulse = (v.pulse || 0) + 0.04
       const vInfo = VIRUS_TYPES[v.type]
       const fc = v.feedCount || 0
       const feedPct = Math.min((fc % 5) / 5, 1)
-      const pulseMod = 1 + 0.04 * Math.sin(v.pulse)
-      const baseR = v.radius * (1 + feedPct * 0.35) * pulseMod * 1.35
-      const glowSize = 14 + feedPct * 20
+      const pulseMod = 1 + 0.045 * Math.sin(v.pulse)
+      const baseR = v.radius * (1 + feedPct * 0.4) * pulseMod * 1.6
+      const innerR = baseR * 0.58
+      const numSpikes = 14
+      const spikeRatio = 0.48
+      const rotOffset = v.pulse * 0.3
 
       ctx.save()
 
-      ctx.shadowBlur = glowSize
+      ctx.shadowBlur = 22 + feedPct * 18
       ctx.shadowColor = vInfo.color
-      const grad = ctx.createRadialGradient(v.x - baseR * 0.3, v.y - baseR * 0.3, baseR * 0.05, v.x, v.y, baseR)
-      grad.addColorStop(0, lighten(vInfo.color, 70, 0.95))
-      grad.addColorStop(0.5, hexAlpha(vInfo.color, 0.82))
-      grad.addColorStop(1, darken(vInfo.color, 40, 0.75))
-      ctx.beginPath()
-      ctx.arc(v.x, v.y, baseR, 0, Math.PI * 2)
-      ctx.fillStyle = grad
-      ctx.fill()
-      ctx.shadowBlur = 0
 
       ctx.beginPath()
-      ctx.arc(v.x, v.y, baseR, 0, Math.PI * 2)
-      ctx.strokeStyle = hexAlpha(vInfo.border, 0.9)
-      ctx.lineWidth = 2 + feedPct * 2
+      for (let i = 0; i < numSpikes * 2; i++) {
+        const angle = (i / (numSpikes * 2)) * Math.PI * 2 + rotOffset
+        const r = i % 2 === 0 ? baseR : baseR * spikeRatio
+        const px = v.x + Math.cos(angle) * r
+        const py = v.y + Math.sin(angle) * r
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      }
+      ctx.closePath()
+
+      const grad = ctx.createRadialGradient(v.x - baseR * 0.2, v.y - baseR * 0.25, baseR * 0.04, v.x, v.y, baseR)
+      grad.addColorStop(0, lighten(vInfo.color, 55, 0.92))
+      grad.addColorStop(0.45, hexAlpha(vInfo.color, 0.78))
+      grad.addColorStop(1, darken(vInfo.color, 50, 0.65))
+      ctx.fillStyle = grad
+      ctx.fill()
+
+      ctx.shadowBlur = 0
+      ctx.beginPath()
+      for (let i = 0; i < numSpikes * 2; i++) {
+        const angle = (i / (numSpikes * 2)) * Math.PI * 2 + rotOffset
+        const r = i % 2 === 0 ? baseR : baseR * spikeRatio
+        const px = v.x + Math.cos(angle) * r
+        const py = v.y + Math.sin(angle) * r
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      }
+      ctx.closePath()
+      ctx.strokeStyle = hexAlpha(vInfo.border, 0.95)
+      ctx.lineWidth = 2 + feedPct * 2.5
+      ctx.stroke()
+
+      const innerGrad = ctx.createRadialGradient(v.x, v.y, 0, v.x, v.y, innerR)
+      innerGrad.addColorStop(0, darken(vInfo.color, 70, 0.95))
+      innerGrad.addColorStop(1, darken(vInfo.color, 40, 0.85))
+      ctx.beginPath()
+      ctx.arc(v.x, v.y, innerR, 0, Math.PI * 2)
+      ctx.fillStyle = innerGrad
+      ctx.fill()
+      ctx.strokeStyle = hexAlpha(vInfo.border, 0.5)
+      ctx.lineWidth = 1
       ctx.stroke()
 
       ctx.beginPath()
-      ctx.arc(v.x - baseR * 0.28, v.y - baseR * 0.28, baseR * 0.28, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(255,255,255,0.18)'
+      ctx.arc(v.x - innerR * 0.3, v.y - innerR * 0.3, innerR * 0.22, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.15)'
       ctx.fill()
 
       if (fc > 0) {
         const rem = fc % 5
         const arcLen = (rem / 5) * Math.PI * 2
         ctx.beginPath()
-        ctx.arc(v.x, v.y, baseR + 5, -Math.PI / 2, -Math.PI / 2 + arcLen)
+        ctx.arc(v.x, v.y, baseR + 7, -Math.PI / 2, -Math.PI / 2 + arcLen)
         ctx.strokeStyle = '#fbbf24'
-        ctx.lineWidth = 3
-        ctx.shadowBlur = 8; ctx.shadowColor = '#fbbf24'
+        ctx.lineWidth = 3.5
+        ctx.shadowBlur = 10; ctx.shadowColor = '#fbbf24'
         ctx.stroke()
         ctx.shadowBlur = 0
 
         ctx.fillStyle = '#fbbf24'
-        ctx.font = `bold ${Math.max(9, baseR * 0.38)}px sans-serif`
+        ctx.font = `bold ${Math.max(10, innerR * 0.55)}px sans-serif`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(`${rem}/5`, v.x, v.y + baseR * 0.55)
+        ctx.fillText(`${rem}/5`, v.x, v.y)
       }
 
       if (v.type !== 'normal') {
         ctx.fillStyle = 'white'
-        ctx.font = `bold ${Math.max(10, baseR * 0.5)}px sans-serif`
+        ctx.font = `bold ${Math.max(11, innerR * 0.6)}px sans-serif`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(vInfo.label.split(' ')[0], v.x, v.y - baseR * 0.1)
+        ctx.fillText(vInfo.label.split(' ')[0], v.x, v.y)
       }
 
       ctx.restore()
@@ -1929,8 +2486,30 @@ export class GameEngine {
     for (const [id, p] of Object.entries(this.otherPlayers)) {
       if (p.x < vl || p.x > vr || p.y < vt || p.y > vb) continue
       const cells = p.cells?.length ? p.cells : [{ x: p.x, y: p.y, mass: p.mass || 20 }]
+      const isZombie = this.infectionZombies?.has(id)
+      const isGlowing = this.glowingPlayerIds?.has(id)
+      const drawColor = isZombie ? '#7cfc00' : p.color
+      const t = Date.now() / 300
       for (const c of cells) {
-        this._drawCell(c.x, c.y, massToRadius(c.mass), p.color, p.name, p.isGod, p.clan, false)
+        const r = massToRadius(c.mass)
+        if (isZombie) {
+          this.ctx.save()
+          this.ctx.shadowBlur = 20 + 10 * Math.sin(t)
+          this.ctx.shadowColor = '#7cfc00'
+          this.ctx.beginPath(); this.ctx.arc(c.x, c.y, r * 1.18, 0, Math.PI * 2)
+          this.ctx.strokeStyle = `rgba(124,252,0,${0.4 + 0.2 * Math.sin(t)})`
+          this.ctx.lineWidth = 4; this.ctx.stroke()
+          this.ctx.shadowBlur = 0
+          this.ctx.restore()
+        }
+        if (isGlowing) {
+          this.ctx.save()
+          this.ctx.shadowBlur = 30 + 15 * Math.sin(t)
+          this.ctx.shadowColor = '#00e5ff'
+          this._drawCell(c.x, c.y, r * 1.05, '#00e5ff', '', false, null, false)
+          this.ctx.restore()
+        }
+        this._drawCell(c.x, c.y, r, drawColor, p.name, p.isGod, p.clan, false, false, false, 'gradient', 0, null, null, p.ownedPackage || 'free')
       }
     }
     for (const bot of this.bots) {
@@ -1941,12 +2520,15 @@ export class GameEngine {
   }
 
   _drawMyPlayer() {
+    const ghostAlpha = this._ghostActive ? 0.35 : 1
+    if (ghostAlpha < 1) this.ctx.globalAlpha = ghostAlpha
     for (const cell of this.cells) {
-      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame)
+      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame, this.options.ownedPackage || 'free')
     }
+    if (ghostAlpha < 1) this.ctx.globalAlpha = 1
   }
 
-  _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0, nameEffect=null, activeFrame=null) {
+  _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0, nameEffect=null, activeFrame=null, ownedPackage='free') {
     const { ctx } = this
     if (radius < 0.5) return
 
@@ -2022,22 +2604,59 @@ export class GameEngine {
     }
 
     if (activeFrame && dr > 16) {
-      const FRAME_COLORS = {
-        silver: '#9ca3af', gold: '#f59e0b', diamond: '#38bdf8', legendary: '#ec4899',
+      const FRAME_CFG = {
+        silver:    { c1: '#c0c0c0', c2: '#9ca3af', segs: 8,  gap: 0.55, speed: 0.6,  width: 3, glow: 8,  rings: 1 },
+        gold:      { c1: '#ffd700', c2: '#f59e0b', segs: 10, gap: 0.6,  speed: 0.9,  width: 3.5, glow: 14, rings: 2 },
+        diamond:   { c1: '#7df9ff', c2: '#38bdf8', segs: 12, gap: 0.65, speed: 1.2,  width: 3,   glow: 18, rings: 2 },
+        legendary: { c1: '#ff69b4', c2: '#ec4899', segs: 6,  gap: 0.7,  speed: 1.6,  width: 5,   glow: 24, rings: 3 },
       }
-      const fc = FRAME_COLORS[activeFrame] || '#9ca3af'
-      const t = Date.now() / 800
-      const segments = activeFrame === 'legendary' ? 6 : activeFrame === 'diamond' ? 8 : 12
-      for (let i = 0; i < segments; i++) {
-        const a1 = (i / segments) * Math.PI * 2 + t
-        const a2 = ((i + 0.7) / segments) * Math.PI * 2 + t
-        ctx.beginPath()
-        ctx.arc(x, y, dr + 5, a1, a2)
-        ctx.strokeStyle = fc
-        ctx.lineWidth = activeFrame === 'legendary' ? 4 : 3
-        ctx.shadowBlur = 10; ctx.shadowColor = fc
-        ctx.stroke()
-        ctx.shadowBlur = 0
+      const cfg = FRAME_CFG[activeFrame] || FRAME_CFG.silver
+      const t = Date.now() / 1000
+      for (let ring = 0; ring < cfg.rings; ring++) {
+        const r = dr + 5 + ring * 5
+        const dir = ring % 2 === 0 ? 1 : -1
+        const speed = cfg.speed * (1 - ring * 0.15)
+        for (let i = 0; i < cfg.segs; i++) {
+          const a1 = (i / cfg.segs) * Math.PI * 2 + t * speed * dir
+          const a2 = a1 + (cfg.gap / cfg.segs) * Math.PI * 2
+          const alpha = 0.7 + 0.3 * Math.sin(t * 3 + i)
+          ctx.beginPath()
+          ctx.arc(x, y, r, a1, a2)
+          ctx.strokeStyle = ring % 2 === 0 ? cfg.c1 : cfg.c2
+          ctx.lineWidth = cfg.width - ring * 0.5
+          ctx.globalAlpha = alpha
+          ctx.shadowBlur = cfg.glow; ctx.shadowColor = cfg.c1
+          ctx.stroke()
+          ctx.shadowBlur = 0
+        }
+      }
+      ctx.globalAlpha = 1
+      if (activeFrame === 'legendary') {
+        const gemCount = 6
+        const gemR = dr + 14
+        for (let i = 0; i < gemCount; i++) {
+          const angle = (i / gemCount) * Math.PI * 2 + t * 1.6
+          const gx = x + Math.cos(angle) * gemR
+          const gy = y + Math.sin(angle) * gemR
+          const pulse = 0.6 + 0.4 * Math.sin(t * 5 + i)
+          ctx.beginPath(); ctx.arc(gx, gy, 3.5, 0, Math.PI*2)
+          ctx.fillStyle = `rgba(255,105,180,${pulse})`
+          ctx.shadowBlur = 12; ctx.shadowColor = '#ec4899'
+          ctx.fill(); ctx.shadowBlur = 0
+        }
+      }
+      if (activeFrame === 'diamond') {
+        const gemCount = 4
+        const gemR = dr + 10
+        for (let i = 0; i < gemCount; i++) {
+          const angle = (i / gemCount) * Math.PI * 2 + t * 1.2
+          const gx = x + Math.cos(angle) * gemR
+          const gy = y + Math.sin(angle) * gemR
+          ctx.beginPath(); ctx.arc(gx, gy, 3, 0, Math.PI*2)
+          ctx.fillStyle = `rgba(125,249,255,${0.7 + 0.3*Math.sin(t*4+i)})`
+          ctx.shadowBlur = 10; ctx.shadowColor = '#38bdf8'
+          ctx.fill(); ctx.shadowBlur = 0
+        }
       }
     }
 
@@ -2055,30 +2674,113 @@ export class GameEngine {
       ctx.font = `bold ${fs}px "Exo 2", sans-serif`
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       const nameY = startY + lineIdx * lineH
-      const displayName = isGod ? '[GOD] '+name : name
-      const NAME_EFFECT_COLORS = {
-        glow: '#60a5fa', fire: '#ef4444', neon: '#22c55e',
-        electric: '#fbbf24', rainbow: null, galaxy: '#8b5cf6',
-        shadow: '#6b7280', crystal: '#38bdf8',
-      }
-      let nameColor = 'white'
-      let shadowColor = 'rgba(0,0,0,0.9)'
-      let shadowBlurAmt = 5
-      if (nameEffect && NAME_EFFECT_COLORS[nameEffect] !== undefined) {
-        if (nameEffect === 'rainbow') {
-          const t = Date.now() / 400
-          nameColor = `hsl(${(t * 60) % 360},100%,70%)`
-          shadowColor = nameColor; shadowBlurAmt = 14
+      const PREMIUM_TIERS = ['trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
+      const isPremiumPlayer = PREMIUM_TIERS.includes(ownedPackage) && ownedPackage !== 'free'
+      const isElitePlus = ['elite','champion','master','legend','apex','immortal'].includes(ownedPackage)
+      const nt2 = Date.now() / 1000
+      const premiumBannerH = isPremiumPlayer ? fs * 1.35 : 0
+      if (isPremiumPlayer && dr > 20) {
+        const bW = Math.max(fs * (name.length * 0.62 + 1.4), dr * 1.1)
+        const bX = x - bW / 2
+        const bY = nameY - premiumBannerH * 0.6
+        ctx.save()
+        if (ctx.roundRect) {
+          ctx.beginPath(); ctx.roundRect(bX, bY, bW, premiumBannerH, premiumBannerH / 2); ctx.clip()
+        }
+        const bannerGrad = ctx.createLinearGradient(bX, bY, bX + bW, bY + premiumBannerH)
+        if (isElitePlus) {
+          const hue = (nt2 * 40) % 360
+          bannerGrad.addColorStop(0, `hsla(${hue},100%,60%,0.82)`)
+          bannerGrad.addColorStop(0.5, `hsla(${(hue+60)%360},100%,70%,0.88)`)
+          bannerGrad.addColorStop(1, `hsla(${(hue+120)%360},100%,60%,0.82)`)
         } else {
-          nameColor = NAME_EFFECT_COLORS[nameEffect]
-          shadowColor = nameColor; shadowBlurAmt = 16
+          bannerGrad.addColorStop(0, 'rgba(99,102,241,0.78)')
+          bannerGrad.addColorStop(1, 'rgba(139,92,246,0.78)')
+        }
+        ctx.fillStyle = bannerGrad
+        ctx.fillRect(bX, bY, bW, premiumBannerH)
+        ctx.restore()
+        ctx.strokeStyle = isElitePlus ? `hsla(${(nt2*40)%360},100%,75%,0.9)` : 'rgba(167,139,250,0.85)'
+        ctx.lineWidth = 1.5
+        if (ctx.roundRect) {
+          ctx.beginPath(); ctx.roundRect(bX, bY, bW, premiumBannerH, premiumBannerH / 2); ctx.stroke()
         }
       }
+      if (isPremiumPlayer && dr > 22) {
+        const crownSize = Math.max(8, fs * 0.72)
+        const crownY = nameY - premiumBannerH * 0.6 - crownSize * 0.95
+        ctx.font = `${crownSize}px sans-serif`
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.shadowBlur = isElitePlus ? 14 : 8
+        ctx.shadowColor = isElitePlus ? `hsl(${(nt2*40)%360},100%,70%)` : '#fbbf24'
+        ctx.fillText(isElitePlus ? '★' : '★', x, crownY)
+        ctx.shadowBlur = 0
+      }
+      const displayName = isGod ? '[APEX] '+name : name
+      let nameColor = isPremiumPlayer ? (isElitePlus ? `hsl(${(nt2*30+30)%360},100%,90%)` : '#e0d9ff') : 'white'
+      let shadowColor = 'rgba(0,0,0,0.9)'
+      let shadowBlurAmt = 5
+      let extraPasses = []
+      const nt = Date.now() / 1000
+      if (nameEffect) {
+        if (nameEffect === 'glow') {
+          nameColor = '#93c5fd'; shadowColor = '#60a5fa'; shadowBlurAmt = 20
+        } else if (nameEffect === 'fire') {
+          const flicker = 0.8 + 0.2 * Math.sin(nt * 18)
+          nameColor = `hsl(${20 + 15*Math.sin(nt*7)},100%,${60+10*Math.sin(nt*11)}%)`
+          shadowColor = '#ef4444'; shadowBlurAmt = 22 * flicker
+          extraPasses = [
+            { color: `rgba(255,200,0,${0.6+0.4*Math.sin(nt*9)})`, blur: 8, dy: -1 },
+          ]
+        } else if (nameEffect === 'neon') {
+          nameColor = '#86efac'; shadowColor = '#22c55e'; shadowBlurAmt = 0
+          extraPasses = [
+            { color: '#22c55e', blur: 30, dy: 0 },
+            { color: '#86efac', blur: 4, dy: 0 },
+          ]
+        } else if (nameEffect === 'electric') {
+          const jitter = (Math.random() - 0.5) * 1.5
+          nameColor = '#fef08a'; shadowColor = '#fbbf24'; shadowBlurAmt = 25
+          extraPasses = [{ color: 'rgba(255,255,255,0.9)', blur: 2, dy: 0, dx: jitter }]
+        } else if (nameEffect === 'rainbow') {
+          nameColor = `hsl(${(nt * 120) % 360},100%,70%)`
+          shadowColor = nameColor; shadowBlurAmt = 18
+          extraPasses = [
+            { color: `hsl(${(nt*120+60)%360},100%,70%)`, blur: 12, dy: 0 },
+          ]
+        } else if (nameEffect === 'galaxy') {
+          nameColor = '#c4b5fd'; shadowColor = '#8b5cf6'; shadowBlurAmt = 20
+          extraPasses = [
+            { color: `hsl(${(nt*40+260)%360},80%,75%)`, blur: 15, dy: 0 },
+          ]
+        } else if (nameEffect === 'shadow') {
+          nameColor = '#d1d5db'; shadowColor = '#000'; shadowBlurAmt = 0
+          extraPasses = [
+            { color: 'rgba(0,0,0,0.9)', blur: 0, dy: 3, dx: 3 },
+          ]
+        } else if (nameEffect === 'crystal') {
+          const pulse = 0.8 + 0.2 * Math.sin(nt * 4)
+          nameColor = `rgba(125,249,255,${pulse})`
+          shadowColor = '#38bdf8'; shadowBlurAmt = 20
+          extraPasses = [
+            { color: 'rgba(255,255,255,0.8)', blur: 6, dy: -1 },
+          ]
+        }
+      }
+      ctx.font = `bold ${fs}px "Exo 2", sans-serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.lineWidth = 3.5
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)'
+      ctx.strokeText(displayName, x, nameY)
+      for (const pass of extraPasses) {
+        ctx.shadowBlur = pass.blur; ctx.shadowColor = pass.color
+        ctx.fillStyle = pass.color
+        ctx.fillText(displayName, x + (pass.dx||0), nameY + (pass.dy||0))
+      }
       ctx.shadowBlur = shadowBlurAmt; ctx.shadowColor = shadowColor
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3
-      ctx.strokeText(displayName, x+1, nameY+1)
       ctx.fillStyle = nameColor
       ctx.fillText(displayName, x, nameY)
+      ctx.shadowBlur = 0
       lineIdx++
 
       if (hasClan) {
@@ -2098,12 +2800,30 @@ export class GameEngine {
     }
   }
 
-  _activateSpeed() {
-    const sk = this.skills.speed
-    if (sk.cooldown > 0) { this._showFloat(`⚡ Bekleme: ${Math.ceil(sk.cooldown)}s`, '#fbbf24'); return }
-    if (!this.options.isPremium && !(this.options.ownedPackage && this.options.ownedPackage !== 'free')) {
-      this._showFloat('⚡ Premium Gerekli! 💎', '#fbbf24'); return
+  _checkSkillAccess(name, icon, color) {
+    const pkg = this.options.ownedPackage || 'free'
+    const sk = this.skills[name]
+    const hasPkg = SKILL_PACKAGES.includes(pkg)
+    const hasBoxUses = sk.maxUses > 0
+    if (!hasPkg && !hasBoxUses) {
+      this._showFloat(`${icon} Efsane+ Paketi veya Kutu Gerekli!`, color); return false
     }
+    if (sk.usesLeft !== Infinity && sk.usesLeft <= 0) {
+      this._showFloat(`${icon} Kullanim Hakki Bitti!`, color); return false
+    }
+    if (sk.cooldown > 0) { this._showFloat(`${icon} Bekleme: ${Math.ceil(sk.cooldown)}s`, color); return false }
+    return true
+  }
+
+  _useSkill(name) {
+    const sk = this.skills[name]
+    if (sk.usesLeft !== Infinity) sk.usesLeft = Math.max(0, sk.usesLeft - 1)
+  }
+
+  _activateSpeed() {
+    if (!this._checkSkillAccess('speed', '⚡', '#fbbf24')) return
+    this._useSkill('speed')
+    const sk = this.skills.speed
     sk.active = true; sk.timer = SKILL_SPEED_DURATION; sk.cooldown = SKILL_SPEED_COOLDOWN
     this._showFloat('⚡ HIZLANMA AKTİF!', '#fbbf24')
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#fbbf24')
@@ -2111,26 +2831,21 @@ export class GameEngine {
   }
 
   _activateSlow() {
-    const sk = this.skills.slow
-    if (sk.cooldown > 0) { this._showFloat(`🌀 Bekleme: ${Math.ceil(sk.cooldown)}s`, '#8b5cf6'); return }
-    if (!this.options.isPremium) { this._showFloat('🌀 Premium Gerekli! 💎', '#8b5cf6'); return }
+    if (!this._checkSkillAccess('slow', '🌀', '#8b5cf6')) return
     const cell = this.cells[0]
     if (!cell) return
     let nearestId = null, nearDist = Infinity
-    for (const bot of this.bots) {
-      if (bot.dead) continue
-      const d = dist(bot, cell)
-      if (d < nearDist) { nearDist = d; nearestId = bot.id }
-    }
     for (const [id, p] of Object.entries(this.otherPlayers)) {
       const d = Math.sqrt((p.x - cell.x) ** 2 + (p.y - cell.y) ** 2)
       if (d < nearDist) { nearDist = d; nearestId = id }
     }
     if (!nearestId) { this._showFloat('🌀 Hedef bulunamadı!', '#8b5cf6'); return }
+    this._useSkill('slow')
+    const sk = this.skills.slow
     sk.active = true; sk.timer = SKILL_SLOW_DURATION; sk.cooldown = SKILL_SLOW_COOLDOWN
     sk.targetId = nearestId
     this.slowedEntities[nearestId] = SKILL_SLOW_DURATION
-    const target = this.bots.find(b => b.id === nearestId) || this.otherPlayers[nearestId]
+    const target = this.otherPlayers[nearestId]
     this.clickTarget = target ? { x: target.x, y: target.y } : null
     this._showFloat('🌀 EN YAKIN YAVAŞLATILDI!', '#8b5cf6')
     this._spawnExplosion(cell.x, cell.y, '#8b5cf6')
@@ -2138,12 +2853,49 @@ export class GameEngine {
   }
 
   _activateShield() {
+    if (!this._checkSkillAccess('shield', '🛡️', '#06b6d4')) return
+    this._useSkill('shield')
     const sk = this.skills.shield
-    if (sk.cooldown > 0) { this._showFloat(`🛡️ Bekleme: ${Math.ceil(sk.cooldown)}s`, '#06b6d4'); return }
-    if (!this.options.isPremium) { this._showFloat('🛡️ Premium Gerekli! 💎', '#06b6d4'); return }
     sk.active = true; sk.timer = SKILL_SHIELD_DURATION; sk.cooldown = SKILL_SHIELD_COOLDOWN
     this._showFloat('🛡️ KALKAN AKTİF!', '#06b6d4')
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#06b6d4')
+    this.onSkillChange({ ...this.skills })
+  }
+
+  _activateMagnet() {
+    if (!this._checkSkillAccess('magnet', '🧲', '#ec4899')) return
+    this._useSkill('magnet')
+    const sk = this.skills.magnet
+    sk.active = true; sk.timer = SKILL_MAGNET_DURATION; sk.cooldown = SKILL_MAGNET_COOLDOWN
+    this._showFloat('🧲 MANYETIK AKTİF!', '#ec4899')
+    this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#ec4899')
+    this.onSkillChange({ ...this.skills })
+  }
+
+  _activateGhost() {
+    if (!this._checkSkillAccess('ghost', '👻', '#a78bfa')) return
+    this._useSkill('ghost')
+    const sk = this.skills.ghost
+    sk.active = true; sk.timer = SKILL_GHOST_DURATION; sk.cooldown = SKILL_GHOST_COOLDOWN
+    this._ghostActive = true
+    this._showFloat('👻 HAYALET MODU!', '#a78bfa')
+    this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#a78bfa')
+    this.onSkillChange({ ...this.skills })
+  }
+
+  _activateTeleport() {
+    if (!this._checkSkillAccess('teleport', '⚡', '#38bdf8')) return
+    const cell = this.cells[0]
+    if (!cell) return
+    const tx = clamp(this.mouse.x, 100, WORLD_SIZE - 100)
+    const ty = clamp(this.mouse.y, 100, WORLD_SIZE - 100)
+    this._useSkill('teleport')
+    const sk = this.skills.teleport
+    sk.cooldown = SKILL_TELEPORT_COOLDOWN
+    for (const c of this.cells) { c.x = tx + (Math.random()-0.5)*40; c.y = ty + (Math.random()-0.5)*40 }
+    this.camera.x = tx; this.camera.y = ty
+    this._showFloat('⚡ IŞINLANDI!', '#38bdf8')
+    this._spawnExplosion(tx, ty, '#38bdf8')
     this.onSkillChange({ ...this.skills })
   }
 
@@ -2170,12 +2922,31 @@ export class GameEngine {
 
   _updateSkills(dt) {
     for (const [name, sk] of Object.entries(this.skills)) {
-      if (sk.active) { sk.timer -= dt; if (sk.timer <= 0) { sk.active = false; sk.timer = 0 } }
+      if (sk.active) {
+        sk.timer -= dt
+        if (sk.timer <= 0) {
+          sk.active = false; sk.timer = 0
+          if (name === 'ghost') this._ghostActive = false
+        }
+      }
       if (sk.cooldown > 0) { sk.cooldown -= dt; if (sk.cooldown < 0) sk.cooldown = 0 }
     }
     for (const id of Object.keys(this.slowedEntities)) {
       this.slowedEntities[id] -= dt
       if (this.slowedEntities[id] <= 0) delete this.slowedEntities[id]
+    }
+    if (this.skills.magnet.active && this.cells.length > 0) {
+      const cell = this.cells[0]
+      const magnetRadius = massToRadius(cell.mass) * 8
+      const magnetForce = 180 * dt
+      for (const f of this.food) {
+        const dx = cell.x - f.x, dy = cell.y - f.y
+        const d = Math.sqrt(dx*dx + dy*dy)
+        if (d < magnetRadius && d > 1) {
+          f.x += (dx / d) * magnetForce
+          f.y += (dy / d) * magnetForce
+        }
+      }
     }
     if (Object.keys(this.skills).some(k => this.skills[k].active || this.skills[k].cooldown > 0)) {
       this.onSkillChange({ ...this.skills })
@@ -2442,6 +3213,129 @@ export class GameEngine {
       ctx.fillText(this.modeMessage, x, y - radius - 30)
       ctx.restore()
     }
+  }
+
+  _drawKothZone() {
+    if (this.gameMode !== 'king_of_hill' || !this.kothZone) return
+    const { ctx } = this
+    const { x, y, radius } = this.kothZone
+    const t = Date.now() / 800
+    const alpha = 0.2 + 0.1 * Math.sin(t)
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius)
+    grad.addColorStop(0, `rgba(251,191,36,${alpha * 0.5})`)
+    grad.addColorStop(1, `rgba(251,191,36,0)`)
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2)
+    ctx.fillStyle = grad; ctx.fill()
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2)
+    ctx.strokeStyle = `rgba(251,191,36,${0.6 + 0.3 * Math.sin(t)})`
+    ctx.lineWidth = 5; ctx.setLineDash([20, 8]); ctx.stroke(); ctx.setLineDash([])
+    ctx.fillStyle = `rgba(251,191,36,0.9)`
+    ctx.font = 'bold 36px "Exo 2",sans-serif'
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.shadowBlur = 20; ctx.shadowColor = '#fbbf24'
+    ctx.fillText('KRAL BÖLGESİ', x, y)
+    ctx.shadowBlur = 0
+    if (this.kothTimeLeft != null) {
+      ctx.font = 'bold 22px "Exo 2",sans-serif'
+      ctx.fillStyle = '#fff'
+      const mins = Math.floor(this.kothTimeLeft / 60)
+      const secs = this.kothTimeLeft % 60
+      ctx.fillText(`${mins}:${secs < 10 ? '0' : ''}${secs}`, x, y + 45)
+    }
+  }
+
+  _drawCrystals() {
+    if (!this.modeCrystals?.length) return
+    const { ctx } = this
+    const t = Date.now() / 400
+    for (const crystal of this.modeCrystals) {
+      const glow = 0.75 + 0.25 * Math.sin(t + crystal.x * 0.01)
+      const r = 50 + 8 * Math.sin(t * 1.2)
+      const grad = ctx.createRadialGradient(crystal.x, crystal.y, 0, crystal.x, crystal.y, r * 2.2)
+      grad.addColorStop(0, `rgba(0,229,255,${glow * 0.6})`)
+      grad.addColorStop(0.5, `rgba(0,150,255,${glow * 0.25})`)
+      grad.addColorStop(1, 'rgba(0,229,255,0)')
+      ctx.beginPath(); ctx.arc(crystal.x, crystal.y, r * 2.2, 0, Math.PI * 2)
+      ctx.fillStyle = grad; ctx.fill()
+      ctx.beginPath()
+      const pts = 6
+      for (let i = 0; i < pts; i++) {
+        const angle = (i / pts) * Math.PI * 2 + t * 0.4
+        const ri = i % 2 === 0 ? r : r * 0.45
+        const px = crystal.x + Math.cos(angle) * ri
+        const py = crystal.y + Math.sin(angle) * ri
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      }
+      ctx.closePath()
+      ctx.fillStyle = `rgba(0,229,255,${glow * 0.95})`
+      ctx.shadowBlur = 30; ctx.shadowColor = '#00e5ff'
+      ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke()
+      ctx.shadowBlur = 0
+      ctx.fillStyle = '#fff'
+      ctx.font = 'bold 18px "Exo 2",sans-serif'
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.shadowBlur = 12; ctx.shadowColor = '#00e5ff'
+      ctx.fillText('KRİSTAL', crystal.x, crystal.y + r + 22)
+      ctx.shadowBlur = 0
+    }
+  }
+
+  _drawBoss() {
+    if (!this.modeBoss) return
+    const { ctx } = this
+    const boss = this.modeBoss
+    const t = Date.now() / 300
+    boss.pulse = (boss.pulse || 0) + 0.05
+    const r = Math.sqrt(boss.mass || 5000) * 4.5
+    const glow = 0.5 + 0.3 * Math.sin(boss.pulse)
+    ctx.shadowBlur = 40 + 20 * Math.sin(boss.pulse)
+    ctx.shadowColor = '#ff0040'
+    const grad = ctx.createRadialGradient(boss.x, boss.y, 0, boss.x, boss.y, r)
+    grad.addColorStop(0, `rgba(255,0,64,${glow})`)
+    grad.addColorStop(0.6, `rgba(180,0,40,${glow * 0.7})`)
+    grad.addColorStop(1, `rgba(100,0,20,${glow * 0.3})`)
+    ctx.beginPath(); ctx.arc(boss.x, boss.y, r, 0, Math.PI * 2)
+    ctx.fillStyle = grad; ctx.fill()
+    ctx.strokeStyle = `rgba(255,0,64,${0.6 + 0.4 * Math.sin(t)})`
+    ctx.lineWidth = 6; ctx.stroke()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = '#fff'
+    ctx.font = `bold ${Math.min(32, r * 0.35)}px "Exo 2",sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('BOSS', boss.x, boss.y)
+    const hpPct = Math.max(0, (boss.mass || 0) / 5000)
+    const barW = r * 2.2, barH = 12
+    const bx = boss.x - barW / 2, by = boss.y + r + 18
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'
+    ctx.beginPath()
+    if (ctx.roundRect) ctx.roundRect(bx, by, barW, barH, 4); else ctx.rect(bx, by, barW, barH)
+    ctx.fill()
+    const hpGrad = ctx.createLinearGradient(bx, 0, bx + barW * hpPct, 0)
+    hpGrad.addColorStop(0, '#ff0040'); hpGrad.addColorStop(1, '#ff6b35')
+    ctx.fillStyle = hpGrad
+    ctx.beginPath()
+    if (ctx.roundRect) ctx.roundRect(bx, by, barW * hpPct, barH, 4); else ctx.rect(bx, by, barW * hpPct, barH)
+    ctx.fill()
+    if (boss.attackTimer != null) {
+      ctx.fillStyle = '#fff'
+      ctx.font = '13px "Exo 2",sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(`Saldiri: ${boss.attackTimer}s`, boss.x, by + barH + 14)
+    }
+  }
+
+  _drawBossBlast() {
+    if (!this.bossBlastEffect || this.bossBlastEffect.timer <= 0) return
+    const { ctx } = this
+    const { x, y, radius, timer } = this.bossBlastEffect
+    this.bossBlastEffect.timer -= 1 / 60
+    const alpha = this.bossBlastEffect.timer / 0.6
+    ctx.beginPath(); ctx.arc(x, y, radius * (1 - alpha * 0.5), 0, Math.PI * 2)
+    ctx.strokeStyle = `rgba(255,0,64,${alpha * 0.8})`
+    ctx.lineWidth = 8; ctx.stroke()
+    ctx.beginPath(); ctx.arc(x, y, radius * (1 - alpha * 0.5), 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(255,0,64,${alpha * 0.15})`; ctx.fill()
   }
 
   _notifyDeath(killerId = null, killerName = null) {

@@ -113,7 +113,7 @@ export default function ChatSystem({ roomId }) {
         onClick={() => setOpen(!open)}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
-        className="absolute bottom-6 right-4 sm:right-20 px-4 py-3 rounded-xl font-bold text-sm flex items-center gap-2"
+        className="absolute bottom-6 left-4 px-4 py-3 rounded-xl font-bold text-sm flex items-center gap-2"
         style={{ zIndex: 30, background: theme.uiBg, border: `1px solid ${theme.uiBorder}`, color: theme.uiAccent }}>
         💬
         {unread > 0 && (
@@ -133,7 +133,7 @@ export default function ChatSystem({ roomId }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.18 }}
-            className="absolute bottom-20 right-4 w-80 rounded-2xl overflow-hidden flex flex-col"
+            className="absolute bottom-20 left-4 w-80 rounded-2xl overflow-hidden flex flex-col"
             style={{ zIndex: 30, background: theme.uiBg, border: `1px solid ${theme.uiBorder}`, backdropFilter: 'blur(20px)', maxHeight: '420px' }}>
 
             <div className="flex items-center justify-between px-4 py-2.5 border-b"
