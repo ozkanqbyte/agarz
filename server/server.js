@@ -17,7 +17,7 @@ const io = new Server(httpServer, {
 
 const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
-const VIRUS_COUNT = 40
+const VIRUS_COUNT = 10
 const TICK_RATE = 20
 const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 2
@@ -27,7 +27,7 @@ const EJECT_COST = 2
 const EJECT_MASS = 12
 const MERGE_TIME = 30000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 22
+const SPLIT_SPEED = 10
 const MIN_EAT_RATIO = 1.15
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -38,7 +38,7 @@ const FOOD_COLORS = [
   '#e64980','#0ca678','#ae3ec9','#1971c2','#f76707',
   '#20c997','#74c0fc','#f783ac','#a9e34b','#da77f2'
 ]
-const VIRUS_TYPES = ['normal','normal','normal','normal','super','poison','freeze']
+const VIRUS_TYPES = ['normal']
 
 function rnd(max) { return Math.random() * max }
 function rndId() { return Math.random().toString(36).slice(2, 12) }
@@ -200,7 +200,6 @@ class GameRoom {
 
     this._checkFoodCollisions()
     this._checkPlayerCollisions()
-    this._checkVirusCollisions()
     this._checkCrystalCollisions()
     this._checkBossCollisions()
     this._respawnFood()
@@ -1147,23 +1146,15 @@ io.on('connection', (socket) => {
     const virusId = data.id
     const virusIdx = room.viruses.findIndex(v => v.id === virusId)
     if (virusIdx === -1) return
-    const virus = room.viruses[virusIdx]
-    const hitCell = player.cells.find(c => {
-      const virusR = massToRadius(virus.mass)
-      const cellR = massToRadius(c.mass)
-      return dist(c, virus) < virusR + cellR * 0.85 && c.mass >= virus.mass
-    })
-    if (!hitCell) return
+    const biggestCell = player.cells.reduce((best, c) => !best || c.mass > best.mass ? c : best, null)
+    if (!biggestCell || biggestCell.mass < (room.viruses[virusIdx]?.mass || 100) * 0.5) return
+    const hitCell = biggestCell
     const shield = player.skillShieldTimer > 0
-    if (!shield && hitCell.mass > 100) {
-      room._explodePlayer(player, hitCell)
-    }
-    hitCell.mass += 300
+    hitCell.mass += 10
     player.mass = player.cells.reduce((s, c) => s + c.mass, 0)
-    if (!shield && virus.type === 'poison') player.poisoned = 5
-    if (!shield && virus.type === 'freeze') player.frozen = 4
+    if (!shield && room.viruses[virusIdx]?.type === 'poison') player.poisoned = 5
+    if (!shield && room.viruses[virusIdx]?.type === 'freeze') player.frozen = 4
     io.to(room.id).emit('virus:eaten', { id: virusId })
-    io.to(socket.id).emit('virus:mass_gain', { amount: 0 })
     room.viruses.splice(virusIdx, 1)
     while (room.viruses.length < VIRUS_COUNT) {
       const nv = room._makeVirus()

@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 40
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 24
+const SPLIT_SPEED = 11
 const MERGE_TIME = 30000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -396,13 +396,11 @@ export class GameEngine {
         5
       ))
     }
-    const virusTypes = ['normal', 'normal', 'normal', 'normal', 'super', 'poison', 'freeze']
     for (let i = 0; i < VIRUS_COUNT; i++) {
-      const t = virusTypes[Math.floor(Math.random() * virusTypes.length)]
       this.viruses.push(new Virus(
         600 + Math.random() * (WORLD_SIZE - 1200),
         600 + Math.random() * (WORLD_SIZE - 1200),
-        t
+        'normal'
       ))
     }
     this.onPlayerCountChange(1)
@@ -592,7 +590,7 @@ export class GameEngine {
                   if (massProtected) continue
                   const sm = validCs[i].m
                   const cm = this.cells[i].mass
-                  if (sinceJoin < 3000 && sm < cm * 0.7) continue
+                  if (sinceJoin < 6000 && sm < cm * 0.5) continue
                   this.cells[i].mass = lerp(cm, sm, 0.3)
                 }
               }
@@ -975,8 +973,9 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 30) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 25) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyE' && now - this.lastEjectTime > 80) { this._ejectFan(EJECT_MASS_MD); this.lastEjectTime = now }
+    if (e.code === 'KeyR' && now - this.lastEjectTime > 12) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -1066,21 +1065,30 @@ export class GameEngine {
     doSplit()
   }
 
-  _eject(massAmount) {
+  _eject(massAmount, angleOffset = 0) {
     for (const cell of this.cells) {
       if (cell.mass < massAmount * 2) continue
       cell.mass -= massAmount + 2
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
-      const len = Math.sqrt(dx*dx + dy*dy) || 1
+      const baseAngle = Math.atan2(dy, dx) + angleOffset
+      const spd = 22
       const em = new EjectedMass(
-        cell.x + (dx/len) * (cell.radius + 6),
-        cell.y + (dy/len) * (cell.radius + 6),
-        (dx/len) * 20, (dy/len) * 20,
+        cell.x + Math.cos(baseAngle) * (cell.radius + 6),
+        cell.y + Math.sin(baseAngle) * (cell.radius + 6),
+        Math.cos(baseAngle) * spd, Math.sin(baseAngle) * spd,
         cell.color, massAmount
       )
       this.ejected.push(em)
     }
+  }
+
+  _ejectFan(massAmount) {
+    const angles = [-0.22, 0, 0.22]
+    for (const angleOffset of angles) {
+      this._eject(massAmount, angleOffset)
+    }
+    if (this._useSocket) socketClient.sendEject()
   }
 
   _buyMass(size) {
@@ -1145,8 +1153,12 @@ export class GameEngine {
     this.bgTime += dt
     const now = Date.now()
 
-    if (this.keys['KeyE'] && now - this.lastEjectTime > 30) {
-      this._eject(EJECT_MASS_MD)
+    if (this.keys['KeyE'] && now - this.lastEjectTime > 100) {
+      this._ejectFan(EJECT_MASS_MD)
+      this.lastEjectTime = now
+    }
+    if (this.keys['KeyR'] && now - this.lastEjectTime > 12) {
+      this._eject(EJECT_MASS_LG)
       this.lastEjectTime = now
       if (this._useSocket) socketClient.sendEject()
     }
@@ -1609,10 +1621,7 @@ export class GameEngine {
     for (const virus of this.viruses) {
       if (virus.dead) continue
       virus.age = (virus.age || 0) + dt
-      virus.rotAngle = (virus.rotAngle || 0) + dt * 0.4
-      virus.wiggleT = (virus.wiggleT || 0) + dt * 2.1
-      virus.x = virus.spawnX + Math.sin(virus.wiggleT * 1.1) * 3
-      virus.y = virus.spawnY + Math.cos(virus.wiggleT * 0.9) * 3
+      if (!virus.spawnX) { virus.spawnX = virus.x; virus.spawnY = virus.y }
       if ((virus.hitCooldown || 0) > 0) {
         virus.hitCooldown -= dt
         if (virus.hitCooldown <= 0) {
@@ -2376,16 +2385,15 @@ export class GameEngine {
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
-      v.pulse = (v.pulse || 0) + 0.04
-      const vInfo = VIRUS_TYPES[v.type]
+      if (!v.pulse) v.pulse = 0
+      const vInfo = VIRUS_TYPES[v.type] || VIRUS_TYPES.normal
       const fc = v.feedCount || 0
       const feedPct = Math.min((fc % 5) / 5, 1)
-      const pulseMod = 1 + 0.045 * Math.sin(v.pulse)
-      const baseR = v.radius * (1 + feedPct * 0.4) * pulseMod * 1.6
+      const baseR = v.radius * (1 + feedPct * 0.4) * 1.6
       const innerR = baseR * 0.58
       const numSpikes = 14
       const spikeRatio = 0.48
-      const rotOffset = v.pulse * 0.3
+      const rotOffset = 0
 
       ctx.save()
 
@@ -2662,10 +2670,78 @@ export class GameEngine {
       ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
       ctx.fillStyle = 'rgba(168,85,247,0.15)'; ctx.fill()
     }
-    if (shieldActive) {
-      const t = Date.now() / 600
-      ctx.beginPath(); ctx.arc(x, y, dr + 5 + 3*Math.sin(t), 0, Math.PI*2)
-      ctx.strokeStyle = `rgba(6,182,212,${0.5 + 0.3*Math.sin(t)})`; ctx.lineWidth = 3; ctx.stroke()
+    if (isMe && this.skills) {
+      const t = Date.now() / 1000
+      const ms = Date.now()
+      if (this.skills.speed?.active) {
+        for (let ring = 0; ring < 2; ring++) {
+          const rr = dr + 6 + ring * 7
+          const segs = 8
+          for (let i = 0; i < segs; i++) {
+            const a1 = (i / segs) * Math.PI * 2 + t * 3 * (ring % 2 === 0 ? 1 : -1)
+            const a2 = a1 + (0.55 / segs) * Math.PI * 2
+            ctx.beginPath(); ctx.arc(x, y, rr, a1, a2)
+            ctx.strokeStyle = `rgba(251,191,36,${0.8 - ring * 0.25})`
+            ctx.lineWidth = 3 - ring * 0.5
+            ctx.shadowBlur = 14; ctx.shadowColor = '#fbbf24'
+            ctx.stroke(); ctx.shadowBlur = 0
+          }
+        }
+        const trailCount = 6
+        for (let i = 0; i < trailCount; i++) {
+          const a = (i / trailCount) * Math.PI * 2 + t * 4
+          const px = x + Math.cos(a) * (dr + 4), py = y + Math.sin(a) * (dr + 4)
+          ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(251,191,36,${0.5 + 0.4 * Math.sin(t * 6 + i)})`
+          ctx.fill()
+        }
+      }
+      if (this.skills.shield?.active) {
+        const sides = 6
+        const hexR = dr + 9
+        ctx.beginPath()
+        for (let i = 0; i < sides; i++) {
+          const a = (i / sides) * Math.PI * 2 + t * 0.6
+          const hx = x + Math.cos(a) * hexR, hy = y + Math.sin(a) * hexR
+          if (i === 0) ctx.moveTo(hx, hy); else ctx.lineTo(hx, hy)
+        }
+        ctx.closePath()
+        const pulse = 0.5 + 0.35 * Math.sin(ms / 250)
+        ctx.strokeStyle = `rgba(6,182,212,${pulse})`
+        ctx.lineWidth = 3
+        ctx.shadowBlur = 20; ctx.shadowColor = '#06b6d4'
+        ctx.stroke(); ctx.shadowBlur = 0
+        ctx.fillStyle = `rgba(6,182,212,${pulse * 0.12})`; ctx.fill()
+      }
+      if (this.skills.slow?.active) {
+        for (let i = 0; i < 3; i++) {
+          const rr = dr + 6 + i * 8
+          const wave = 0.35 + 0.25 * Math.sin(ms / 200 - i * 1.1)
+          ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2)
+          ctx.strokeStyle = `rgba(139,92,246,${wave})`
+          ctx.lineWidth = 2
+          ctx.shadowBlur = 10; ctx.shadowColor = '#8b5cf6'
+          ctx.stroke(); ctx.shadowBlur = 0
+        }
+      }
+      if (this.skills.magnet?.active) {
+        const dotCount = 8
+        for (let i = 0; i < dotCount; i++) {
+          const a = (i / dotCount) * Math.PI * 2 + t * 2
+          const rr = dr + 10 + 4 * Math.sin(t * 3 + i)
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, 3.5, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(236,72,153,${0.7 + 0.3 * Math.sin(t * 4 + i)})`
+          ctx.shadowBlur = 10; ctx.shadowColor = '#ec4899'; ctx.fill(); ctx.shadowBlur = 0
+        }
+      }
+      if (this.skills.ghost?.active) {
+        ctx.beginPath(); ctx.arc(x, y, dr + 6, 0, Math.PI * 2)
+        const alpha = 0.2 + 0.15 * Math.sin(ms / 300)
+        ctx.strokeStyle = `rgba(167,139,250,${alpha})`
+        ctx.lineWidth = 4; ctx.setLineDash([8, 6])
+        ctx.shadowBlur = 16; ctx.shadowColor = '#a78bfa'
+        ctx.stroke(); ctx.shadowBlur = 0; ctx.setLineDash([])
+      }
     }
 
     if (activeFrame && dr > 16) {
