@@ -18,7 +18,7 @@ function generateProfileId() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let id = ''
   for (let i = 0; i < 4; i++) id += chars[Math.floor(Math.random() * chars.length)]
-  return 'AGARZ#' + id
+  return 'AGARIX#' + id
 }
 
 const makeDefaultProfile = (uid, name) => ({

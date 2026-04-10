@@ -40,6 +40,10 @@ export async function fbSaveInventory(uid, data) {
       ownedSkins: data.ownedSkins || ['default'],
       activeNameEffect: data.activeNameEffect || null,
       activeFrame: data.activeFrame || null,
+      ownedDeathEffects: data.ownedDeathEffects || [],
+      ownedTrailEffects: data.ownedTrailEffects || [],
+      activeDeathEffect: data.activeDeathEffect || null,
+      activeTrailEffect: data.activeTrailEffect || null,
       savedAt: Date.now(),
     })
   } catch {}

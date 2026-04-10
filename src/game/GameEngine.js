@@ -7,7 +7,7 @@ import { socketClient } from './SocketClient'
 
 const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
-const VIRUS_COUNT = 40
+const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
 const SPLIT_SPEED = 11
 const MERGE_TIME = 30000
@@ -244,6 +244,7 @@ export class GameEngine {
     this.lastMacroX = 0
     this._splitCount = 0
     this._splitResetTimer = 0
+    this._virusEatCount = 0
     this._soundUnlocked = false
 
     this.leaderboard = []
@@ -308,6 +309,7 @@ export class GameEngine {
 
     this._virusAutoTimer = 7
     this.onScoreChange = options.onScoreChange || (() => {})
+    this.onMassChange = options.onMassChange || (() => {})
     this.onDeath = options.onDeath || (() => {})
     this.onLeaderboardChange = options.onLeaderboardChange || (() => {})
     this.onPlayerCountChange = options.onPlayerCountChange || (() => {})
@@ -345,6 +347,13 @@ export class GameEngine {
     this._massProtectUntil = 0
     this._cellProtectUntil = 0
     this._clientEatenViruses = new Set()
+
+    this._lastClickTime = 0
+    this._lastClickPlayerId = null
+    this.onPlayerDoubleClick = options.onPlayerDoubleClick || null
+
+    this.trailHistory = []
+    this._trailTimer = 0
   }
 
   async init() {
@@ -410,6 +419,7 @@ export class GameEngine {
   async _initSocket() {
     this._useSocket = true
     this.offline = false
+    this.bots = []
 
     const state = await socketClient.joinRoom({
       playerId: this.playerId,
@@ -524,12 +534,11 @@ export class GameEngine {
       .on('virus:mass_gain', (d) => {
         const gain = d.amount || 0
         if (gain > 0 && this.cells.length > 0) {
-          this.cells[0].mass += gain
-          this.cells[0].eatPulse = 1.3
-          this._showFloat(`+${gain}`, '#4ade80')
+          const targetCell = this.cells.reduce((a, b) => a.mass > b.mass ? a : b)
+          targetCell.mass += gain
+          targetCell.eatPulse = 1.3
           this.score += gain
           this.onScoreChange(Math.floor(this.score))
-          this.onXPGain(15)
         }
       })
       .on('anticheat:warn', (d) => {
@@ -955,12 +964,50 @@ export class GameEngine {
   }
 
   _onClick(e) {
+    const rect = this.canvas.getBoundingClientRect()
+    const wx = (e.clientX - rect.left - this.canvas.width/2) / this.camera.zoom + this.camera.x
+    const wy = (e.clientY - rect.top - this.canvas.height/2) / this.camera.zoom + this.camera.y
+
     if (this.skills.slow.cooldown <= 0 || this.skills.slow.active) {
-      const rect = this.canvas.getBoundingClientRect()
-      const wx = (e.clientX - rect.left - this.canvas.width/2) / this.camera.zoom + this.camera.x
-      const wy = (e.clientY - rect.top - this.canvas.height/2) / this.camera.zoom + this.camera.y
       this.clickTarget = { x: wx, y: wy }
     }
+
+    const now = Date.now()
+    let hitPlayer = null
+    for (const [id, op] of Object.entries(this.otherPlayers)) {
+      const cells = op.cells?.length ? op.cells : [{ x: op.x, y: op.y, mass: op.mass || 20 }]
+      for (const c of cells) {
+        const r = Math.sqrt(Math.max(c.mass, 20)) * 4.5
+        const dx = wx - c.x, dy = wy - c.y
+        if (dx * dx + dy * dy <= r * r) {
+          hitPlayer = { id, name: op.name, color: op.color, isGod: op.isGod, clan: op.clan, mass: Math.floor(cells.reduce((s,cc)=>s+(cc.mass||0),0)) }
+          break
+        }
+      }
+      if (hitPlayer) break
+    }
+
+    if (hitPlayer) {
+      if (this._lastClickPlayerId === hitPlayer.id && now - this._lastClickTime < 450) {
+        if (this.onPlayerDoubleClick) this.onPlayerDoubleClick(hitPlayer)
+        this._lastClickPlayerId = null
+        this._lastClickTime = 0
+      } else {
+        this._lastClickPlayerId = hitPlayer.id
+        this._lastClickTime = now
+      }
+    }
+  }
+
+  getPlayersInfo() {
+    return Object.entries(this.otherPlayers).map(([id, op]) => ({
+      id,
+      name: op.name,
+      mass: Math.floor((op.cells || []).reduce((s,c) => s+(c.mass||0), 0) || op.mass || 0),
+      color: op.color,
+      isGod: op.isGod,
+      clan: op.clan
+    }))
   }
 
   _onKeyUp(e) { this.keys[e.code] = false }
@@ -987,10 +1034,7 @@ export class GameEngine {
   }
 
   _split() {
-    if (this._useSocket) {
-      socketClient.sendSplit()
-      return
-    }
+    if (this._useSocket) socketClient.sendSplit()
     if (this.cells.length >= MAX_CELLS) return
     const newCells = []
     for (const cell of [...this.cells]) {
@@ -1045,11 +1089,14 @@ export class GameEngine {
   }
 
   _ejectFan(massAmount) {
-    const angles = [-0.22, 0, 0.22]
-    for (const angleOffset of angles) {
-      this._eject(massAmount, angleOffset)
-    }
-    if (this._useSocket) socketClient.sendEject()
+    const delays = [0, 80, 160]
+    delays.forEach((delay, i) => {
+      setTimeout(() => {
+        const angleOffset = (Math.random() - 0.5) * 0.18
+        this._eject(massAmount, angleOffset)
+        if (this._useSocket && i === 0) socketClient.sendEject()
+      }, delay)
+    })
   }
 
   _buyMass(size) {
@@ -1184,6 +1231,11 @@ export class GameEngine {
         this._lastValidMass = totalMass
       }
     }
+    const rawMass = Math.floor(totalMass)
+    if (rawMass !== this._lastRawMass) {
+      this._lastRawMass = rawMass
+      this.onMassChange(rawMass)
+    }
 
     for (const op of Object.values(this.otherPlayers)) {
       op.x = lerp(op.x, op.targetX, 0.15)
@@ -1316,6 +1368,19 @@ export class GameEngine {
     if (this.gameTime <= 0) return
     this.gameTime = Math.max(0, this.gameTime - dt)
     this.onTimerChange(Math.ceil(this.gameTime))
+    if (this.gameTime <= 0 && this.gameMode === 'rush' && this.offline) {
+      const playerKills = this.kills
+      const botKills = this.bots.map(b => ({ name: b.name, kills: b.kills || 0 }))
+      const allKills = [{ name: this.playerName, kills: playerKills }, ...botKills].sort((a,b) => b.kills - a.kills)
+      const winner = allKills[0]
+      const isPlayerWinner = winner.name === this.playerName
+      this.modeMessage = isPlayerWinner
+        ? `🏆 KAZANDIN! ${playerKills} Kill ile Birinci!`
+        : `💀 ${winner.name} kazandı! (${winner.kills} Kill) — Senin: ${playerKills}`
+      this.modeMessageTimer = 6
+      this._showFloat(isPlayerWinner ? '🏆 BİRİNCİ!' : '💀 Kaybettin!', isPlayerWinner ? '#fbbf24' : '#ef4444')
+      if (isPlayerWinner) this.screenFlash = 1.2
+    }
   }
 
   _doAutoMove() {
@@ -1338,7 +1403,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = (6 / Math.pow(Math.max(cell.mass, 1), 0.4)) * 90 * speedMult
+      const speed = Math.max(14, (6 / Math.pow(Math.max(cell.mass, 1), 0.4)) * 90) * speedMult
 
       if (d > cell.radius / 3) {
         const s = Math.min(speed * dt, d)
@@ -1465,43 +1530,45 @@ export class GameEngine {
       if (virus.dead) continue
       for (const cell of this.cells) {
         if (dist(cell, virus) >= cell.radius * 0.85) continue
-        if (cell.mass <= virus.mass) continue
-        const vInfo = VIRUS_TYPES[virus.type]
+        if (cell.mass < 300) continue
+        const vInfo = VIRUS_TYPES[virus.type] || VIRUS_TYPES.normal
 
         if (this.skills.shield.active) {
-          this._showFloat('🛡️ Korundu!', '#06b6d4')
+          this._showFloat('+300 KALKAN', '#06b6d4')
           this._spawnExplosion(virus.x, virus.y, '#06b6d4')
           cell.mass += 300
           cell.eatPulse = 1
           virus.dead = true
-          this.score += 300
+          this.score += Math.floor(cell.mass * 2)
           this.onScoreChange(Math.floor(this.score))
           soundSystem.virusEat()
-          this._showFloat('+300 🛡️', '#06b6d4')
           break
         }
 
-        cell.eatPulse = 1.2
+        this._virusEatCount++
+        const shouldSplit = this._virusEatCount % 6 === 1
+        const preMass = cell.mass
+        cell.mass = preMass * 2
+        cell.eatPulse = 1.3
         this.lastEatTime = Date.now()
         soundSystem.virusEat()
 
-        if (cell.mass > 100) {
-          const splitCount = Math.min(16, Math.floor(cell.mass / 16))
-          this._explodeCell(cell, splitCount)
-          this._showFloat('💥 PATLAMA! +300', '#fbbf24')
+        const scoreGain = Math.floor(preMass * 2)
+        this.score += scoreGain
+        this.onScoreChange(Math.floor(this.score))
+        this.onXPGain(20)
+
+        if (shouldSplit) {
+          this._explodeCellMouse(cell, Math.min(8, Math.max(2, Math.floor(preMass / 100))))
+          this._showFloat(`PATLAMA +${scoreGain}`, '#fbbf24')
         } else {
-          this._showFloat('+300 🌿', '#4ade80')
+          this._showFloat(`x2 DIKEN +${scoreGain}`, '#4ade80')
         }
 
-        cell.mass += 300
-        this.score += 300
-        this.onScoreChange(Math.floor(this.score))
-        this.onXPGain(15)
+        if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('ZEHIR', '#a855f7') }
+        else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('DOND', '#38bdf8') }
 
-        if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('☠️ Zehirlendi!', '#a855f7') }
-        else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('❄️ Donduruldu!', '#38bdf8') }
-
-        this._spawnExplosion(virus.x, virus.y, vInfo.color)
+        this._spawnVirusExplosion(virus.x, virus.y, vInfo.color)
         virus.dead = true
         break
       }
@@ -1518,7 +1585,7 @@ export class GameEngine {
         const virusR = Math.sqrt(virus.mass) * 4.5
         const r = cell.radius
         if (dist(cell, virus) >= virusR + r * 0.8) continue
-        if (cell.mass < virus.mass) continue
+        if (cell.mass < 300) continue
 
         this._clientEatenViruses.add(virus.id)
         virus.dead = true
@@ -1527,31 +1594,28 @@ export class GameEngine {
         cell.eatPulse = 1.3
         this.lastEatTime = Date.now()
         soundSystem.virusEat && soundSystem.virusEat()
-        this._spawnExplosion(virus.x, virus.y, vInfo.color)
-
         this._massProtectUntil = Date.now() + 12000
 
+        this._virusEatCount++
+        const shouldSplit = this._virusEatCount % 6 === 0
+        const preMass = cell.mass
+
         if (this.skills.shield.active) {
-          cell.mass += 300
-          this._showFloat('+300 🛡️', '#06b6d4')
-        } else if (cell.mass > 100) {
-          const splitCount = Math.min(16, Math.floor(cell.mass / 16))
-          this._explodeCell(cell, splitCount)
-          for (const c of this.cells) c.mass += 300 / this.cells.length
-          this._showFloat('💥 PATLAMA! +300', '#fbbf24')
+          this._showFloat('+300 KALKAN', '#06b6d4')
+          this._spawnExplosion(virus.x, virus.y, '#06b6d4')
+        } else if (shouldSplit) {
+          this._explodeCellMouse(cell, Math.min(8, Math.max(2, Math.floor(preMass / 100))))
+          this._showFloat(`PATLAMA x2`, '#fbbf24')
         } else {
-          cell.mass += 300
-          this._showFloat('+300 🌿', '#4ade80')
+          this._showFloat(`x2 DIKEN`, '#4ade80')
         }
 
-        if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('☠️ Zehirlendi!', '#a855f7') }
-        else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('❄️ Donduruldu!', '#38bdf8') }
+        if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('ZEHIR', '#a855f7') }
+        else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('DOND', '#38bdf8') }
 
-        this.score += 300
-        this.onScoreChange(Math.floor(this.score))
-        this.onXPGain(15)
-
-        socketClient.emit('virus:touch', { id: virus.id, cellMass: Math.floor(cell.mass) })
+        this.onXPGain(20)
+        this._spawnVirusExplosion(virus.x, virus.y, vInfo.color)
+        socketClient.emit('virus:touch', { id: virus.id, cellMass: Math.floor(preMass) })
         break
       }
     }
@@ -1573,6 +1637,50 @@ export class GameEngine {
     }
     cell.mergeTimer = Date.now() + MERGE_TIME
     this._spawnExplosion(cell.x, cell.y, cell.color)
+  }
+
+  _explodeCellMouse(cell, maxSplits) {
+    const available = Math.min(maxSplits, MAX_CELLS - this.cells.length + 1, 8)
+    if (available <= 0) return
+    const mass = cell.mass / (available + 1)
+    cell.mass = mass
+    cell.mergeTimer = Date.now() + MERGE_TIME
+    const mouseAngle = Math.atan2(
+      (this.mouse?.y ?? cell.y) - cell.y,
+      (this.mouse?.x ?? cell.x) - cell.x
+    )
+    for (let i = 0; i < available; i++) {
+      const spread = (Math.PI * 1.4) * (i / Math.max(available - 1, 1)) - Math.PI * 0.7
+      const angle = mouseAngle + spread + (Math.random() - 0.5) * 0.35
+      const spd = SPLIT_SPEED * (0.6 + Math.random() * 0.6)
+      const nc = new Cell(cell.x, cell.y, mass, cell.color)
+      nc.vx = Math.cos(angle) * spd
+      nc.vy = Math.sin(angle) * spd
+      nc.mergeTimer = Date.now() + MERGE_TIME
+      this.cells.push(nc)
+    }
+  }
+
+  _spawnVirusExplosion(x, y, color) {
+    for (let i = 0; i < 32; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const speed = 3 + Math.random() * 9
+      this.particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: i % 3 === 0 ? '#ffffff' : color,
+        life: 1,
+        size: 4 + Math.random() * 8
+      })
+    }
+    if (this.qualityLevel !== 'low') {
+      for (let i = 0; i < 12; i++) {
+        const angle = Math.random() * Math.PI * 2
+        const speed = 1 + Math.random() * 4
+        this.particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed, color: '#fbbf24', life: 0.7, size: 2+Math.random()*4 })
+      }
+    }
   }
 
   _updateViruses(dt) {
@@ -1696,7 +1804,7 @@ export class GameEngine {
     for (const cell of this.cells) {
       for (const em of this.ejected) {
         if (toRemove.has(em.id)) continue
-        if (!em.settled || em.settledTimer < 0.6) continue
+        if (!em.settled || em.settledTimer < 1.0) continue
         if (dist(cell, em) < cell.radius - 4) {
           toRemove.add(em.id)
           cell.mass += em.mass
@@ -1882,8 +1990,8 @@ export class GameEngine {
     const { ctx, canvas, camera, theme } = this
     const mapSize = 152
     const pad = 5
-    const mapX = 14
-    const mapY = 14
+    const mapX = canvas.width - mapSize - pad - 14
+    const mapY = canvas.height - mapSize - pad - 70
     const scale = mapSize / WORLD_SIZE
     const bx = mapX - pad, by = mapY - pad, bw = mapSize + pad * 2, bh = mapSize + pad * 2
 
@@ -1916,18 +2024,6 @@ export class GameEngine {
     ctx.strokeStyle = `rgba(${theme.glowColor || '139,92,246'},0.7)`
     ctx.lineWidth = 1
     ctx.strokeRect(mapX, mapY, mapSize, mapSize)
-
-    const sample = this.food.length > 300 ? this.food.filter((_, i) => i % 4 === 0) : this.food
-    for (const f of sample) {
-      ctx.beginPath(); ctx.arc(mapX + f.x * scale, mapY + f.y * scale, 1, 0, Math.PI * 2)
-      ctx.fillStyle = f.color; ctx.fill()
-    }
-
-    for (const v of this.viruses) {
-      if (v.dead) continue
-      ctx.beginPath(); ctx.arc(mapX + v.x * scale, mapY + v.y * scale, 2.5, 0, Math.PI * 2)
-      ctx.fillStyle = '#22c55e'; ctx.fill()
-    }
 
     for (const p of Object.values(this.otherPlayers)) {
       const px = mapX + (p.x || 0) * scale
@@ -1976,8 +2072,8 @@ export class GameEngine {
 
     ctx.fillStyle = 'rgba(255,255,255,0.38)'
     ctx.font = 'bold 8px "Exo 2", sans-serif'
-    ctx.textAlign = 'right'; ctx.textBaseline = 'top'
-    ctx.fillText('HARİTA', mapX + mapSize, mapY + mapSize + 4)
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'
+    ctx.fillText('HARİTA', mapX + mapSize, mapY - pad - 2)
   }
 
   _drawModeHUD() {
@@ -2287,10 +2383,11 @@ export class GameEngine {
     const { ctx, camera, canvas } = this
     const zoom = camera.zoom
     const margin = 50
-    const vl = camera.x - canvas.width / (2 * zoom) - margin
-    const vr = camera.x + canvas.width / (2 * zoom) + margin
-    const vt = camera.y - canvas.height / (2 * zoom) - margin
-    const vb = camera.y + canvas.height / (2 * zoom) + margin
+    const VIEW_RADIUS = 1200
+    const vl = Math.max(camera.x - canvas.width / (2 * zoom) - margin, camera.x - VIEW_RADIUS)
+    const vr = Math.min(camera.x + canvas.width / (2 * zoom) + margin, camera.x + VIEW_RADIUS)
+    const vt = Math.max(camera.y - canvas.height / (2 * zoom) - margin, camera.y - VIEW_RADIUS)
+    const vb = Math.min(camera.y + canvas.height / (2 * zoom) + margin, camera.y + VIEW_RADIUS)
     for (const f of this.food) {
       if (f.x < vl || f.x > vr || f.y < vt || f.y > vb) continue
       f.pulse += 0.06
@@ -2336,10 +2433,11 @@ export class GameEngine {
     const { ctx, camera, canvas } = this
     const zoom = camera.zoom
     const margin = 80
-    const vl = camera.x - canvas.width / (2 * zoom) - margin
-    const vr = camera.x + canvas.width / (2 * zoom) + margin
-    const vt = camera.y - canvas.height / (2 * zoom) - margin
-    const vb = camera.y + canvas.height / (2 * zoom) + margin
+    const VIEW_RADIUS = 1200
+    const vl = Math.max(camera.x - canvas.width / (2 * zoom) - margin, camera.x - VIEW_RADIUS)
+    const vr = Math.min(camera.x + canvas.width / (2 * zoom) + margin, camera.x + VIEW_RADIUS)
+    const vt = Math.max(camera.y - canvas.height / (2 * zoom) - margin, camera.y - VIEW_RADIUS)
+    const vb = Math.min(camera.y + canvas.height / (2 * zoom) + margin, camera.y + VIEW_RADIUS)
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
@@ -2455,9 +2553,14 @@ export class GameEngine {
     const maxParticles = this.qualityLevel === 'low' ? 60 : this.qualityLevel === 'medium' ? 120 : 300
     const toRender = this.particles.slice(0, maxParticles)
     for (const p of toRender) {
-      ctx.globalAlpha = p.life * 0.85
+      ctx.globalAlpha = Math.min(1, p.life) * 0.85
+      if (p.glow) {
+        ctx.shadowBlur = 12
+        ctx.shadowColor = p.color
+      }
       ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2)
       ctx.fillStyle = p.color; ctx.fill()
+      if (p.glow) ctx.shadowBlur = 0
     }
     ctx.globalAlpha = 1
   }
@@ -2553,13 +2656,76 @@ export class GameEngine {
   _drawMyPlayer() {
     const ghostAlpha = this._ghostActive ? 0.35 : 1
     if (ghostAlpha < 1) this.ctx.globalAlpha = ghostAlpha
+    const myTotalMass = Math.floor(this.cells.reduce((s,c) => s+c.mass, 0))
+    const trailEffect = this.options.trailEffect
+    if (trailEffect && this.cells.length > 0) {
+      const now = performance.now()
+      if (now - this._trailTimer > 30) {
+        this._trailTimer = now
+        const mainCell = this.cells[0]
+        this.trailHistory.push({ x: mainCell.x, y: mainCell.y, r: mainCell.radius, t: now })
+        if (this.trailHistory.length > 18) this.trailHistory.shift()
+      }
+      this._drawTrail(trailEffect)
+    } else {
+      this.trailHistory = []
+    }
     for (const cell of this.cells) {
-      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame, this.options.ownedPackage || 'free')
+      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame, this.options.ownedPackage || 'free', myTotalMass)
     }
     if (ghostAlpha < 1) this.ctx.globalAlpha = 1
   }
 
-  _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0, nameEffect=null, activeFrame=null, ownedPackage='free') {
+  _drawTrail(trailEffect) {
+    const { ctx } = this
+    const now = performance.now()
+    const TRAIL_CONFIGS = {
+      flame:    { colors: ['#ef4444','#f97316','#fbbf24'], glow: '#ef4444', shape: 'circle' },
+      star:     { colors: ['#fbbf24','#fff','#a78bfa'],  glow: '#fbbf24', shape: 'star'   },
+      bubble:   { colors: ['#38bdf8','#818cf8','#34d399'], glow: '#38bdf8', shape: 'circle' },
+      rainbow:  { colors: null,                           glow: null,       shape: 'rainbow'},
+      neon:     { colors: ['#a78bfa','#ec4899','#06b6d4'], glow: '#a78bfa', shape: 'circle' },
+    }
+    const cfg = TRAIL_CONFIGS[trailEffect] || TRAIL_CONFIGS.flame
+    const n = this.trailHistory.length
+    for (let i = 0; i < n; i++) {
+      const pt = this.trailHistory[i]
+      const progress = (i + 1) / n
+      const alpha = progress * 0.55
+      const r = pt.r * progress * 0.75
+      ctx.save()
+      ctx.globalAlpha = alpha
+      let color
+      if (cfg.shape === 'rainbow') {
+        const hue = (now / 8 + i * 20) % 360
+        color = `hsl(${hue},100%,65%)`
+        ctx.shadowBlur = 14
+        ctx.shadowColor = color
+      } else {
+        const ci = Math.floor(i / n * cfg.colors.length) % cfg.colors.length
+        color = cfg.colors[ci]
+        ctx.shadowBlur = 10
+        ctx.shadowColor = cfg.glow
+      }
+      ctx.fillStyle = color
+      if (cfg.shape === 'star' && i % 3 === 0) {
+        const pts = 5, outerR = r * 0.5, innerR = r * 0.25
+        ctx.beginPath()
+        for (let j = 0; j < pts * 2; j++) {
+          const angle = (j * Math.PI) / pts - Math.PI / 2
+          const rr = j % 2 === 0 ? outerR : innerR
+          j === 0 ? ctx.moveTo(pt.x + Math.cos(angle)*rr, pt.y + Math.sin(angle)*rr) : ctx.lineTo(pt.x + Math.cos(angle)*rr, pt.y + Math.sin(angle)*rr)
+        }
+        ctx.closePath()
+        ctx.fill()
+      } else {
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, Math.max(2, r), 0, Math.PI*2); ctx.fill()
+      }
+      ctx.restore()
+    }
+  }
+
+  _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0, nameEffect=null, activeFrame=null, ownedPackage='free', overrideMass=null) {
     const { ctx } = this
     if (radius < 0.5) return
 
@@ -2704,75 +2870,93 @@ export class GameEngine {
 
     if (activeFrame && dr > 16) {
       const FRAME_CFG = {
-        silver:    { c1: '#c0c0c0', c2: '#9ca3af', segs: 8,  gap: 0.55, speed: 0.6,  width: 3, glow: 8,  rings: 1 },
-        gold:      { c1: '#ffd700', c2: '#f59e0b', segs: 10, gap: 0.6,  speed: 0.9,  width: 3.5, glow: 14, rings: 2 },
-        diamond:   { c1: '#7df9ff', c2: '#38bdf8', segs: 12, gap: 0.65, speed: 1.2,  width: 3,   glow: 18, rings: 2 },
-        legendary: { c1: '#ff69b4', c2: '#ec4899', segs: 6,  gap: 0.7,  speed: 1.6,  width: 5,   glow: 24, rings: 3 },
+        silver:    { c1:'#c0c0c0', c2:'#9ca3af', segs:8,  gap:0.55, speed:0.6,  width:3,   glow:8,  rings:1, gems:0 },
+        gold:      { c1:'#ffd700', c2:'#f59e0b', segs:10, gap:0.6,  speed:0.9,  width:3.5, glow:14, rings:2, gems:0 },
+        diamond:   { c1:'#7df9ff', c2:'#38bdf8', segs:12, gap:0.65, speed:1.2,  width:3,   glow:18, rings:2, gems:4, gemColor:'#38bdf8' },
+        legendary: { c1:'#ff69b4', c2:'#ec4899', segs:6,  gap:0.7,  speed:1.6,  width:5,   glow:24, rings:3, gems:6, gemColor:'#ec4899' },
+        fire:      { c1:'#ff4500', c2:'#fbbf24', segs:14, gap:0.5,  speed:2.2,  width:4,   glow:20, rings:2, gems:0 },
+        ice:       { c1:'#bfdbfe', c2:'#60a5fa', segs:8,  gap:0.7,  speed:-0.8, width:3.5, glow:16, rings:2, gems:4, gemColor:'#60a5fa' },
+        neon:      { c1:'#a78bfa', c2:'#06b6d4', segs:16, gap:0.45, speed:3.0,  width:2.5, glow:22, rings:2, gems:0 },
+        rainbow:   { c1:null,      c2:null,       segs:18, gap:0.55, speed:1.4,  width:3,   glow:16, rings:1, gems:0, rainbow:true },
+        galaxy:    { c1:'#818cf8', c2:'#c084fc', segs:20, gap:0.6,  speed:0.5,  width:2,   glow:20, rings:3, gems:8, gemColor:'#c084fc' },
+        sakura:    { c1:'#fda4af', c2:'#f9a8d4', segs:8,  gap:0.8,  speed:0.7,  width:3,   glow:14, rings:1, gems:6, gemColor:'#fda4af' },
       }
       const cfg = FRAME_CFG[activeFrame] || FRAME_CFG.silver
       const t = Date.now() / 1000
       for (let ring = 0; ring < cfg.rings; ring++) {
-        const r = dr + 5 + ring * 5
+        const r = dr + 5 + ring * 6
         const dir = ring % 2 === 0 ? 1 : -1
         const speed = cfg.speed * (1 - ring * 0.15)
         for (let i = 0; i < cfg.segs; i++) {
           const a1 = (i / cfg.segs) * Math.PI * 2 + t * speed * dir
           const a2 = a1 + (cfg.gap / cfg.segs) * Math.PI * 2
           const alpha = 0.7 + 0.3 * Math.sin(t * 3 + i)
+          let color1, color2
+          if (cfg.rainbow) {
+            color1 = `hsl(${((t * 60 + i * (360/cfg.segs)) % 360)},100%,65%)`
+            color2 = color1
+          } else {
+            color1 = cfg.c1; color2 = cfg.c2
+          }
           ctx.beginPath()
           ctx.arc(x, y, r, a1, a2)
-          ctx.strokeStyle = ring % 2 === 0 ? cfg.c1 : cfg.c2
+          ctx.strokeStyle = ring % 2 === 0 ? color1 : color2
           ctx.lineWidth = cfg.width - ring * 0.5
           ctx.globalAlpha = alpha
-          ctx.shadowBlur = cfg.glow; ctx.shadowColor = cfg.c1
+          ctx.shadowBlur = cfg.glow; ctx.shadowColor = cfg.rainbow ? color1 : cfg.c1
           ctx.stroke()
           ctx.shadowBlur = 0
         }
       }
       ctx.globalAlpha = 1
-      if (activeFrame === 'legendary') {
-        const gemCount = 6
-        const gemR = dr + 14
-        for (let i = 0; i < gemCount; i++) {
-          const angle = (i / gemCount) * Math.PI * 2 + t * 1.6
+      if (cfg.gems > 0 && cfg.gemColor) {
+        const gemR = dr + (cfg.rings > 1 ? 14 : 10)
+        for (let i = 0; i < cfg.gems; i++) {
+          const angle = (i / cfg.gems) * Math.PI * 2 + t * cfg.speed
           const gx = x + Math.cos(angle) * gemR
           const gy = y + Math.sin(angle) * gemR
           const pulse = 0.6 + 0.4 * Math.sin(t * 5 + i)
           ctx.beginPath(); ctx.arc(gx, gy, 3.5, 0, Math.PI*2)
-          ctx.fillStyle = `rgba(255,105,180,${pulse})`
-          ctx.shadowBlur = 12; ctx.shadowColor = '#ec4899'
-          ctx.fill(); ctx.shadowBlur = 0
-        }
-      }
-      if (activeFrame === 'diamond') {
-        const gemCount = 4
-        const gemR = dr + 10
-        for (let i = 0; i < gemCount; i++) {
-          const angle = (i / gemCount) * Math.PI * 2 + t * 1.2
-          const gx = x + Math.cos(angle) * gemR
-          const gy = y + Math.sin(angle) * gemR
-          ctx.beginPath(); ctx.arc(gx, gy, 3, 0, Math.PI*2)
-          ctx.fillStyle = `rgba(125,249,255,${0.7 + 0.3*Math.sin(t*4+i)})`
-          ctx.shadowBlur = 10; ctx.shadowColor = '#38bdf8'
-          ctx.fill(); ctx.shadowBlur = 0
+          ctx.fillStyle = cfg.gemColor
+          ctx.globalAlpha = pulse
+          ctx.shadowBlur = 12; ctx.shadowColor = cfg.gemColor
+          ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1
         }
       }
     }
 
-    if (dr > 14) {
-      const mass = Math.floor((radius / 4.5) ** 2)
-      const hasClan = clan && dr > 22
-      const hasMass = dr > 22
+    if (dr > 10) {
+      const mass = overrideMass !== null ? overrideMass : Math.floor((radius / 4.5) ** 2)
+      const hasClan = clan && dr > 18
+      const hasMass = dr > 10
       const lineCount = 1 + (hasClan ? 1 : 0) + (hasMass ? 1 : 0)
-      const fs = clamp(dr * 0.38, 9, 30)
-      const lineH = fs * 0.9
+      const fs = clamp(dr * 0.38, 10, 32)
+      const lineH = fs * 1.0
       const totalH = lineCount * lineH
       const startY = y - totalH / 2 + lineH / 2
       let lineIdx = 0
 
-      ctx.font = `bold ${fs}px "Exo 2", sans-serif`
+      ctx.font = `bold ${fs}px "Exo 2", Arial, sans-serif`
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       const nameY = startY + lineIdx * lineH
+
+      if (name && dr > 10) {
+        ctx.font = `bold ${fs}px "Exo 2", Arial, sans-serif`
+        const nameW = Math.max(ctx.measureText(name).width + fs * 0.8, fs * 2)
+        const pillH = fs * 1.25
+        const pillX = x - nameW / 2
+        const pillY = nameY - pillH / 2
+        ctx.save()
+        ctx.globalAlpha = 0.72
+        ctx.fillStyle = isMe ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)'
+        if (ctx.roundRect) {
+          ctx.beginPath(); ctx.roundRect(pillX, pillY, nameW, pillH, pillH / 2); ctx.fill()
+        } else {
+          ctx.fillRect(pillX, pillY, nameW, pillH)
+        }
+        ctx.globalAlpha = 1
+        ctx.restore()
+      }
       const PREMIUM_TIERS = ['trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
       const isPremiumPlayer = PREMIUM_TIERS.includes(ownedPackage) && ownedPackage !== 'free'
       const isElitePlus = ['elite','champion','master','legend','apex','immortal'].includes(ownedPackage)
@@ -2815,7 +2999,7 @@ export class GameEngine {
         ctx.fillText(isElitePlus ? '★' : '★', x, crownY)
         ctx.shadowBlur = 0
       }
-      const displayName = isGod ? '[APEX] '+name : name
+      const displayName = name
       let nameColor = isPremiumPlayer ? (isElitePlus ? `hsl(${(nt2*30+30)%360},100%,90%)` : '#e0d9ff') : 'white'
       let shadowColor = 'rgba(0,0,0,0.9)'
       let shadowBlurAmt = 5
@@ -2884,16 +3068,39 @@ export class GameEngine {
 
       if (hasClan) {
         const cs = clamp(dr*0.22, 7, 16)
-        ctx.font = `bold ${cs}px "Exo 2", sans-serif`
-        ctx.fillStyle = 'rgba(255,255,255,0.75)'
-        ctx.fillText(`[${clan}]`, x, startY + lineIdx * lineH)
+        ctx.font = `bold ${cs}px "Exo 2", Arial, sans-serif`
+        const clanText = `[${clan}]`
+        const clanW = Math.max(ctx.measureText(clanText).width + cs * 0.6, cs * 2.5)
+        const clanPillH = cs * 1.3
+        const clanPillX = x - clanW / 2
+        const clanPillY = (startY + lineIdx * lineH) - clanPillH / 2
+        ctx.save()
+        ctx.globalAlpha = 0.85
+        const clanGrad = ctx.createLinearGradient(clanPillX, clanPillY, clanPillX + clanW, clanPillY)
+        clanGrad.addColorStop(0, isMe ? 'rgba(99,102,241,0.9)' : 'rgba(16,185,129,0.85)')
+        clanGrad.addColorStop(1, isMe ? 'rgba(139,92,246,0.9)' : 'rgba(6,182,212,0.85)')
+        ctx.fillStyle = clanGrad
+        if (ctx.roundRect) {
+          ctx.beginPath(); ctx.roundRect(clanPillX, clanPillY, clanW, clanPillH, clanPillH/2); ctx.fill()
+        } else {
+          ctx.fillRect(clanPillX, clanPillY, clanW, clanPillH)
+        }
+        ctx.globalAlpha = 1
+        ctx.restore()
+        ctx.fillStyle = '#ffffff'
+        ctx.shadowBlur = 6; ctx.shadowColor = isMe ? '#a78bfa' : '#34d399'
+        ctx.fillText(clanText, x, startY + lineIdx * lineH)
+        ctx.shadowBlur = 0
         lineIdx++
       }
       if (hasMass) {
-        const ms = clamp(dr * 0.22, 7, 14)
-        ctx.font = `bold ${ms}px "Exo 2", sans-serif`
-        ctx.fillStyle = 'rgba(255,255,255,0.55)'
-        ctx.fillText(`${mass}`, x, startY + lineIdx * lineH)
+        const ms = clamp(dr * 0.28, 8, 18)
+        ctx.font = `bold ${ms}px "Exo 2", Arial, sans-serif`
+        ctx.fillStyle = isMe ? 'rgba(255,255,100,0.95)' : 'rgba(255,255,255,0.75)'
+        ctx.shadowBlur = isMe ? 10 : 0
+        ctx.shadowColor = '#fbbf24'
+        ctx.fillText(`${mass.toLocaleString()}`, x, startY + lineIdx * lineH)
+        ctx.shadowBlur = 0
       }
       ctx.shadowBlur = 0
     }
@@ -3057,23 +3264,34 @@ export class GameEngine {
     const cy = this.cells.reduce((s,c)=>s+c.y,0)/(this.cells.length||1)
     const totalMass = this.cells.reduce((s,c)=>s+c.mass,0)
     const radius = massToRadius(totalMass)
-    for (let i = 0; i < 80; i++) {
+    const deathEffect = this.options.deathEffect
+    const DEATH_PALETTES = {
+      gold:     (i) => i%3===0?'#fbbf24':i%3===1?'#f59e0b':'#fffbeb',
+      rainbow:  (i) => `hsl(${(i*23)%360},100%,65%)`,
+      smoke:    (i) => `rgba(${100+i*2},${100+i*2},${120+i*2},0.85)`,
+      electric: (i) => i%2===0?'#06b6d4':'#818cf8',
+      sakura:   (i) => i%3===0?'#f9a8d4':i%3===1?'#fce7f3':'#ec4899',
+    }
+    const palette = DEATH_PALETTES[deathEffect] || ((i) => i%3===0?'#fff':i%3===1?this.playerColor:'#fbbf24')
+    const count = deathEffect ? 120 : 80
+    for (let i = 0; i < count; i++) {
       const angle = Math.random()*Math.PI*2
-      const speed = 3 + Math.random() * 12
-      const size = 4 + Math.random() * 12
+      const speed = (deathEffect ? 5 : 3) + Math.random() * (deathEffect ? 18 : 12)
+      const size = (deathEffect ? 5 : 4) + Math.random() * (deathEffect ? 16 : 12)
       this.particles.push({
         x: cx + (Math.random()-0.5)*radius,
         y: cy + (Math.random()-0.5)*radius,
         vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
-        color: i % 3 === 0 ? '#ffffff' : i % 3 === 1 ? this.playerColor : '#fbbf24',
-        life: 1.5 + Math.random(), size
+        color: palette(i),
+        life: (deathEffect ? 2.2 : 1.5) + Math.random(),
+        size,
+        glow: deathEffect ? true : false,
       })
     }
-    this.screenFlash = 1
+    this.screenFlash = deathEffect ? 1.5 : 1
   }
 
   _initBots() {
-    return
     const BOT_COUNT = 30
     const teamColors = { red: '#ef4444', blue: '#3b82f6' }
     for (let i = 0; i < BOT_COUNT; i++) {
@@ -3186,12 +3404,34 @@ export class GameEngine {
       }
       bot.mass = Math.max(20, bot.mass - bot.mass * 0.002 * dt)
     }
-    if (this.offline) {
-      const all = [{ id: this.playerId, name: this.playerName, mass: this.cells.reduce((s,c)=>s+c.mass,0), color: this.playerColor, isGod: this.isGod }]
+    if (this.offline || this.bots.length > 0) {
+      const playerMassNow = this.cells.reduce((s,c)=>s+c.mass,0)
+      const all = [{ id: this.playerId, name: this.playerName, mass: playerMassNow, color: this.playerColor, isGod: this.isGod }]
+      for (const bot of this.bots) {
+        if (!bot.dead) all.push({ id: bot.id, name: bot.name, mass: bot.mass, color: bot.color, isGod: false })
+      }
       all.sort((a,b) => b.mass - a.mass)
       this.leaderboard = all.slice(0,10)
       this.onLeaderboardChange(this.leaderboard)
-      this.onPlayerCountChange(1)
+      const activeBots = this.bots.filter(b => !b.dead).length
+      this.onPlayerCountChange(activeBots + 1)
+    } else if (this.cells.length > 0) {
+      const playerMassNow = this.cells.reduce((s,c)=>s+c.mass,0)
+      const lb = this.leaderboard
+      const myIdx = lb.findIndex(p => p.id === this.playerId)
+      if (myIdx >= 0) {
+        if (Math.abs(lb[myIdx].mass - playerMassNow) > 1) {
+          const newLb = lb.map((p, i) => i === myIdx ? { ...p, mass: playerMassNow, name: this.playerName } : p)
+          newLb.sort((a,b) => b.mass - a.mass)
+          this.leaderboard = newLb
+          this.onLeaderboardChange(newLb)
+        }
+      } else {
+        const newLb = [...lb, { id: this.playerId, name: this.playerName, mass: playerMassNow, color: this.playerColor, isGod: this.isGod }]
+        newLb.sort((a,b) => b.mass - a.mass)
+        this.leaderboard = newLb.slice(0,10)
+        this.onLeaderboardChange(this.leaderboard)
+      }
     }
   }
 

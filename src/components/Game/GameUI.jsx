@@ -6,6 +6,10 @@ import useAuthStore from '../../store/useAuthStore'
 import useProgressStore, { xpForLevel, BADGES } from '../../store/useProgressStore'
 import useQuestStore from '../../store/useQuestStore'
 import { getTheme } from '../../themes/themes'
+import InGamePlayerList from './InGamePlayerList'
+import { ref as dbRef, onValue, off } from 'firebase/database'
+import { db } from '../../firebase/config'
+import toast from 'react-hot-toast'
 
 const MODE_LABELS = {
   ffa: '⚔️ Free For All',
@@ -42,8 +46,8 @@ function formatTime(secs) {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
-export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectate, onRestart, roomId, mode }) {
-  const { score, leaderboard, totalPlayers, currentTheme } = useGameStore()
+export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectate, onRestart, roomId, mode, onPlayerProfileClick }) {
+  const { score, playerMass, leaderboard, totalPlayers, currentTheme } = useGameStore()
   const { profile } = useAuthStore()
   const { xp, level, prestige, earnedBadges } = useProgressStore()
   const { quests } = useQuestStore()
@@ -61,6 +65,7 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
   const [skills, setSkills] = useState({ speed: { active: false, timer: 0, cooldown: 0 }, slow: { active: false, timer: 0, cooldown: 0 }, shield: { active: false, timer: 0, cooldown: 0 } })
   const [deathScreen, setDeathScreen] = useState(null)
   const [respawnCountdown, setRespawnCountdown] = useState(5)
+  const [showPlayerList, setShowPlayerList] = useState(false)
 
   const myBadges = BADGES.filter(b => earnedBadges.includes(b.id)).slice(-3)
 
@@ -86,6 +91,25 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
     const t = setTimeout(() => setRespawnCountdown(c => c - 1), 1000)
     return () => clearTimeout(t)
   }, [deathScreen, respawnCountdown])
+
+  useEffect(() => {
+    const uid = profile?.uid || engineRef.current?.playerId
+    if (!uid || uid.startsWith('guest_')) return
+    const reqRef = dbRef(db, `users/${uid}/friendRequests`)
+    let knownKeys = null
+    const unsub = onValue(reqRef, snap => {
+      const data = snap.val() || {}
+      const keys = Object.keys(data)
+      if (knownKeys === null) { knownKeys = new Set(keys); return }
+      for (const k of keys) {
+        if (!knownKeys.has(k) && data[k]?.status === 'pending') {
+          toast(`${data[k].name || 'Biri'} sana arkadaşlık isteği gönderdi!`, { icon: '👥', duration: 4000 })
+        }
+      }
+      knownKeys = new Set(keys)
+    })
+    return () => off(reqRef)
+  }, [profile?.uid])
 
   useEffect(() => {
     const milestones = [100, 500, 1000, 2000, 5000, 10000, 25000, 50000, 100000]
@@ -152,18 +176,6 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
           {MODE_LABELS[mode] || mode}
         </div>
 
-        {quests.length > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold"
-            style={{
-              ...panelStyle,
-              color: completedQuestCount > 0 ? '#4ade80' : theme.uiAccent,
-              border: completedQuestCount > 0 ? '1px solid rgba(74,222,128,0.4)' : undefined
-            }}>
-            📋 {5 - activeQuestCount - completedQuestCount}/{quests.length} Görev
-            {completedQuestCount > 0 && <span className="text-green-400 animate-pulse"> ({completedQuestCount} hazır!)</span>}
-          </div>
-        )}
-
         <div className="flex gap-2">
           <div className="flex-1 px-3 py-2 rounded-xl text-center" style={panelStyle}>
             <div className="text-xs text-gray-500">Sıra</div>
@@ -181,15 +193,34 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
         </div>
 
         <div className="px-4 py-3 rounded-2xl min-w-36" style={panelStyle}>
-          <div className="text-xs text-gray-500 mb-1">Kütle</div>
-          <div className="text-3xl font-black text-white leading-none">{Math.floor(score).toLocaleString()}</div>
+          {mode === 'rush' ? (
+            <>
+              <div className="text-xs text-gray-500 mb-1">Kill</div>
+              <div className="text-3xl font-black leading-none" style={{ color: '#f59e0b' }}>{engineRef.current?.kills || 0}</div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs text-gray-500 mb-1">Kütle</div>
+              <div className="text-3xl font-black text-white leading-none">{(playerMass || 0).toLocaleString()}</div>
+            </>
+          )}
         </div>
 
-        {gold > 0 && (
-          <div className="px-3 py-2 rounded-xl flex items-center gap-2" style={panelStyle}>
-            <span className="text-yellow-400 text-sm">💰</span>
-            <span className="text-yellow-400 font-black text-sm">{gold}</span>
-            <span className="text-gray-500 text-xs">gold</span>
+        <div className="px-3 py-2 rounded-xl flex items-center gap-2" style={panelStyle}>
+          <span className="text-yellow-400 text-sm">💰</span>
+          <span className="text-yellow-400 font-black text-sm">{gold > 0 ? gold : 0}</span>
+          <span className="text-gray-500 text-xs">gold</span>
+        </div>
+
+        {quests.length > 0 && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold"
+            style={{
+              ...panelStyle,
+              color: completedQuestCount > 0 ? '#4ade80' : theme.uiAccent,
+              border: completedQuestCount > 0 ? '1px solid rgba(74,222,128,0.4)' : undefined
+            }}>
+            📋 {5 - activeQuestCount - completedQuestCount}/{quests.length} Görev
+            {completedQuestCount > 0 && <span className="text-green-400 animate-pulse"> ({completedQuestCount} hazır!)</span>}
           </div>
         )}
 
@@ -213,8 +244,8 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
         )}
       </div>
 
-      <div className="absolute top-4 right-4" style={{ zIndex: 10, width: 220 }}>
-        <div className="rounded-2xl overflow-hidden" style={panelStyle}>
+      <div className="absolute top-4 right-4" style={{ zIndex: 10, width: 220, maxHeight: 'calc(100vh - 240px)', display: 'flex', flexDirection: 'column' }}>
+        <div className="rounded-2xl overflow-hidden" style={{ ...panelStyle, display: 'flex', flexDirection: 'column', maxHeight: '100%' }}>
           <div style={{
             padding: '10px 12px 8px', display: 'flex', alignItems: 'center', gap: 8,
             borderBottom: `1px solid ${uiBorder}`,
@@ -223,7 +254,7 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
             <span style={{ color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: 2, flex: 1 }}>SIRALAMA</span>
             <span style={{ color: '#4b5563', fontSize: 10, fontWeight: 700 }}>{leaderboard.length}P</span>
           </div>
-          <div style={{ padding: '6px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ padding: '6px 6px', display: 'flex', flexDirection: 'column', gap: 3, overflowY: 'auto', flex: 1 }}>
             {leaderboard.slice(0, 10).map((p, i) => {
               const isMe = p.id === engineRef.current?.playerId
               const rankColors = ['#fbbf24','#9ca3af','#cd7c2f']
@@ -390,7 +421,38 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
           style={panelStyle}>
           {showKeys ? '✕' : '⌨️'}
         </motion.button>
+
+        <motion.button
+          onClick={() => setShowPlayerList(v => !v)}
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+          className="px-3 py-2.5 rounded-xl font-bold text-sm flex items-center gap-1.5 relative"
+          style={{
+            ...panelStyle,
+            background: showPlayerList ? 'rgba(99,102,241,0.2)' : panelStyle.background,
+            border: showPlayerList ? '1px solid rgba(99,102,241,0.5)' : panelStyle.border
+          }}>
+          <span style={{ fontSize: 16 }}>👥</span>
+          <span className="text-xs" style={{ color: showPlayerList ? '#a5b4fc' : undefined }}>
+            {totalPlayers}
+          </span>
+        </motion.button>
       </div>
+
+      <AnimatePresence>
+        {showPlayerList && (
+          <div className="absolute bottom-24 right-4" style={{ zIndex: 30 }}>
+            <InGamePlayerList
+              players={leaderboard.filter(p => p.id !== engineRef.current?.playerId)}
+              myPlayerId={engineRef.current?.playerId}
+              onClose={() => setShowPlayerList(false)}
+              onPlayerClick={(p) => {
+                onPlayerProfileClick?.(p)
+                setShowPlayerList(false)
+              }}
+            />
+          </div>
+        )}
+      </AnimatePresence>
 
       <div className="sm:hidden absolute bottom-24 right-4 flex flex-col gap-2" style={{ zIndex: 10 }}>
         <motion.button onClick={onSplit} whileTap={{ scale: 0.9 }}

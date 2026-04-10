@@ -8,10 +8,11 @@ import useProgressStore from '../../store/useProgressStore'
 import useQuestStore from '../../store/useQuestStore'
 import useBattlePassStore from '../../store/useBattlePassStore'
 import { fbSaveProgress, fbSaveBattlePass, fbSaveQuests, fbUpdateLeaderboard, fbSaveInventory } from '../../firebase/syncService'
-import { ref, set } from 'firebase/database'
 import { db } from '../../firebase/config'
 import GameUI from './GameUI'
 import ChatSystem from '../Chat/ChatSystem'
+import InGameProfilePopup from './InGameProfilePopup'
+import { AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 
 export default function GameCanvas({ onLevelUp }) {
@@ -20,18 +21,21 @@ export default function GameCanvas({ onLevelUp }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user, profile } = useAuthStore()
-  const { setScore, setRank, setTotalPlayers, setLeaderboard, setPlaying, currentTheme, gameMode } = useGameStore()
+  const { setScore, setPlayerMass, setRank, setTotalPlayers, setLeaderboard, setPlaying, currentTheme, gameMode } = useGameStore()
   const { ownedPackage } = usePremiumStore()
-  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames, addGoldForFood, addGoldForKill, addGoldForGame, activeNameEffect, activeFrame, ownedSkills } = useProgressStore()
+  const { addXP, addKill, addVirus, updateHighScore, incrementGames, checkBadges, usePendingGod, pendingGodGames, addGoldForFood, addGoldForKill, addGoldForGame, activeNameEffect, activeFrame, ownedSkills, activeDeathEffect, activeTrailEffect } = useProgressStore()
   const { updateProgress } = useQuestStore()
   const { addBPXP } = useBattlePassStore()
   const startTimeRef = useRef(Date.now())
   const splitCountRef = useRef(0)
   const sessionXPRef = useRef(0)
-  const [clickedPlayer, setClickedPlayer] = useState(null)
+  const [profilePopup, setProfilePopup] = useState(null)
 
   const roomId = searchParams.get('room') || 'main_ffa'
-  const playerName = searchParams.get('name') || profile?.name || 'Player'
+  const rawName = searchParams.get('name')
+  const playerName = (profile?.name && profile.name.trim() && profile.name !== 'Player')
+    ? profile.name.trim()
+    : (rawName && rawName !== 'Player' && rawName !== 'undefined' ? decodeURIComponent(rawName) : (profile?.name || 'Oyuncu'))
   const mode = searchParams.get('mode') || gameMode || 'ffa'
   const team = searchParams.get('team') || 'none'
 
@@ -81,11 +85,16 @@ export default function GameCanvas({ onLevelUp }) {
       nameEffect: activeNameEffect,
       ownedSkills: ownedSkills || {},
       activeFrame: activeFrame,
+      deathEffect: activeDeathEffect,
+      trailEffect: activeTrailEffect,
       onScoreChange: (score) => {
         setScore(score)
         updateHighScore(score)
         updateProgress('score', score)
         if (score > 0 && score % 100 === 0) addGoldForFood()
+      },
+      onMassChange: (mass) => {
+        setPlayerMass(mass)
       },
       onDeath: handleDeath,
       onLeaderboardChange: (lb) => setLeaderboard(lb),
@@ -93,6 +102,7 @@ export default function GameCanvas({ onLevelUp }) {
       onTimerChange: () => {},
       onXPGain: handleXPGain,
       onKill: handleKill,
+      onPlayerDoubleClick: (playerData) => setProfilePopup(playerData),
     })
 
     engineRef.current = engine
@@ -132,6 +142,10 @@ export default function GameCanvas({ onLevelUp }) {
           ownedSkins: pms.ownedSkins || ['default'],
           activeNameEffect: ps.activeNameEffect || null,
           activeFrame: ps.activeFrame || null,
+          ownedDeathEffects: ps.ownedDeathEffects || [],
+          ownedTrailEffects: ps.ownedTrailEffects || [],
+          activeDeathEffect: ps.activeDeathEffect || null,
+          activeTrailEffect: ps.activeTrailEffect || null,
         }).catch(() => {})
         fbUpdateLeaderboard(uid, {
           name: profile?.name || playerName,
@@ -145,50 +159,11 @@ export default function GameCanvas({ onLevelUp }) {
     }
   }, [])
 
-  const handleCanvasClick = useCallback((e) => {
-    const engine = engineRef.current
-    if (!engine || !user?.uid) return
-    const canvas = canvasRef.current
-    const rect = canvas.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
-    const cam = engine.camera
-    const zoom = cam.zoom
-    const wx = (sx - canvas.width / 2) / zoom + cam.x
-    const wy = (sy - canvas.height / 2) / zoom + cam.y
-    for (const [id, p] of Object.entries(engine.otherPlayers || {})) {
-      const cells = p.cells?.length ? p.cells : [{ x: p.x, y: p.y, mass: p.mass || 20 }]
-      for (const c of cells) {
-        const r = Math.sqrt(c.mass || 20) * 4.5
-        const dx = wx - c.x, dy = wy - c.y
-        if (dx * dx + dy * dy <= r * r) {
-          setClickedPlayer({ id, name: p.name, color: p.color })
-          return
-        }
-      }
+  useEffect(() => {
+    if (engineRef.current && profile?.name && profile.name !== 'Player') {
+      engineRef.current.playerName = profile.name.trim()
     }
-    setClickedPlayer(null)
-  }, [user])
-
-  const handleAddFriend = async (targetId, targetName, targetColor) => {
-    if (!user?.uid || user.uid.startsWith('guest_')) {
-      toast.error('Arkadaş eklemek için giriş yapmalısın')
-      return
-    }
-    try {
-      await set(ref(db, `users/${targetId}/friendRequests/${user.uid}`), {
-        name: profile?.name || 'Player',
-        color: profile?.color || '#6366f1',
-        uid: user.uid,
-        status: 'pending',
-        sentAt: Date.now()
-      })
-      toast.success(`${targetName}'e arkadaşlık isteği gönderildi! 👥`)
-      setClickedPlayer(null)
-    } catch {
-      toast.error('İstek gönderilemedi')
-    }
-  }
+  }, [profile?.name])
 
   const handleSplit = () => engineRef.current?.touchSplit()
   const handleEject = () => engineRef.current?.touchEject()
@@ -218,30 +193,16 @@ export default function GameCanvas({ onLevelUp }) {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" onClick={handleCanvasClick} />
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-      {clickedPlayer && (
-        <div className="absolute top-1/2 left-1/2 z-50 -translate-x-1/2 -translate-y-1/2 rounded-2xl p-5 flex flex-col items-center gap-3 shadow-2xl"
-          style={{ background: 'rgba(6,6,20,0.97)', border: `2px solid ${clickedPlayer.color}55`, minWidth: 200 }}>
-          <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-black text-white"
-            style={{ background: clickedPlayer.color, boxShadow: `0 0 20px ${clickedPlayer.color}88` }}>
-            {clickedPlayer.name?.[0] || '?'}
-          </div>
-          <div className="text-white font-black text-lg">{clickedPlayer.name}</div>
-          <button
-            className="w-full py-2 rounded-xl font-bold text-white text-sm"
-            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
-            onClick={() => handleAddFriend(clickedPlayer.id, clickedPlayer.name, clickedPlayer.color)}>
-            👥 Arkadaş Ekle
-          </button>
-          <button
-            className="w-full py-2 rounded-xl font-bold text-sm"
-            style={{ background: 'rgba(255,255,255,0.07)', color: '#9ca3af' }}
-            onClick={() => setClickedPlayer(null)}>
-            Kapat
-          </button>
-        </div>
-      )}
+      <AnimatePresence>
+        {profilePopup && (
+          <InGameProfilePopup
+            player={profilePopup}
+            onClose={() => setProfilePopup(null)}
+          />
+        )}
+      </AnimatePresence>
 
       <GameUI
         engineRef={engineRef}
@@ -252,6 +213,7 @@ export default function GameCanvas({ onLevelUp }) {
         onRestart={handleRestart}
         roomId={roomId}
         mode={mode}
+        onPlayerProfileClick={(p) => setProfilePopup(p)}
       />
 
       <ChatSystem roomId={roomId} />

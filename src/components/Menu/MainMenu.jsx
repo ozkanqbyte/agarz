@@ -15,16 +15,11 @@ import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
 
 const GAME_MODES = [
-  { id: 'ffa', name: 'Free For All', icon: '⚔️', desc: 'Herkese karşı oyna! En büyük kazanır.', color: '#6366f1', players: '2-100' },
-  { id: 'teams', name: 'Takım Modu', icon: '🛡️', desc: 'Kırmızı vs Mavi! Takımınla birleş.', color: '#06b6d4', players: '2-50' },
-  { id: 'battle_royale', name: 'Battle Royale', icon: '💥', desc: 'Alan küçülüyor, son kalan kazanır!', color: '#ef4444', players: '2-30' },
-  { id: 'rush', name: 'Rush Mode', icon: '⚡', desc: 'Hızlı büyü, 5 dakika içinde kazan!', color: '#f59e0b', players: '2-20' },
-  { id: 'clan_war', name: 'Klan Savaşı', icon: '🏰', desc: 'Klanlar arası büyük savaş!', color: '#10b981', players: '10-50' },
-  { id: 'king_of_hill', name: 'Kral Tepesi', icon: '👑', desc: 'Merkezdeki bölgeyi ele geçir! 7 dakika bölgede kal, en çok puan kazan.', color: '#fbbf24', players: '2-30', badge: 'YENİ' },
-  { id: 'infection', name: 'Enfeksiyon', icon: '🧟', desc: 'Zombi başladı! Son insan hayatta kalırsa kazanır. Enfeksiyon yayılıyor!', color: '#7cfc00', players: '4-50', badge: 'YENİ' },
-  { id: 'crystal_hunt', name: 'Kristal Avı', icon: '💎', desc: 'Haritadaki kristalleri topla! Yiyen parlıyor ve herkesin hedefi olur.', color: '#00e5ff', players: '2-40', badge: 'YENİ' },
-  { id: 'shrink_survival', name: 'Küçülme Modu', icon: '📉', desc: 'Herkes 500 kütle ile başlar ve sürekli küçülür! Yemek ye, hayatta kal!', color: '#a78bfa', players: '2-30', badge: 'YENİ' },
-  { id: 'boss_fight', name: 'Boss Savaşı', icon: '👹', desc: 'Devasa Boss karşınızda! Birlikte saldırın. En çok hasar veren özel ödül alır.', color: '#ff0040', players: '2-50', badge: 'YENİ' },
+  { id: 'ffa', name: 'Free For All', icon: '⚔️', desc: 'Herkese karşı tek başına oyna! En büyük hücre kazanır. Kimseye güvenme.', color: '#6366f1', players: '2-100', rules: ['En yüksek kütle kazanır', 'Kimse müttefikin değil', 'Süre bitmeden büyü'] },
+  { id: 'teams', name: 'Takım Savaşı', icon: '🛡️', desc: 'Kırmızı vs Mavi! Takımınla birleş, düşman klanı ez. Koordinasyon şart.', color: '#06b6d4', players: '2-50', rules: ['Kırmızı vs Mavi', 'Takım arkadaşlarını yiyemezsin', 'En çok toplam kütle kazanır'] },
+  { id: 'battle_royale', name: 'Battle Royale', icon: '💥', desc: 'Alan giderek küçülüyor! Dışarıda kalırsan ölürsün. Son kalan kazanır.', color: '#ef4444', players: '2-30', rules: ['Alan her 30 saniyede küçülür', 'Dışarıda kalmak hasar verir', 'Son hayatta kalan kazanır'] },
+  { id: 'rush', name: 'Rush Mode', icon: '⚡', desc: '5 dakika, en çok öldürme kazanır! Hız ve refleks şart. Durma, saldır!', color: '#f59e0b', players: '2-20', rules: ['5 dakika süre', 'En çok öldürme kazanır', 'Kütle değil kill sayısı önemli'] },
+  { id: 'clan_war', name: 'Klan Savaşı', icon: '🏰', desc: 'Klan lider lobisi açar, üyeler katılır. İki klan hazır olunca savaş başlar!', color: '#10b981', players: '6-50', rules: ['Klan lideri lobi açar', 'Üyeler koda girerek katılır', 'İki klan hazır olunca başlar', 'En çok kütle toplayan klan kazanır'] },
 ]
 
 const NAV_ITEMS = [
@@ -93,6 +88,7 @@ export default function MainMenu() {
   const [playerName, setPlayerName] = useState(profile?.name || 'Player')
   const [tab, setTab] = useState('play')
 
+  useEffect(() => { if (profile?.name) setPlayerName(profile.name) }, [profile?.name])
   useEffect(() => { checkReset() }, [])
   const [modeOpen, setModeOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
@@ -112,6 +108,11 @@ export default function MainMenu() {
   const handlePrivateLobby = () => {
     const roomId = 'priv_' + uuidv4().slice(0, 8)
     navigate(`/lobby/${gameMode}?room=${roomId}`)
+  }
+
+  const handleClanWarLobby = () => {
+    if (!profile?.clan) { toast.error('Klan Savaşı için bir klana üye olmalısın!'); return }
+    navigate(`/clan-war`)
   }
 
   const handleModeLobby = (mode) => {
@@ -152,13 +153,13 @@ export default function MainMenu() {
           animate={{ textShadow: [`0 0 15px rgba(${theme.glowColor},0.8)`, `0 0 35px rgba(${theme.glowColor},1)`, `0 0 15px rgba(${theme.glowColor},0.8)`] }}
           transition={{ duration: 2, repeat: Infinity }}
           className="text-center cursor-default">
-          <div className="text-xl font-black tracking-widest"
+          <div className="text-lg font-black tracking-widest"
             style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            AG
+            AGA
           </div>
           <div className="text-xs font-black tracking-widest"
             style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            ARZ
+            RIX
           </div>
         </motion.div>
 
@@ -282,9 +283,19 @@ export default function MainMenu() {
                             </span>
                           </div>
                           <div className="text-xs text-gray-400 mt-0.5">{m.desc}</div>
+                          {gameMode === m.id && m.rules && (
+                            <div className="flex flex-col gap-1 mt-2">
+                              {m.rules.map((r, ri) => (
+                                <div key={ri} className="flex items-center gap-1.5">
+                                  <div className="w-1 h-1 rounded-full flex-shrink-0" style={{ background: m.color }} />
+                                  <span className="text-xs font-semibold" style={{ color: m.color }}>{r}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         {gameMode === m.id && (
-                          <div className="w-2 h-2 rounded-full" style={{ background: theme.uiAccent, boxShadow: `0 0 8px ${theme.uiAccent}` }} />
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: theme.uiAccent, boxShadow: `0 0 8px ${theme.uiAccent}` }} />
                         )}
                       </motion.button>
                     ))}
@@ -544,12 +555,12 @@ export default function MainMenu() {
                 style={{ background: 'rgba(255,255,255,0.08)', border: `1px solid rgba(${theme.glowColor},0.3)` }}>
                 🏠 Özel Lobi
               </motion.button>
-              <motion.button onClick={handlePlay}
+              <motion.button onClick={gameMode === 'clan_war' ? handleClanWarLobby : handlePlay}
                 whileHover={{ scale: 1.04, boxShadow: `0 0 40px rgba(${theme.glowColor},0.8)` }}
                 whileTap={{ scale: 0.96 }}
                 className="px-12 py-3 rounded-xl font-black text-white text-xl"
-                style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 25px rgba(${theme.glowColor},0.5)` }}>
-                ▶ OYNA
+                style={{ background: gameMode === 'clan_war' ? 'linear-gradient(135deg,#10b981,#06b6d4)' : `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 25px rgba(${theme.glowColor},0.5)` }}>
+                {gameMode === 'clan_war' ? '🏰 KLAN LOBİSİ' : '▶ OYNA'}
               </motion.button>
             </div>
           </div>
@@ -692,7 +703,9 @@ const COLOR_OPTIONS = ['#6366f1','#8b5cf6','#ec4899','#06b6d4','#10b981','#f59e0
 function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
   const { updateProfile } = useAuthStore()
   const { ownedSkins, ownedPackage } = usePremiumStore()
-  const { ownedFrames, ownedNameEffects, activeFrame, activeNameEffect, setActiveFrame, setActiveNameEffect, coins, ownedSkills } = useProgressStore()
+  const { ownedFrames, ownedNameEffects, activeFrame, activeNameEffect, setActiveFrame, setActiveNameEffect, coins, ownedSkills, ownedDeathEffects, ownedTrailEffects, activeDeathEffect, activeTrailEffect, setActiveDeathEffect, setActiveTrailEffect, level: storeLevel, highScore, totalKills, gamesPlayed, totalPlayTime, prestige, xp } = useProgressStore()
+  const [copiedUid, setCopiedUid] = useState(false)
+  const copyUid = () => { navigator.clipboard.writeText(user?.uid || ''); setCopiedUid(true); setTimeout(()=>setCopiedUid(false),2000) }
   const [editName, setEditName] = useState(profile?.name || '')
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -700,13 +713,14 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
   const [photoEdit, setPhotoEdit] = useState(false)
   const [profileTab, setProfileTab] = useState('stats')
 
+  const playTimeHours = totalPlayTime > 0 ? (totalPlayTime / 3600).toFixed(1) : '0'
   const stats = [
-    { label: 'SEVİYE', value: profile?.level || 1, color: theme.uiAccent },
-    { label: 'EN YÜKSEK', value: (profile?.stats?.highScore || 0).toLocaleString(), color: '#fbbf24' },
-    { label: 'ÖLDÜRME', value: (profile?.stats?.kills || 0).toLocaleString(), color: '#ef4444' },
-    { label: 'OYUN', value: (profile?.stats?.gamesPlayed || 0).toLocaleString(), color: '#10b981' },
+    { label: 'SEVİYE', value: storeLevel || 1, color: theme.uiAccent },
+    { label: 'EN YÜKSEK', value: (highScore || 0).toLocaleString(), color: '#fbbf24' },
+    { label: 'ÖLDÜRME', value: (totalKills || 0).toLocaleString(), color: '#ef4444' },
+    { label: 'OYUN', value: (gamesPlayed || 0).toLocaleString(), color: '#10b981' },
     { label: 'GOLD', value: coins.toLocaleString(), color: '#f59e0b' },
-    { label: 'TOPLAM KÜTLE', value: (profile?.stats?.totalMass || 0).toLocaleString(), color: '#8b5cf6' },
+    { label: 'SÜRE', value: `${playTimeHours}s`, color: '#8b5cf6' },
   ]
 
   const handleSaveProfile = async () => {
@@ -745,7 +759,8 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
     {id:'angel',name:'Melek',premium:true,tier:7},{id:'rainbow',name:'Gökkuşağı',premium:true,tier:8},{id:'crystal',name:'Kristal',premium:true,tier:8},
     {id:'dark',name:'Karanlık',premium:true,tier:9},{id:'apex_skin',name:'APEX',premium:true,tier:10},
   ]
-  const FRAME_CFG = { silver:'#9ca3af', gold:'#f59e0b', diamond:'#38bdf8', legendary:'#ec4899' }
+  const FRAME_CFG = { silver:'#9ca3af', gold:'#f59e0b', diamond:'#38bdf8', legendary:'#ec4899', fire:'#ef4444', ice:'#60a5fa', neon:'#a78bfa', rainbow:'#ec4899', galaxy:'#818cf8', sakura:'#fda4af' }
+  const FRAME_NAMES = { silver:'Gümüş', gold:'Altın', diamond:'Elmas', legendary:'Efsane', fire:'Ateş', ice:'Buz', neon:'Neon', rainbow:'Gökkuşağı', galaxy:'Galaksi', sakura:'Sakura' }
   const EFFECT_CFG = { glow:'#60a5fa', fire:'#ef4444', neon:'#22c55e', electric:'#fbbf24', rainbow:'#ec4899', galaxy:'#8b5cf6', shadow:'#6b7280', crystal:'#38bdf8' }
   const SKILL_CFG = { speed:{label:'Hizlanma',color:'#fbbf24'}, slow:{label:'Yavaslatma',color:'#8b5cf6'}, shield:{label:'Kalkan',color:'#06b6d4'}, magnet:{label:'Manyetik',color:'#ec4899'}, ghost:{label:'Hayalet',color:'#a78bfa'}, teleport:{label:'Isinlanma',color:'#38bdf8'} }
   const PKG_TIER = { free:0, trial:1, starter:2, player:3, pro:4, elite:5, champion:6, master:7, legend:8, apex:9, immortal:10 }
@@ -816,14 +831,44 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
                 <button onClick={()=>setEditMode(true)} style={{ background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:12 }}>✎</button>
               </div>
               <div style={{ color:'#4b5563',fontSize:11 }}>{user?.email || 'Misafir'}</div>
+              {user?.uid && (
+                <div style={{ display:'flex',alignItems:'center',gap:6,marginTop:6,justifyContent:'center' }}>
+                  <span style={{ color:'#374151',fontSize:10,fontFamily:'monospace',letterSpacing:1 }}>
+                    #{(user.uid||'').slice(0,8).toUpperCase()}
+                  </span>
+                  <motion.button onClick={copyUid} whileHover={{scale:1.12}} whileTap={{scale:0.9}}
+                    style={{ background:'none',border:`1px solid rgba(${theme.glowColor},0.3)`,borderRadius:6,padding:'1px 7px',cursor:'pointer',color:copiedUid?'#4ade80':theme.uiAccent,fontSize:9,fontWeight:700 }}>
+                    {copiedUid?'✓ Kopyalandı':'KOPYALA'}
+                  </motion.button>
+                </div>
+              )}
             </div>
           )}
 
           {profile?.clan && (
             <div style={{ marginTop:8,padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:`rgba(${theme.glowColor},0.15)`,color:theme.uiAccent,border:`1px solid rgba(${theme.glowColor},0.35)` }}>
-              {profile.clan}
+              ⚔️ {profile.clan}
             </div>
           )}
+
+          {prestige > 0 && (
+            <div style={{ marginTop:6,padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:900,background:'linear-gradient(135deg,rgba(251,191,36,0.2),rgba(245,158,11,0.1))',color:'#fbbf24',border:'1px solid rgba(251,191,36,0.4)' }}>
+              ✨ Prestij {prestige}
+            </div>
+          )}
+
+          <div style={{ marginTop:10,width:'100%' }}>
+            <div style={{ display:'flex',justifyContent:'space-between',fontSize:9,color:'#4b5563',fontWeight:700,marginBottom:4 }}>
+              <span>LV.{storeLevel}</span>
+              <span>{(xp||0).toLocaleString()} / {xpForLevel(storeLevel).toLocaleString()} XP</span>
+            </div>
+            <div style={{ width:'100%',height:5,borderRadius:5,background:'rgba(255,255,255,0.06)' }}>
+              <motion.div
+                animate={{ width:`${Math.min(100,(xp||0)/xpForLevel(storeLevel)*100)}%` }}
+                transition={{ duration:0.8,ease:'easeOut' }}
+                style={{ height:'100%',borderRadius:5,background:`linear-gradient(90deg,${theme.gradientA},${theme.gradientB})`,boxShadow:`0 0 6px rgba(${theme.glowColor},0.5)` }} />
+            </div>
+          </div>
 
           <div style={{ marginTop:12,width:'100%' }}>
             <div style={{ fontSize:10,color:'#6b7280',marginBottom:4,fontWeight:700,letterSpacing:1 }}>BALON RENGİ</div>
@@ -865,7 +910,7 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
 
         <div className="rounded-2xl" style={panelStyle}>
           <div style={{ display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-            {[{id:'skins',label:'SKİNLER'},{id:'frames',label:'ÇERÇEVELER'},{id:'effects',label:'EFEKTLER'},{id:'skills',label:'YETENEKLER'}].map(t => (
+            {[{id:'skins',label:'SKİNLER'},{id:'frames',label:'ÇERÇEVELER'},{id:'effects',label:'İSİM EFEKT'},{id:'death',label:'ÖLÜM'},{id:'trail',label:'İZ'},{id:'skills',label:'YETENEKLER'}].map(t => (
               <button key={t.id} onClick={()=>setProfileTab(t.id)}
                 style={{ flex:1,padding:'10px 0',background:'none',border:'none',cursor:'pointer',
                   color:profileTab===t.id?'#fff':'#4b5563',fontWeight:900,fontSize:10,letterSpacing:1.5,
@@ -917,21 +962,28 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
                   <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10 }}>
                     {ownedFrames.map(fid => {
                       const fc = FRAME_CFG[fid] || '#9ca3af'
+                      const fname = FRAME_NAMES[fid] || fid
                       const active = activeFrame === fid
                       return (
                         <motion.button key={fid}
                           onClick={()=>{ setActiveFrame(active?null:fid); toast.success(active?'Çerçeve kaldırıldı!':'Çerçeve aktif!') }}
                           whileHover={{scale:1.06}} whileTap={{scale:0.94}}
-                          style={{ borderRadius:12,padding:'14px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,
+                          style={{ borderRadius:14,padding:'14px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,
                             background:active?`${fc}18`:'rgba(255,255,255,0.03)',
                             border:`1.5px solid ${active?fc:'rgba(255,255,255,0.08)'}`,
-                            boxShadow:active?`0 0 20px ${fc}30`:undefined,cursor:'pointer',
+                            boxShadow:active?`0 0 22px ${fc}35`:undefined,cursor:'pointer',
                           }}>
-                          <div style={{ position:'relative',width:44,height:44 }}>
-                            <div style={{ position:'absolute',inset:0,borderRadius:'50%',background:'rgba(255,255,255,0.06)',border:`3px solid ${fc}`,boxShadow:`0 0 10px ${fc}60` }} />
+                          <div style={{ position:'relative',width:48,height:48 }}>
+                            <motion.div animate={active?{rotate:360}:{}} transition={{duration:3,repeat:Infinity,ease:'linear'}}
+                              style={{ position:'absolute',inset:0,borderRadius:'50%',border:`3px solid ${fc}`,boxShadow:`0 0 ${active?16:6}px ${fc}${active?'80':'40'}` }} />
+                            <motion.div animate={active?{rotate:-360}:{}} transition={{duration:5,repeat:Infinity,ease:'linear'}}
+                              style={{ position:'absolute',inset:5,borderRadius:'50%',border:`1.5px dashed ${fc}55` }} />
+                            <div style={{ position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center' }}>
+                              <div style={{ width:6,height:6,borderRadius:'50%',background:fc,boxShadow:`0 0 8px ${fc}` }} />
+                            </div>
                           </div>
-                          <div style={{ fontSize:9,fontWeight:900,color:fc,letterSpacing:1 }}>{fid.toUpperCase()}</div>
-                          {active&&<div style={{ fontSize:8,fontWeight:900,color:fc,background:`${fc}18`,padding:'2px 8px',borderRadius:4,letterSpacing:1 }}>AKTİF</div>}
+                          <div style={{ fontSize:9,fontWeight:900,color:active?fc:'#9ca3af',letterSpacing:1 }}>{fname.toUpperCase()}</div>
+                          {active&&<div style={{ fontSize:8,fontWeight:900,color:fc,background:`${fc}20`,border:`1px solid ${fc}44`,padding:'2px 8px',borderRadius:20,letterSpacing:1 }}>AKTIF</div>}
                         </motion.button>
                       )
                     })}
@@ -970,6 +1022,98 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
                 )}
               </div>
             )}
+
+            {profileTab === 'death' && (() => {
+              const DEATH_EFFECTS = [
+                { id: 'gold',     name: 'Altın Patlama',   icon: '✨', desc: 'Altın rengi parçacıklar',   color: '#f59e0b' },
+                { id: 'rainbow',  name: 'Gökkuşağı',       icon: '🌈', desc: 'Renkli patlama efekti',     color: '#ec4899' },
+                { id: 'smoke',    name: 'Duman',           icon: '💨', desc: 'Dramatik duman efekti',     color: '#94a3b8' },
+                { id: 'electric', name: 'Elektrik',        icon: '⚡', desc: 'Elektrik parıltısı',        color: '#06b6d4' },
+                { id: 'sakura',   name: 'Sakura',          icon: '🌸', desc: 'Kiraz çiçeği yaprakları',   color: '#f9a8d4' },
+              ]
+              return (
+                <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
+                  <div style={{ color:'#6b7280',fontSize:10,fontWeight:700,letterSpacing:1 }}>
+                    ÖLÜM EFEKTİ — Yutulunca özel patlama animasyonu
+                  </div>
+                  <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8 }}>
+                    {DEATH_EFFECTS.map(ef => {
+                      const owned = ownedDeathEffects.includes(ef.id)
+                      const active = activeDeathEffect === ef.id
+                      return (
+                        <motion.button key={ef.id} whileHover={{scale:1.05}} whileTap={{scale:0.95}}
+                          onClick={()=>{
+                            if(!owned){toast.error('Mağazadan satın al!');return}
+                            setActiveDeathEffect(active?null:ef.id)
+                            toast.success(active?'Efekt kaldırıldı!':'Efekt aktif! 💥')
+                          }}
+                          style={{ borderRadius:14,padding:'14px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,
+                            background:active?`${ef.color}18`:'rgba(255,255,255,0.03)',
+                            border:`1.5px solid ${active?ef.color:'rgba(255,255,255,0.08)'}`,
+                            boxShadow:active?`0 0 20px ${ef.color}30`:undefined,cursor:'pointer',
+                            opacity:owned?1:0.45,position:'relative',
+                          }}>
+                          <div style={{ fontSize:24 }}>{ef.icon}</div>
+                          <div style={{ fontSize:9,fontWeight:900,color:active?ef.color:'#9ca3af',letterSpacing:1,textAlign:'center' }}>{ef.name}</div>
+                          <div style={{ fontSize:8,color:'#4b5563',textAlign:'center',lineHeight:1.3 }}>{ef.desc}</div>
+                          {active&&<div style={{ fontSize:7,fontWeight:900,color:ef.color,background:`${ef.color}18`,padding:'1px 6px',borderRadius:4,letterSpacing:1 }}>AKTİF</div>}
+                          {!owned&&<div style={{ position:'absolute',top:4,right:4,fontSize:10 }}>🔒</div>}
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                  <div style={{ padding:'10px 12px',borderRadius:10,background:'rgba(251,191,36,0.06)',border:'1px solid rgba(251,191,36,0.2)',color:'#fbbf24',fontSize:10,fontWeight:700 }}>
+                    💡 Ölüm efektleri mağazadan satın alınabilir
+                  </div>
+                </div>
+              )
+            })()}
+
+            {profileTab === 'trail' && (() => {
+              const TRAIL_EFFECTS = [
+                { id: 'flame',   name: 'Alev İzi',    icon: '🔥', desc: 'Ateş izi bırakır',       color: '#ef4444' },
+                { id: 'star',    name: 'Yıldız İzi',  icon: '⭐', desc: 'Parlayan yıldızlar',     color: '#fbbf24' },
+                { id: 'bubble',  name: 'Balon İzi',   icon: '🫧', desc: 'Renkli balonlar',        color: '#38bdf8' },
+                { id: 'rainbow', name: 'Gökkuşağı',   icon: '🌈', desc: 'Gökkuşağı izi',         color: '#ec4899' },
+                { id: 'neon',    name: 'Neon İzi',    icon: '💜', desc: 'Neon parıltısı',         color: '#a78bfa' },
+              ]
+              return (
+                <div style={{ display:'flex',flexDirection:'column',gap:10 }}>
+                  <div style={{ color:'#6b7280',fontSize:10,fontWeight:700,letterSpacing:1 }}>
+                    İZ EFEKTİ — Hücre hareket ederken arkasında iz bırakır
+                  </div>
+                  <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8 }}>
+                    {TRAIL_EFFECTS.map(ef => {
+                      const owned = ownedTrailEffects.includes(ef.id)
+                      const active = activeTrailEffect === ef.id
+                      return (
+                        <motion.button key={ef.id} whileHover={{scale:1.05}} whileTap={{scale:0.95}}
+                          onClick={()=>{
+                            if(!owned){toast.error('Mağazadan satın al!');return}
+                            setActiveTrailEffect(active?null:ef.id)
+                            toast.success(active?'İz kaldırıldı!':'İz aktif! ✨')
+                          }}
+                          style={{ borderRadius:14,padding:'14px 8px',display:'flex',flexDirection:'column',alignItems:'center',gap:8,
+                            background:active?`${ef.color}18`:'rgba(255,255,255,0.03)',
+                            border:`1.5px solid ${active?ef.color:'rgba(255,255,255,0.08)'}`,
+                            boxShadow:active?`0 0 20px ${ef.color}30`:undefined,cursor:'pointer',
+                            opacity:owned?1:0.45,position:'relative',
+                          }}>
+                          <div style={{ fontSize:24 }}>{ef.icon}</div>
+                          <div style={{ fontSize:9,fontWeight:900,color:active?ef.color:'#9ca3af',letterSpacing:1,textAlign:'center' }}>{ef.name}</div>
+                          <div style={{ fontSize:8,color:'#4b5563',textAlign:'center',lineHeight:1.3 }}>{ef.desc}</div>
+                          {active&&<div style={{ fontSize:7,fontWeight:900,color:ef.color,background:`${ef.color}18`,padding:'1px 6px',borderRadius:4,letterSpacing:1 }}>AKTİF</div>}
+                          {!owned&&<div style={{ position:'absolute',top:4,right:4,fontSize:10 }}>🔒</div>}
+                        </motion.button>
+                      )
+                    })}
+                  </div>
+                  <div style={{ padding:'10px 12px',borderRadius:10,background:'rgba(139,92,246,0.06)',border:'1px solid rgba(139,92,246,0.2)',color:'#a78bfa',fontSize:10,fontWeight:700 }}>
+                    💡 İz efektleri mağazadan satın alınabilir
+                  </div>
+                </div>
+              )
+            })()}
 
             {profileTab === 'skills' && (
               <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
@@ -1161,8 +1305,10 @@ function LBRow({ p, i, theme, myUid }) {
         <div className="font-bold text-sm truncate" style={{ color: isMe ? theme.uiAccent : '#fff' }}>
           {p.name}{isMe && <span className="ml-1.5 text-xs opacity-60">(Sen)</span>}
         </div>
-        <div className="text-xs text-gray-600">
-          {p.level > 1 ? `Lv.${p.level}` : ''}{p.clan ? ` · [${p.clan}]` : ''}
+        <div className="text-xs text-gray-600 flex items-center gap-1.5">
+          {p.level > 1 ? `Lv.${p.level}` : ''}
+          {p.clan ? <span style={{ color: theme.uiAccent, fontWeight: 700 }}>[{p.clan}]</span> : ''}
+          {p.uid && <span style={{ fontFamily:'monospace', fontSize: 9, opacity: 0.45 }}>#{p.uid.slice(0,6).toUpperCase()}</span>}
         </div>
       </div>
       <div className="text-right flex-shrink-0">

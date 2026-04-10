@@ -17,7 +17,8 @@ const io = new Server(httpServer, {
 
 const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
-const VIRUS_COUNT = 10
+const VIRUS_COUNT = 50
+const VIRUS_MIN_MASS = 300
 const TICK_RATE = 20
 const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 2
@@ -366,31 +367,39 @@ class GameRoom {
     for (const [, player] of this.players) {
       if (player.dead) continue
       for (const cell of player.cells) {
+        if (cell.mass < VIRUS_MIN_MASS) continue
         const r = massToRadius(cell.mass)
         for (const virus of this.viruses) {
           if (toRemove.has(virus.id)) continue
           const virusR = massToRadius(virus.mass)
-          if (dist(cell, virus) < virusR + r * 0.8 && cell.mass >= virus.mass) {
-            const shield = player.skillShieldTimer > 0
-            if (shield) {
-              cell.mass += 300
-            } else if (cell.mass > 100) {
+          if (dist(cell, virus) >= virusR + r * 0.8) continue
+
+          const shield = player.skillShieldTimer > 0
+          const preMass = cell.mass
+
+          if (shield) {
+            cell.mass = preMass + 300
+          } else {
+            player._virusEatCount = (player._virusEatCount || 0) + 1
+            cell.mass = preMass * 2
+            const shouldSplit = player._virusEatCount % 6 === 0
+            if (shouldSplit) {
               this._explodePlayer(player, cell)
-              cell.mass += 300
-            } else {
-              cell.mass += 300
             }
-            if (virus.type === 'poison' && !shield) player.poisoned = 5
-            if (virus.type === 'freeze' && !shield) player.frozen = 4
-            toRemove.set(virus.id, player.socketId)
           }
+
+          if (virus.type === 'poison' && !shield) player.poisoned = 5
+          if (virus.type === 'freeze' && !shield) player.frozen = 4
+
+          const gainAmount = Math.floor(cell.mass - preMass)
+          toRemove.set(virus.id, { socketId: player.socketId, gain: gainAmount })
         }
       }
     }
     if (toRemove.size) {
-      for (const [vid, socketId] of toRemove) {
+      for (const [vid, info] of toRemove) {
         io.to(this.id).emit('virus:eaten', { id: vid })
-        if (socketId) io.to(socketId).emit('virus:mass_gain', { amount: 300 })
+        if (info.socketId) io.to(info.socketId).emit('virus:mass_gain', { amount: info.gain })
       }
       this.viruses = this.viruses.filter(v => !toRemove.has(v.id))
       while (this.viruses.length < VIRUS_COUNT) {
@@ -939,7 +948,8 @@ io.on('connection', (socket) => {
         _splitWindow: Date.now(),
         _lastEject: 0,
         _ejectCount5s: 0,
-        _ejectWindow: Date.now()
+        _ejectWindow: Date.now(),
+        _virusEatCount: 0
       }
 
       room.addPlayer(player)

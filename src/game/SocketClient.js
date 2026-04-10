@@ -103,6 +103,16 @@ class SocketClient {
     this._socket.emit('virus:spawn', { x, y, type })
   }
 
+  emit(event, data) {
+    if (!this._socket?.connected) return
+    this._socket.emit(event, data)
+  }
+
+  sendVirusTouch(id, cellMass) {
+    if (!this._socket?.connected) return
+    this._socket.emit('virus:touch', { id, cellMass })
+  }
+
   on(event, handler) {
     this._socket?.on(event, handler)
     return this

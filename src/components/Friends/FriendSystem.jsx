@@ -73,7 +73,7 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
       const snap = await get(searchRef)
       if (!snap.exists()) { setSearchResults([]); setSearching(false); return }
       const data = snap.val()
-      const isProfileId = q.startsWith('agarz#') || q.match(/^[a-z0-9]{4,8}$/)
+      const isProfileId = q.startsWith('agarix#') || q.startsWith('agarz#') || q.match(/^[a-z0-9]{4,8}$/)
       const results = Object.entries(data)
         .map(([id, u]) => ({ uid: id, ...u }))
         .filter(u => {
@@ -323,7 +323,7 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
               <input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="İsim veya AGARZ#ID ile ara..."
+                placeholder="İsim veya AGARIX#ID ile ara..."
                 style={{
                   width: '100%', padding: '10px 14px', borderRadius: 12,
                   background: 'rgba(255,255,255,0.07)',
@@ -339,7 +339,7 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
               )}
             </div>
             <div style={{ fontSize: 10, color: '#374151', textAlign: 'center' }}>
-              İsim ile veya tam Profil ID ile ara (orn: AGARZ#AB3X)
+              İsim ile veya tam Profil ID ile ara (orn: AGARIX#AB3X)
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {searchResults.map(u => (

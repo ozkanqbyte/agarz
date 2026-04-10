@@ -80,10 +80,16 @@ export const NAME_EFFECTS = [
 ]
 
 export const FRAMES = [
-  { id: 'silver', name: 'Gümüş', icon: '🔘', price: 300, color: '#9ca3af' },
-  { id: 'gold', name: 'Altın', icon: '🥇', price: 600, color: '#f59e0b' },
-  { id: 'diamond', name: 'Elmas', icon: '💎', price: 1200, color: '#38bdf8' },
-  { id: 'legendary', name: 'Efsane', icon: '👑', price: 2000, color: '#ec4899' },
+  { id: 'silver',    name: 'Gümüş',     price: 300,  color: '#9ca3af', tier: 1, desc: 'Dönen gümüş halkalar' },
+  { id: 'gold',      name: 'Altın',     price: 600,  color: '#f59e0b', tier: 2, desc: 'Çift altın halka' },
+  { id: 'diamond',   name: 'Elmas',     price: 1200, color: '#38bdf8', tier: 3, desc: 'Mavi elmas taşlı' },
+  { id: 'legendary', name: 'Efsane',   price: 2000, color: '#ec4899', tier: 4, desc: 'Üçlü pembe halka' },
+  { id: 'fire',      name: 'Ateş',      price: 900,  color: '#ef4444', tier: 3, desc: 'Kırmızı-turuncu alev' },
+  { id: 'ice',       name: 'Buz',       price: 900,  color: '#60a5fa', tier: 3, desc: 'Soğuk mavi, ters döner' },
+  { id: 'neon',      name: 'Neon',      price: 1500, color: '#a78bfa', tier: 4, desc: 'Mor-cyan hızlı neon' },
+  { id: 'rainbow',   name: 'Gökkuşağı', price: 1800, color: '#ec4899', tier: 4, desc: 'Renk değiştiren halka' },
+  { id: 'galaxy',    name: 'Galaksi',   price: 2500, color: '#818cf8', tier: 5, desc: 'Üçlü mor galaxy + taşlar' },
+  { id: 'sakura',    name: 'Sakura',    price: 2200, color: '#fda4af', tier: 5, desc: 'Pembe kiraz çiçeği' },
 ]
 
 export function getRandomReward(boxType) {

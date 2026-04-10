@@ -16,6 +16,8 @@ const TABS = [
 
 const FRAME_COLORS = {
   silver: '#9ca3af', gold: '#f59e0b', diamond: '#38bdf8', legendary: '#ec4899',
+  fire: '#ef4444', ice: '#60a5fa', neon: '#a78bfa', rainbow: '#ec4899',
+  galaxy: '#818cf8', sakura: '#fda4af',
 }
 const EFFECT_COLORS = {
   glow: '#60a5fa', fire: '#ef4444', neon: '#22c55e',
@@ -293,7 +295,7 @@ export default function ShopPage() {
             <motion.div key="frames"
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+              <div style={{ color: '#4b5563', fontSize: 11, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
                 BALONUN ETRAFINDA DONER — OYUN ICINDE GORUNUR
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -301,49 +303,68 @@ export default function ShopPage() {
                   const owned = ownedFrames.includes(frame.id)
                   const active = activeFrame === frame.id
                   const c = FRAME_COLORS[frame.id] || '#9ca3af'
+                  const tierColors = ['','#9ca3af','#f59e0b','#38bdf8','#ec4899','#a855f7']
+                  const tierC = tierColors[frame.tier] || c
                   return (
                     <motion.div key={frame.id}
-                      whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                      whileHover={{ scale: 1.03, boxShadow: `0 0 28px ${c}33` }}
+                      whileTap={{ scale: 0.97 }}
                       onClick={() => handleBuyFrame(frame)}
                       style={{
-                        borderRadius: 14, padding: '18px', cursor: 'pointer',
-                        background: active ? `${c}14` : 'rgba(255,255,255,0.03)',
-                        border: `1.5px solid ${active ? c : 'rgba(255,255,255,0.08)'}`,
-                        boxShadow: active ? `0 0 24px ${c}22` : 'none',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+                        borderRadius: 16, padding: '16px 12px', cursor: 'pointer',
+                        background: active ? `${c}12` : 'rgba(255,255,255,0.03)',
+                        border: `1.5px solid ${active ? c : owned ? c + '44' : 'rgba(255,255,255,0.08)'}`,
+                        boxShadow: active ? `0 0 24px ${c}30` : 'none',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+                        position: 'relative', overflow: 'hidden',
                       }}>
-                      <div style={{ position: 'relative', width: 64, height: 64 }}>
+                      {frame.tier >= 4 && (
+                        <div style={{ position: 'absolute', top: 8, right: 8, padding: '2px 6px', borderRadius: 4, background: tierC + '22', border: `1px solid ${tierC}55`, fontSize: 8, fontWeight: 900, color: tierC, letterSpacing: 1 }}>
+                          T{frame.tier}
+                        </div>
+                      )}
+                      <div style={{ position: 'relative', width: 60, height: 60 }}>
+                        <motion.div
+                          animate={active ? { rotate: 360 } : {}}
+                          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            position: 'absolute', inset: 0, borderRadius: '50%',
+                            border: `3px solid ${c}`,
+                            boxShadow: active ? `0 0 20px ${c}70, inset 0 0 12px ${c}20` : `0 0 8px ${c}30`,
+                          }} />
+                        <motion.div
+                          animate={active ? { rotate: -360 } : {}}
+                          transition={{ duration: 5, repeat: Infinity, ease: 'linear' }}
+                          style={{
+                            position: 'absolute', inset: 4, borderRadius: '50%',
+                            border: `1.5px dashed ${c}66`,
+                          }} />
                         <div style={{
                           position: 'absolute', inset: 0, borderRadius: '50%',
-                          background: 'rgba(255,255,255,0.06)',
-                          border: `3px solid ${c}`,
-                          boxShadow: active ? `0 0 18px ${c}60` : `0 0 8px ${c}30`,
-                        }} />
-                        <svg style={{ position: 'absolute', inset: 0 }} viewBox="0 0 64 64" fill="none">
-                          {[0,1,2,3].map(i => (
-                            <arc key={i}
-                              cx="32" cy="32" r="28"
-                              stroke={c}
-                              strokeWidth="3"
-                              strokeDasharray="14 30"
-                              strokeDashoffset={i * -11}
-                              strokeLinecap="round"
-                            />
-                          ))}
-                        </svg>
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: `radial-gradient(circle, ${c}18, transparent)`,
+                        }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, boxShadow: `0 0 10px ${c}` }} />
+                        </div>
                       </div>
-                      <div style={{ fontWeight: 900, fontSize: 14, color: c, letterSpacing: 2 }}>
-                        {frame.name.toUpperCase()}
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontWeight: 900, fontSize: 13, color: active ? c : '#e2e8f0', letterSpacing: 1.5 }}>
+                          {frame.name.toUpperCase()}
+                        </div>
+                        {frame.desc && (
+                          <div style={{ fontSize: 9, color: '#4b5563', marginTop: 2, fontWeight: 600 }}>{frame.desc}</div>
+                        )}
                       </div>
                       {active ? (
                         <div style={{
-                          fontSize: 10, fontWeight: 800, letterSpacing: 2, color: c,
-                          background: `${c}18`, padding: '3px 12px', borderRadius: 6,
+                          fontSize: 9, fontWeight: 900, letterSpacing: 2, color: c,
+                          background: `${c}20`, border: `1px solid ${c}55`,
+                          padding: '3px 12px', borderRadius: 20,
                         }}>AKTIF</div>
                       ) : owned ? (
-                        <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>AKTIF ET</div>
+                        <div style={{ fontSize: 9, color: '#6b7280', fontWeight: 700, letterSpacing: 1 }}>SAHIPSIN — AKTIF ET</div>
                       ) : (
-                        <div style={{ fontWeight: 900, fontSize: 14, color: '#f59e0b' }}>{frame.price} GOLD</div>
+                        <div style={{ fontWeight: 900, fontSize: 13, color: '#f59e0b' }}>{frame.price.toLocaleString()} GOLD</div>
                       )}
                     </motion.div>
                   )

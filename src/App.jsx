@@ -15,6 +15,8 @@ import BattlePassPage from './components/BattlePass/BattlePassPage'
 import LootBoxModal from './components/LootBox/LootBoxModal'
 import LevelUpModal from './components/Progress/LevelUpModal'
 import ShopPage from './components/Shop/ShopPage'
+import LandingPage from './components/Landing/LandingPage'
+import ClanWarLobby from './components/ClanWar/ClanWarLobby'
 
 function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuthStore()
@@ -29,7 +31,7 @@ function LoadingScreen() {
       style={{ background: '#0a0a1a' }}>
       <div className="text-center">
         <div className="text-6xl mb-4 animate-bounce">⬤</div>
-        <div className="text-2xl font-black text-white tracking-widest">AGARZ</div>
+        <div className="text-2xl font-black text-white tracking-widest">Agarix</div>
         <div className="text-gray-400 text-sm mt-2 animate-pulse">Yükleniyor...</div>
       </div>
     </div>
@@ -121,8 +123,11 @@ export default function App() {
         <Route path="/shop" element={
           <ProtectedRoute><ShopPage /></ProtectedRoute>
         } />
-        <Route path="/" element={<Navigate to="/menu" replace />} />
-        <Route path="*" element={<Navigate to="/menu" replace />} />
+        <Route path="/clan-war" element={
+          <ProtectedRoute><ClanWarLobby /></ProtectedRoute>
+        } />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
