@@ -853,10 +853,12 @@ class GameRoom {
 
   getLeaderboard() {
     return Array.from(this.players.values())
-      .filter(p => p.mass > 0 && !p.dead)
-      .sort((a, b) => b.mass - a.mass)
+      .filter(p => !p.dead)
+      .map(p => ({ ...p, _displayMass: p.reportedMass || p.mass }))
+      .filter(p => p._displayMass > 0)
+      .sort((a, b) => b._displayMass - a._displayMass)
       .slice(0, 10)
-      .map(p => ({ id: p.id, name: p.name, mass: Math.floor(p.mass), color: p.color, isGod: !!p.isGod, clan: p.clan || null }))
+      .map(p => ({ id: p.id, name: p.name, mass: Math.floor(p._displayMass), color: p.color, isGod: !!p.isGod, clan: p.clan || null }))
   }
 
   getPublicPlayers(excludeId) {
@@ -983,6 +985,13 @@ io.on('connection', (socket) => {
     if (!player || player.dead) return
     if (typeof data.x === 'number') player.inputX = clamp(data.x, 0, WORLD_SIZE)
     if (typeof data.y === 'number') player.inputY = clamp(data.y, 0, WORLD_SIZE)
+    if (typeof data.clientMass === 'number' && data.clientMass > 0) {
+      const serverMass = player.mass || 300
+      const maxAllowed = serverMass * 8
+      if (data.clientMass <= maxAllowed) {
+        player.reportedMass = data.clientMass
+      }
+    }
   })
 
   socket.on('input:split', () => {

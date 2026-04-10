@@ -814,7 +814,8 @@ export class GameEngine {
       if (!this.running || this.dead || !socketClient.connected) return
       const mx = this.mouse?.x ?? this.camera.x
       const my = this.mouse?.y ?? this.camera.y
-      socketClient.sendInput(mx | 0, my | 0)
+      const clientMass = Math.floor(this.cells.reduce((s,c) => s+c.mass, 0))
+      socketClient.sendInput(mx | 0, my | 0, clientMass)
     }, 50)
   }
 
@@ -1207,9 +1208,7 @@ export class GameEngine {
     if (this.modeBannerTimer > 0) this.modeBannerTimer -= dt
     this._updateZombieParticles(dt)
 
-    const totalMass = this._useSocket && this._serverMass > 0
-      ? this._serverMass
-      : this.cells.reduce((s,c) => s+c.mass, 0)
+    const totalMass = this.cells.reduce((s,c) => s+c.mass, 0)
     let scoreMultiplier = 1
     if (totalMass >= 2000) scoreMultiplier = 3
     else if (totalMass >= 500) scoreMultiplier = 2

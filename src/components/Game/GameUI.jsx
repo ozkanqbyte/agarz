@@ -164,11 +164,6 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
           </div>
         )}
 
-        <div className="px-4 py-3 rounded-2xl min-w-36" style={panelStyle}>
-          <div className="text-xs text-gray-500 mb-1">Kütle</div>
-          <div className="text-3xl font-black text-white leading-none">{Math.floor(score).toLocaleString()}</div>
-        </div>
-
         <div className="flex gap-2">
           <div className="flex-1 px-3 py-2 rounded-xl text-center" style={panelStyle}>
             <div className="text-xs text-gray-500">Sıra</div>
@@ -183,6 +178,11 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
               <span className="text-lg font-black text-white">{totalPlayers}</span>
             </div>
           </div>
+        </div>
+
+        <div className="px-4 py-3 rounded-2xl min-w-36" style={panelStyle}>
+          <div className="text-xs text-gray-500 mb-1">Kütle</div>
+          <div className="text-3xl font-black text-white leading-none">{Math.floor(score).toLocaleString()}</div>
         </div>
 
         {gold > 0 && (
