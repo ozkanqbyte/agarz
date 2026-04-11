@@ -694,14 +694,20 @@ export class GameEngine {
       .on('ejected:spawn', (list) => {
         if (!Array.isArray(list)) return
         for (const em of list) {
-          if (em.color === this.playerColor) continue
-          this.ejected.push({
-            id: em.id || uuidv4(),
-            x: em.x, y: em.y, vx: em.vx || 0, vy: em.vy || 0,
-            color: em.color, mass: em.mass || 12,
-            settled: false, settledTimer: 0, _pulse: 0
-          })
+          if (!this.ejected.find(e => e.id === em.id)) {
+            this.ejected.push({
+              id: em.id || uuidv4(),
+              x: em.x, y: em.y, vx: em.vx || 0, vy: em.vy || 0,
+              color: em.color, mass: em.mass || 12,
+              settled: false, settledTimer: 0, _pulse: 0
+            })
+          }
         }
+      })
+      .on('ejected:remove', (ids) => {
+        if (!Array.isArray(ids)) return
+        const s = new Set(ids)
+        this.ejected = this.ejected.filter(e => !s.has(e.id))
       })
       .on('food:spawned', (list) => {
         if (!Array.isArray(list)) return

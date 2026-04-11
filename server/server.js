@@ -25,7 +25,7 @@ const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 1
 const BASE_SPEED = 9
 const MIN_MASS_SPLIT = 35
-const EJECT_COST = 2
+const EJECT_COST = 14
 const EJECT_MASS = 12
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
@@ -56,6 +56,7 @@ class GameRoom {
     this.players = new Map()
     this.food = this._genFood()
     this.viruses = this._genViruses()
+    this.ejectedMasses = []
     this.chat = []
     this.lastActivity = Date.now()
     this.hostId = null
@@ -200,8 +201,10 @@ class GameRoom {
       if (player.skillGhostTimer > 0) player.skillGhostTimer -= dt
     }
 
+    this._updateEjectedMasses(dt)
     this._checkFoodCollisions()
     this._checkPlayerCollisions()
+    this._checkEjectedCollisions()
     this._checkCrystalCollisions()
     this._checkBossCollisions()
     this._respawnFood()
@@ -438,21 +441,67 @@ class GameRoom {
       const d = Math.sqrt(dx * dx + dy * dy) || 1
       const em = {
         id: rndId(),
-        x: cell.x + (dx / d) * (massToRadius(cell.mass) + 8),
-        y: cell.y + (dy / d) * (massToRadius(cell.mass) + 8),
-        vx: (dx / d) * 20,
-        vy: (dy / d) * 20,
+        ownerId: player.id,
+        x: cell.x + (dx / d) * (massToRadius(cell.mass) + 10),
+        y: cell.y + (dy / d) * (massToRadius(cell.mass) + 10),
+        vx: (dx / d) * 22,
+        vy: (dy / d) * 22,
         color: player.color,
         mass: EJECT_MASS,
-        settledTimer: 0,
-        settled: false
+        age: 0
       }
       ejected.push(em)
-      if (!player._ejected) player._ejected = []
-      player._ejected.push(em)
+      this.ejectedMasses.push(em)
       this._checkEjectedVirus(em)
     }
     if (ejected.length) io.to(this.id).emit('ejected:spawn', ejected)
+  }
+
+  _updateEjectedMasses(dt) {
+    const toRemove = []
+    for (const em of this.ejectedMasses) {
+      em.age = (em.age || 0) + dt
+      em.vx *= 0.88
+      em.vy *= 0.88
+      em.x = clamp(em.x + em.vx * dt * 60, 5, WORLD_SIZE - 5)
+      em.y = clamp(em.y + em.vy * dt * 60, 5, WORLD_SIZE - 5)
+      if (em.age > 30) toRemove.push(em.id)
+    }
+    if (toRemove.length) {
+      const s = new Set(toRemove)
+      this.ejectedMasses = this.ejectedMasses.filter(e => !s.has(e.id))
+      io.to(this.id).emit('ejected:remove', toRemove)
+    }
+  }
+
+  _checkEjectedCollisions() {
+    if (!this.ejectedMasses.length) return
+    const eaten = []
+    const eatenSet = new Set()
+    for (const [, player] of this.players) {
+      if (player.dead) continue
+      for (const cell of player.cells) {
+        const r = massToRadius(cell.mass)
+        for (const em of this.ejectedMasses) {
+          if (eatenSet.has(em.id)) continue
+          if (em.ownerId === player.id && em.age < 0.5) continue
+          const dx = cell.x - em.x, dy = cell.y - em.y
+          const d = Math.sqrt(dx*dx + dy*dy)
+          const er = massToRadius(em.mass)
+          if (d < r + er * 0.5) {
+            cell.mass += em.mass
+            eatenSet.add(em.id)
+            eaten.push(em.id)
+            if (player.socketId) io.to(player.socketId).emit('player:mass_gain', { gain: em.mass, x: em.x, y: em.y })
+          }
+        }
+      }
+    }
+    if (eaten.length) {
+      const s = new Set(eaten)
+      this.ejectedMasses = this.ejectedMasses.filter(e => !s.has(e.id))
+      io.to(this.id).emit('ejected:remove', eaten)
+    }
   }
 
   _checkEjectedVirus(em) {
