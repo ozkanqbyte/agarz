@@ -4,6 +4,7 @@ import { getTheme } from '../themes/themes'
 import { v4 as uuidv4 } from 'uuid'
 import { soundSystem } from './SoundSystem'
 import { socketClient } from './SocketClient'
+import { PixiRenderer } from './PixiRenderer'
 
 const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
@@ -355,6 +356,16 @@ export class GameEngine {
 
     this.trailHistory = []
     this._trailTimer = 0
+
+    this._pixiRenderer = new PixiRenderer()
+    const pixiCanvas = this._pixiRenderer.getCanvas()
+    canvas.parentElement && canvas.parentElement.insertBefore(pixiCanvas, canvas)
+    canvas.style.position = 'absolute'
+    canvas.style.top = '0'
+    canvas.style.left = '0'
+    canvas.style.zIndex = '2'
+    canvas.style.background = 'transparent'
+    canvas.style.pointerEvents = 'auto'
   }
 
   async init() {
@@ -2137,33 +2148,25 @@ export class GameEngine {
   _render() {
     const { ctx, canvas, camera, theme } = this
     const W = canvas.width, H = canvas.height
-    ctx.clearRect(0, 0, W, H)
-    ctx.fillStyle = theme.bg
-    ctx.fillRect(0, 0, W, H)
 
-    this._drawBgEffect(W, H)
+    if (this._pixiRenderer) {
+      this._pixiRenderer.render(this)
+    }
+
+    ctx.clearRect(0, 0, W, H)
 
     ctx.save()
     ctx.translate(W/2, H/2)
     ctx.scale(camera.zoom, camera.zoom)
     ctx.translate(-camera.x, -camera.y)
 
-    this._drawGrid()
-    this._drawBorder()
     this._drawBattleRoyaleZone()
     this._drawKothZone()
     this._drawCrystals()
     this._drawBoss()
     this._drawBossBlast()
-    this._drawFood()
-    this._drawViruses()
-    this._drawEjected()
     this._drawZombieParticles()
     this._drawAbsorbParticles()
-    this._drawParticles()
-    this._drawDyingCells()
-    this._drawOtherPlayers()
-    this._drawMyPlayer()
     this._drawPremiumEffects()
     this._drawFloatingTexts()
     this._drawSlowTargetIndicator()
@@ -3940,6 +3943,10 @@ export class GameEngine {
     if (this.frameId) cancelAnimationFrame(this.frameId)
     if (this.syncInterval) clearInterval(this.syncInterval)
     this._removeEvents()
+    if (this._pixiRenderer) {
+      try { this._pixiRenderer.destroy() } catch(_) {}
+      this._pixiRenderer = null
+    }
     if (this._useSocket) {
       socketClient.disconnect()
     } else {
