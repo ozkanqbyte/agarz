@@ -9,8 +9,8 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 11
-const MERGE_TIME = 30000
+const SPLIT_SPEED = 8
+const MERGE_TIME = 15000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
 const EJECT_MASS_SM = 12
@@ -549,14 +549,24 @@ export class GameEngine {
       .on('player:mass_gain', (d) => {
         const gain = d.gain || 0
         if (gain > 0 && this.cells.length > 0) {
-          const biggest = this.cells.reduce((a, b) => a.mass > b.mass ? a : b)
-          biggest.mass += gain
-          biggest.eatPulse = 1.8
+          let eaterCell = this.cells[0]
+          if (d.x != null && d.y != null) {
+            let bestD = Infinity
+            for (const c of this.cells) {
+              const dx = c.x - d.x, dy = c.y - d.y
+              const dd = dx*dx + dy*dy
+              if (dd < bestD) { bestD = dd; eaterCell = c }
+            }
+          } else {
+            eaterCell = this.cells.reduce((a, b) => a.mass > b.mass ? a : b)
+          }
+          eaterCell.mass += gain
+          eaterCell.eatPulse = 1.8
           this.lastEatTime = Date.now()
           this.onMassChange(Math.floor(this.cells.reduce((s,c)=>s+c.mass,0)))
           this.onXPGain(50)
           this._showFloat(`+${Math.floor(gain)} OYUNCU YENİLDİ!`, '#f59e0b')
-          this._spawnExplosion(d.x ?? biggest.x, d.y ?? biggest.y, '#f59e0b')
+          this._spawnExplosion(d.x ?? eaterCell.x, d.y ?? eaterCell.y, '#f59e0b')
           this.screenFlash = 0.3
           soundSystem.eat && soundSystem.eat()
         }
@@ -1253,7 +1263,7 @@ export class GameEngine {
     this._updateGold(dt)
     this._updateSkills(dt)
     this._updateGameMode(dt)
-    this._adaptiveVirusSpawn(dt)
+    if (!this._useSocket) this._adaptiveVirusSpawn(dt)
     this.screenFlash = Math.max(0, this.screenFlash - dt * 3)
     if (this.foodTrapCooldown > 0) this.foodTrapCooldown = Math.max(0, this.foodTrapCooldown - dt)
     this._frameCount++

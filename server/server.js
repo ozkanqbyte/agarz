@@ -27,9 +27,9 @@ const BASE_SPEED = 9
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 2
 const EJECT_MASS = 12
-const MERGE_TIME = 30000
+const MERGE_TIME = 10000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 12
+const SPLIT_SPEED = 8
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -326,9 +326,9 @@ class GameRoom {
             const dx = ac.x - bc.x, dy = ac.y - bc.y
             const d = Math.sqrt(dx*dx + dy*dy)
             const ra = massToRadius(ac.mass), rb = massToRadius(bc.mass)
-            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra + rb * 0.25) {
+            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra * 0.85) {
               eatQueue.push({ eater: a, eaterCell: ac, eaten: b, eatenCell: bc })
-            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb + ra * 0.25) {
+            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb * 0.85) {
               eatQueue.push({ eater: b, eaterCell: bc, eaten: a, eatenCell: ac })
             }
           }
