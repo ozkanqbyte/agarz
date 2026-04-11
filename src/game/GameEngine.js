@@ -622,19 +622,16 @@ export class GameEngine {
           if (p.id === this.playerId) {
             this._serverMass = p.m || 0
             if (p.cs && Array.isArray(p.cs) && p.cs.length > 0) {
-              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10) }))
+              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10), vx: c.vx || 0, vy: c.vy || 0 }))
               const serverIdSet = new Set(serverCells.map(c => c.id))
-              const savedVisuals = this.cells.filter(c => c._visualOnly)
-              const removedCells = this.cells.filter(c => !c._visualOnly && !serverIdSet.has(c.id))
+              const removedCells = this.cells.filter(c => !serverIdSet.has(c.id))
               for (const rc of removedCells) {
                 let tx = rc.x, ty = rc.y
-                const remaining = this.cells.filter(c => serverIdSet.has(c.id))
-                if (remaining.length > 0) {
-                  let bestD = Infinity
-                  for (const rem of remaining) {
-                    const d2 = (rem.x - rc.x)**2 + (rem.y - rc.y)**2
-                    if (d2 < bestD) { bestD = d2; tx = rem.x; ty = rem.y }
-                  }
+                let bestD = Infinity
+                for (const c of this.cells) {
+                  if (!serverIdSet.has(c.id)) continue
+                  const d2 = (c.x - rc.x)**2 + (c.y - rc.y)**2
+                  if (d2 < bestD) { bestD = d2; tx = c.x; ty = c.y }
                 }
                 this.dyingCells.push({ x: rc.x, y: rc.y, tx, ty, r: rc.radius * 0.85, color: rc.color || this.color, life: 1, _merge: true })
               }
@@ -643,50 +640,22 @@ export class GameEngine {
               for (const sc of serverCells) {
                 if (updatedById.has(sc.id)) {
                   const cell = updatedById.get(sc.id)
-                  const dx = sc.x - cell.x, dy = sc.y - cell.y
-                  const dist2 = dx*dx + dy*dy
-                  const recentSplit = cell._splitTime && (Date.now() - cell._splitTime < 400)
-                  if (dist2 > 250*250) {
-                    cell.x = sc.x; cell.y = sc.y
-                  } else if (!recentSplit && dist2 > 60*60) {
-                    cell.x += dx * 0.07
-                    cell.y += dy * 0.07
-                  }
-                  const massDiff = sc.mass - cell.mass
-                  if (!recentSplit && Math.abs(massDiff) > cell.mass * 0.15) {
-                    cell.mass += massDiff * 0.25
-                  }
+                  cell._tx = sc.x; cell._ty = sc.y
+                  cell._targetMass = sc.mass
                 } else {
-                  let startX = sc.x, startY = sc.y
-                  let matchedVis = null
-                  if (savedVisuals.length > 0) {
-                    let bestD = Infinity
-                    for (const vc of savedVisuals) {
-                      if (vc._used) continue
-                      const d2 = (vc.x - sc.x)**2 + (vc.y - sc.y)**2
-                      if (d2 < bestD) { bestD = d2; matchedVis = vc }
-                    }
-                    if (matchedVis && bestD < 400*400) {
-                      startX = matchedVis.x; startY = matchedVis.y
-                      matchedVis._used = true
-                    }
-                  }
-                  if (startX === sc.x && this.cells.length > 0) {
-                    let bestD = Infinity
-                    for (const existing of this.cells) {
-                      const d2 = (existing.x - sc.x)**2 + (existing.y - sc.y)**2
-                      if (d2 < bestD) { bestD = d2; startX = existing.x; startY = existing.y }
-                    }
+                  let startX = this.cells.length > 0 ? this.cells[0].x : sc.x
+                  let startY = this.cells.length > 0 ? this.cells[0].y : sc.y
+                  let bestD = Infinity
+                  for (const existing of this.cells) {
+                    const d2 = (existing.x - sc.x)**2 + (existing.y - sc.y)**2
+                    if (d2 < bestD) { bestD = d2; startX = existing.x; startY = existing.y }
                   }
                   const nc = new Cell(startX, startY, sc.mass, this.color)
                   nc.id = sc.id
                   nc._splitTime = Date.now()
-                  const ddx = sc.x - startX, ddy = sc.y - startY
-                  const dlen = Math.sqrt(ddx*ddx + ddy*ddy) || 1
-                  if (dlen > 5) {
-                    nc.vx = (ddx / dlen) * SPLIT_SPEED
-                    nc.vy = (ddy / dlen) * SPLIT_SPEED
-                  }
+                  nc._tx = sc.x; nc._ty = sc.y; nc._targetMass = sc.mass
+                  nc.vx = sc.vx || 0
+                  nc.vy = sc.vy || 0
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -1204,27 +1173,6 @@ export class GameEngine {
   _split() {
     if (this._useSocket) {
       socketClient.sendSplit()
-      for (const cell of [...this.cells]) {
-        if (cell.mass < 35 || cell._visualOnly) continue
-        const dx = this.mouse.x - cell.x || 1
-        const dy = this.mouse.y - cell.y || 0
-        const len = Math.sqrt(dx*dx + dy*dy) || 1
-        const half = cell.mass / 2
-        cell.mass = half
-        cell._splitTime = Date.now()
-        const nr = cell.radius
-        const nc = new Cell(
-          clamp(cell.x + (dx/len)*(nr+5), nr, WORLD_SIZE-nr),
-          clamp(cell.y + (dy/len)*(nr+5), nr, WORLD_SIZE-nr),
-          half, cell.color
-        )
-        nc.id = cell.id + '_vis'
-        nc.vx = (dx/len) * SPLIT_SPEED
-        nc.vy = (dy/len) * SPLIT_SPEED
-        nc._visualOnly = true
-        nc._splitTime = Date.now()
-        this.cells.push(nc)
-      }
       return
     }
     if (this.cells.length >= MAX_CELLS) return
@@ -1434,15 +1382,15 @@ export class GameEngine {
       }
     }
     const displayMass = (this._useSocket && this._serverMass > 0)
-      ? Math.floor(lerp(this._serverMass, totalMass, 0.5))
+      ? Math.floor(this._serverMass)
       : Math.floor(totalMass)
     if (displayMass !== this._lastRawMass) {
       this._lastRawMass = displayMass
       this.onMassChange(displayMass)
     }
 
+    const lf = Math.min(1, dt / 0.12)
     for (const op of Object.values(this.otherPlayers)) {
-      const lf = 0.28
       op.x = lerp(op.x, op.targetX, lf)
       op.y = lerp(op.y, op.targetY, lf)
       if (op.cells?.length) {
@@ -1455,7 +1403,7 @@ export class GameEngine {
             if (Math.abs(cell._vx) < 0.05) { cell._vx = 0; cell._vy = 0 }
           }
           const dist2 = (cell._x - cell.x) ** 2 + (cell._y - cell.y) ** 2
-          const cellLf = dist2 > 400 * 400 ? 0.7 : (dist2 > 100 * 100 ? lf : lf * 0.6)
+          const cellLf = dist2 > 300 * 300 ? 1 : lf
           cell._x = lerp(cell._x, cell.x, cellLf)
           cell._y = lerp(cell._y, cell.y, cellLf)
         }
@@ -1627,6 +1575,26 @@ export class GameEngine {
   }
 
   _moveCells(dt) {
+    if (this._useSocket) {
+      const lf = Math.min(1, dt / 0.10)
+      for (const cell of this.cells) {
+        const tx = cell._tx !== undefined ? cell._tx : cell.x
+        const ty = cell._ty !== undefined ? cell._ty : cell.y
+        const dx2 = tx - cell.x, dy2 = ty - cell.y
+        const dist2 = dx2*dx2 + dy2*dy2
+        const alpha = dist2 > 400*400 ? 1 : lf
+        cell.x += dx2 * alpha
+        cell.y += dy2 * alpha
+        if (cell._targetMass !== undefined) {
+          const dm = cell._targetMass - cell.mass
+          cell.mass += dm * Math.min(1, dt / 0.08)
+          cell.radius = massToRadius(cell.mass)
+        }
+        cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
+        cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
+      }
+      return
+    }
     for (const cell of this.cells) {
       const frozen = cell.frozen > 0
       const speedBoost = this.skills.speed.active ? 2.2 : 1
@@ -1646,10 +1614,8 @@ export class GameEngine {
       if (splitVelMag > 0.01) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.82
-        cell.vy *= 0.82
-        if (Math.abs(cell.vx) < 0.01) cell.vx = 0
-        if (Math.abs(cell.vy) < 0.01) cell.vy = 0
+        cell.vx *= 0.82; cell.vy *= 0.82
+        if (Math.abs(cell.vx) < 0.01) { cell.vx = 0; cell.vy = 0 }
       }
 
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
@@ -1659,31 +1625,26 @@ export class GameEngine {
   }
 
   _separateCells() {
+    if (this._useSocket) return
     const now = Date.now()
     for (let i = 0; i < this.cells.length; i++) {
       for (let j = i+1; j < this.cells.length; j++) {
         const a = this.cells[i]; const b = this.cells[j]
-        if (this._useSocket) {
-          const aSplit = a._splitTime && (now - a._splitTime < MERGE_TIME)
-          const bSplit = b._splitTime && (now - b._splitTime < MERGE_TIME)
-          if (!aSplit && !bSplit) continue
-        } else {
-          if (a.mergeTimer < now && b.mergeTimer < now) continue
-        }
+        if (a.mergeTimer < now && b.mergeTimer < now) continue
         const d = dist(a, b)
         const minD = a.radius + b.radius
         if (d < minD && d > 0) {
           const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
           const ov = (minD-d)/2
-          const push = this._useSocket ? 0.4 : 0.5
-          a.x -= dx*ov*push; a.y -= dy*ov*push
-          b.x += dx*ov*push; b.y += dy*ov*push
+          a.x -= dx*ov*0.5; a.y -= dy*ov*0.5
+          b.x += dx*ov*0.5; b.y += dy*ov*0.5
         }
       }
     }
   }
 
   _checkSelfMerge() {
+    if (this._useSocket) return
     if (this.cells.length <= 1) return
     const now = Date.now()
     const merged = new Set()
