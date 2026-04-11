@@ -623,6 +623,19 @@ export class GameEngine {
                 const pid = vc.id.replace('_vis', '')
                 visualByParent.set(pid, { x: vc.x, y: vc.y })
               }
+              const removedCells = this.cells.filter(c => !c._visualOnly && !serverIdSet.has(c.id))
+              for (const rc of removedCells) {
+                let tx = rc.x, ty = rc.y
+                const remaining = this.cells.filter(c => serverIdSet.has(c.id))
+                if (remaining.length > 0) {
+                  let bestD = Infinity
+                  for (const rem of remaining) {
+                    const d2 = (rem.x - rc.x)**2 + (rem.y - rc.y)**2
+                    if (d2 < bestD) { bestD = d2; tx = rem.x; ty = rem.y }
+                  }
+                }
+                this.dyingCells.push({ x: rc.x, y: rc.y, tx, ty, r: rc.radius * 0.85, color: rc.color || this.color, life: 0.9 })
+              }
               this.cells = this.cells.filter(c => serverIdSet.has(c.id))
               const updatedById = new Map(this.cells.map(c => [c.id, c]))
               for (const sc of serverCells) {
@@ -630,11 +643,11 @@ export class GameEngine {
                   const cell = updatedById.get(sc.id)
                   const dx = sc.x - cell.x, dy = sc.y - cell.y
                   const dist2 = dx*dx + dy*dy
-                  if (dist2 > 350*350) {
+                  if (dist2 > 300*300) {
                     cell.x = sc.x; cell.y = sc.y
-                  } else if (dist2 > 25*25) {
-                    cell.x += dx * 0.18
-                    cell.y += dy * 0.18
+                  } else if (dist2 > 40*40) {
+                    cell.x += dx * 0.10
+                    cell.y += dy * 0.10
                   }
                   const massDiff = sc.mass - cell.mass
                   if (Math.abs(massDiff) > cell.mass * 0.15) {
@@ -1465,11 +1478,10 @@ export class GameEngine {
 
   _updateDyingCells(dt) {
     for (const d of this.dyingCells) {
-      const speed = dt * 5
-      d.x = lerp(d.x, d.tx, speed)
-      d.y = lerp(d.y, d.ty, speed)
-      d.life -= dt * 3
-      d.r *= 0.92
+      d.x = lerp(d.x, d.tx, dt * 6)
+      d.y = lerp(d.y, d.ty, dt * 6)
+      d.life -= dt * 2.5
+      d.r = lerp(d.r, 0, dt * 4)
     }
     this.dyingCells = this.dyingCells.filter(d => d.life > 0 && d.r > 1)
   }
@@ -1598,10 +1610,10 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = Math.max(14, (6 / Math.pow(Math.max(cell.mass, 1), 0.4)) * 90) * speedMult
+      const speed = (6.5 / Math.pow(Math.max(20, cell.mass), 0.4)) * 60 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
-      const splitFactor = splitVelMag > 1 ? Math.max(0.2, 1 - splitVelMag / SPLIT_SPEED) : 1
+      const splitFactor = splitVelMag > 1 ? Math.max(0.25, 1 - splitVelMag / SPLIT_SPEED) : 1
       if (d > cell.radius / 3) {
         const s = Math.min(speed * dt * splitFactor, d)
         if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
