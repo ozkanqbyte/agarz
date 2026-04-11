@@ -1591,7 +1591,6 @@ export class GameEngine {
         if (cell._targetMass !== undefined) {
           const dm = cell._targetMass - cell.mass
           cell.mass += dm * Math.min(1, dt / 0.08)
-          cell.radius = massToRadius(cell.mass)
         }
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
