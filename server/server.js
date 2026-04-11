@@ -333,9 +333,9 @@ class GameRoom {
             const dx = ac.x - bc.x, dy = ac.y - bc.y
             const d = Math.sqrt(dx*dx + dy*dy)
             const ra = massToRadius(ac.mass), rb = massToRadius(bc.mass)
-            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra + rb * 0.5) {
+            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra * 0.9 + rb * 0.5) {
               eatQueue.push({ eater: a, eaterCell: ac, eaten: b, eatenCell: bc })
-            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb + ra * 0.5) {
+            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb * 0.9 + ra * 0.5) {
               eatQueue.push({ eater: b, eaterCell: bc, eaten: a, eatenCell: ac })
             }
           }
@@ -549,8 +549,8 @@ class GameRoom {
       const nx = dx / d, ny = dy / d
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x + nx * nr, nr, WORLD_SIZE - nr),
-        y: clamp(cell.y + ny * nr, nr, WORLD_SIZE - nr),
+        x: clamp(cell.x + nx * (nr * 2 + 12), nr, WORLD_SIZE - nr),
+        y: clamp(cell.y + ny * (nr * 2 + 12), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
         splitVx: nx * SPLIT_SPEED,

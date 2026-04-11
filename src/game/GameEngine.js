@@ -1170,8 +1170,8 @@ export class GameEngine {
         cell.mass = half
         const nr = cell.radius
         const nc = new Cell(
-          clamp(cell.x + (dx/len)*nr, nr, WORLD_SIZE-nr),
-          clamp(cell.y + (dy/len)*nr, nr, WORLD_SIZE-nr),
+          clamp(cell.x + (dx/len)*(nr*2+12), nr, WORLD_SIZE-nr),
+          clamp(cell.y + (dy/len)*(nr*2+12), nr, WORLD_SIZE-nr),
           half, cell.color
         )
         nc.id = cell.id + '_vis'
@@ -1192,7 +1192,12 @@ export class GameEngine {
       const len = Math.sqrt(dx*dx + dy*dy) || 1
       const half = cell.mass / 2
       cell.mass = half
-      const nc = new Cell(cell.x, cell.y, half, cell.color)
+      const nr2 = cell.radius
+      const nc = new Cell(
+        clamp(cell.x + (dx/len)*(nr2*2+12), nr2, WORLD_SIZE-nr2),
+        clamp(cell.y + (dy/len)*(nr2*2+12), nr2, WORLD_SIZE-nr2),
+        half, cell.color
+      )
       nc.vx = (dx/len) * SPLIT_SPEED
       nc.vy = (dy/len) * SPLIT_SPEED
       nc.mergeTimer = Date.now() + MERGE_TIME
