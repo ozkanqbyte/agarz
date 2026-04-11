@@ -58,9 +58,9 @@ class SocketClient {
     this._socket.volatile.emit('player:move', data)
   }
 
-  sendInput(x, y, clientMass) {
+  sendInput(x, y, clientMass, cells) {
     if (!this._socket?.connected) return
-    this._socket.volatile.emit('input:update', { x, y, clientMass })
+    this._socket.volatile.emit('input:update', { x, y, clientMass, cells })
   }
 
   sendSplit() {

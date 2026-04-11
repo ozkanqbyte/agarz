@@ -493,11 +493,26 @@ export class GameEngine {
         delete this.otherPlayers[d.id]
       })
       .on('player:died', (d) => {
-        if (d.id !== this.playerId) delete this.otherPlayers[d.id]
+        if (d.id !== this.playerId) {
+          delete this.otherPlayers[d.id]
+        } else {
+          this.dead = true
+          this._showFloat('Yenildin!', '#ef4444')
+          this.screenFlash = 1
+          setTimeout(() => { this.onDeath?.({ killedBy: d.killedBy }) }, 500)
+        }
       })
       .on('player:killed', (d) => {
         if (d.killerId === this.playerId) {
           this._showFloat(`💀 ${d.victimName || '?'} yenildi!`, '#fbbf24')
+          this.onKill?.(d.victimName)
+        }
+        if (d.victimId === this.playerId) {
+          this.dead = true
+          this._showFloat(`💀 ${d.killerName || '?'} seni yedi!`, '#ef4444')
+          this.screenFlash = 1
+          this._spawnExplosion(this.cells[0]?.x ?? this.camera.x, this.cells[0]?.y ?? this.camera.y, this.playerColor)
+          setTimeout(() => { if (!this.dead) return; this.onDeath?.({ killedBy: d.killerName }) }, 800)
         }
       })
       .on('food:update', (d) => {
@@ -531,14 +546,26 @@ export class GameEngine {
         this.viruses = this.viruses.filter(v => v.id !== d.id)
         if (this._clientEatenViruses) this._clientEatenViruses.delete(d.id)
       })
+      .on('player:mass_gain', (d) => {
+        const gain = d.gain || 0
+        if (gain > 0 && this.cells.length > 0) {
+          const biggest = this.cells.reduce((a, b) => a.mass > b.mass ? a : b)
+          biggest.mass += gain
+          biggest.eatPulse = 1.4
+          this.lastEatTime = Date.now()
+          const scoreGain = Math.floor(gain * 1.5)
+          this.score += scoreGain
+          this.onScoreChange(Math.floor(this.score))
+          this.onXPGain(50)
+          this._showFloat(`+${gain} OYUNCU YENİLDİ!`, '#f59e0b')
+          this._spawnExplosion(d.x ?? biggest.x, d.y ?? biggest.y, '#f59e0b')
+          soundSystem.eat && soundSystem.eat()
+        }
+      })
       .on('virus:mass_gain', (d) => {
         const gain = d.amount || 0
         if (gain > 0 && this.cells.length > 0) {
-          const targetCell = this.cells.reduce((a, b) => a.mass > b.mass ? a : b)
-          targetCell.mass += gain
-          targetCell.eatPulse = 1.3
-          this.score += gain
-          this.onScoreChange(Math.floor(this.score))
+          this.cells.reduce((a, b) => a.mass > b.mass ? a : b).eatPulse = 1.3
         }
       })
       .on('anticheat:warn', (d) => {
@@ -573,14 +600,27 @@ export class GameEngine {
             if (this.otherPlayers[p.id]) {
               const op = this.otherPlayers[p.id]
               op.targetX = p.x; op.targetY = p.y
-              op.mass = p.m || 20; op.cells = cells
+              op.mass = p.m || 20
               op.name = p.n || op.name; op.color = p.c || op.color
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
-              op.ownedPackage = p.pk || 'free'
+              op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null
+              const prev = op.cells || []
+              op.cells = cells.map((c, i) => {
+                const px = prev[i]
+                if (px) {
+                  const nx = c.x, ny = c.y
+                  px.x = nx; px.y = ny; px.mass = c.mass
+                  if (px._x === undefined) { px._x = nx; px._y = ny }
+                  return px
+                }
+                return { x: c.x, y: c.y, mass: c.mass, _x: c.x, _y: c.y }
+              })
             } else {
               this.otherPlayers[p.id] = {
                 x: p.x, y: p.y, targetX: p.x, targetY: p.y,
-                mass: p.m || 20, cells, name: p.n || '?',
+                mass: p.m || 20,
+                cells: cells.map(c => ({ ...c, _x: c.x, _y: c.y })),
+                name: p.n || '?',
                 color: p.c || '#6366f1', isGod: !!p.g, clan: p.cl || null,
                 frozen: !!p.frozen, poisoned: !!p.poisoned, ownedPackage: p.pk || 'free'
               }
@@ -785,7 +825,7 @@ export class GameEngine {
       const my = this.mouse?.y ?? this.camera.y
       const clientMass = Math.floor(this.cells.reduce((s,c) => s+c.mass, 0))
       socketClient.sendInput(mx | 0, my | 0, clientMass)
-    }, 50)
+    }, 33)
   }
 
   async _initFirebase() {
@@ -1238,8 +1278,16 @@ export class GameEngine {
     }
 
     for (const op of Object.values(this.otherPlayers)) {
-      op.x = lerp(op.x, op.targetX, 0.15)
-      op.y = lerp(op.y, op.targetY, 0.15)
+      const lf = 0.45
+      op.x = lerp(op.x, op.targetX, lf)
+      op.y = lerp(op.y, op.targetY, lf)
+      if (op.cells?.length) {
+        for (const cell of op.cells) {
+          if (cell._x === undefined) { cell._x = cell.x; cell._y = cell.y }
+          cell._x = lerp(cell._x, cell.x, lf)
+          cell._y = lerp(cell._y, cell.y, lf)
+        }
+      }
     }
   }
 
@@ -1548,12 +1596,12 @@ export class GameEngine {
         this._virusEatCount++
         const shouldSplit = this._virusEatCount % 6 === 1
         const preMass = cell.mass
-        cell.mass = preMass * 2
+        cell.mass = preMass * 1.25
         cell.eatPulse = 1.3
         this.lastEatTime = Date.now()
         soundSystem.virusEat()
 
-        const scoreGain = Math.floor(preMass * 2)
+        const scoreGain = Math.floor(preMass * 0.25)
         this.score += scoreGain
         this.onScoreChange(Math.floor(this.score))
         this.onXPGain(20)
@@ -1601,13 +1649,17 @@ export class GameEngine {
         const preMass = cell.mass
 
         if (this.skills.shield.active) {
+          cell.mass = preMass + 300
           this._showFloat('+300 KALKAN', '#06b6d4')
           this._spawnExplosion(virus.x, virus.y, '#06b6d4')
-        } else if (shouldSplit) {
-          this._explodeCellMouse(cell, Math.min(8, Math.max(2, Math.floor(preMass / 100))))
-          this._showFloat(`PATLAMA x2`, '#fbbf24')
         } else {
-          this._showFloat(`x2 DIKEN`, '#4ade80')
+          cell.mass = preMass * 1.25
+          if (shouldSplit) {
+            this._explodeCellMouse(cell, Math.min(8, Math.max(2, Math.floor(preMass / 100))))
+            this._showFloat(`PATLAMA +${Math.floor(preMass * 0.25)}`, '#fbbf24')
+          } else {
+            this._showFloat(`+25% DIKEN +${Math.floor(preMass * 0.25)}`, '#4ade80')
+          }
         }
 
         if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('ZEHIR', '#a855f7') }
@@ -1971,7 +2023,7 @@ export class GameEngine {
     this._drawDirectionArrows()
 
     if (this._waitingForServer) {
-      ctx.fillStyle = 'rgba(0,0,0,0.72)'
+      ctx.fillStyle = 'rgba(6,6,18,1)'
       ctx.fillRect(0, 0, W, H)
       const t = Date.now() / 500
       const dots = '.'.repeat(1 + Math.floor(t % 3))
@@ -2612,25 +2664,31 @@ export class GameEngine {
   _drawOtherPlayers() {
     const { camera, canvas } = this
     const zoom = camera.zoom
-    const margin = 100
-    const vl = camera.x - canvas.width / (2 * zoom) - margin
-    const vr = camera.x + canvas.width / (2 * zoom) + margin
-    const vt = camera.y - canvas.height / (2 * zoom) - margin
-    const vb = camera.y + canvas.height / (2 * zoom) + margin
+    const vl = camera.x - canvas.width / (2 * zoom) - 400
+    const vr = camera.x + canvas.width / (2 * zoom) + 400
+    const vt = camera.y - canvas.height / (2 * zoom) - 400
+    const vb = camera.y + canvas.height / (2 * zoom) + 400
     for (const [id, p] of Object.entries(this.otherPlayers)) {
-      if (p.x < vl || p.x > vr || p.y < vt || p.y > vb) continue
-      const cells = p.cells?.length ? p.cells : [{ x: p.x, y: p.y, mass: p.mass || 20 }]
+      const rawCells = p.cells?.length ? p.cells : [{ x: p.x, y: p.y, mass: p.mass || 20 }]
+      const anyVisible = rawCells.some(c => {
+        const cx = c._x ?? c.x, cy = c._y ?? c.y
+        return cx >= vl && cx <= vr && cy >= vt && cy <= vb
+      })
+      if (!anyVisible) continue
+      const cells = rawCells
       const isZombie = this.infectionZombies?.has(id)
       const isGlowing = this.glowingPlayerIds?.has(id)
       const drawColor = isZombie ? '#7cfc00' : p.color
       const t = Date.now() / 300
       for (const c of cells) {
+        const cx = c._x !== undefined ? c._x : c.x
+        const cy = c._y !== undefined ? c._y : c.y
         const r = massToRadius(c.mass)
         if (isZombie) {
           this.ctx.save()
           this.ctx.shadowBlur = 20 + 10 * Math.sin(t)
           this.ctx.shadowColor = '#7cfc00'
-          this.ctx.beginPath(); this.ctx.arc(c.x, c.y, r * 1.18, 0, Math.PI * 2)
+          this.ctx.beginPath(); this.ctx.arc(cx, cy, r * 1.18, 0, Math.PI * 2)
           this.ctx.strokeStyle = `rgba(124,252,0,${0.4 + 0.2 * Math.sin(t)})`
           this.ctx.lineWidth = 4; this.ctx.stroke()
           this.ctx.shadowBlur = 0
@@ -2640,10 +2698,10 @@ export class GameEngine {
           this.ctx.save()
           this.ctx.shadowBlur = 30 + 15 * Math.sin(t)
           this.ctx.shadowColor = '#00e5ff'
-          this._drawCell(c.x, c.y, r * 1.05, '#00e5ff', '', false, null, false)
+          this._drawCell(cx, cy, r * 1.05, '#00e5ff', '', false, null, false)
           this.ctx.restore()
         }
-        this._drawCell(c.x, c.y, r, drawColor, p.name, p.isGod, p.clan, false, false, false, 'gradient', 0, null, null, p.ownedPackage || 'free')
+        this._drawCell(cx, cy, r, drawColor, p.name, p.isGod, p.clan, false, false, false, 'gradient', 0, null, null, p.ownedPackage || 'free')
       }
     }
     for (const bot of this.bots) {

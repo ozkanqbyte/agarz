@@ -19,17 +19,17 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const VIRUS_MIN_MASS = 300
-const TICK_RATE = 20
+const TICK_RATE = 30
 const TICK_MS = 1000 / TICK_RATE
-const BROADCAST_EVERY = 2
-const BASE_SPEED = 6.5
+const BROADCAST_EVERY = 1
+const BASE_SPEED = 7.5
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 2
 const EJECT_MASS = 12
 const MERGE_TIME = 30000
 const MAX_CELLS = 16
 const SPLIT_SPEED = 10
-const MIN_EAT_RATIO = 1.15
+const MIN_EAT_RATIO = 1.10
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
 
@@ -46,7 +46,7 @@ function rndId() { return Math.random().toString(36).slice(2, 12) }
 function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 function massToRadius(mass) { return Math.sqrt(mass) * 4.5 }
-function speedForMass(_mass) { return BASE_SPEED / Math.pow(Math.max(20, 300), 0.4) }
+function speedForMass(mass) { return BASE_SPEED / Math.pow(Math.max(20, mass), 0.4) }
 
 class GameRoom {
   constructor(id, mode) {
@@ -226,24 +226,27 @@ class GameRoom {
     const frozen = player.frozen > 0
     const speedMult = player.skillSpeedTimer > 0 ? 2 : 1
     for (const cell of player.cells) {
-      if (frozen) continue
-      const baseSpeed = speedForMass(cell.mass) * speedMult * 60
-      const dx = (player.inputX || 0) - cell.x
-      const dy = (player.inputY || 0) - cell.y
-      const d = Math.sqrt(dx * dx + dy * dy)
-      if (d < 1) continue
-      const nx = dx / d, ny = dy / d
-      const move = Math.min(baseSpeed * dt, d)
       const r = massToRadius(cell.mass)
-      cell.x = clamp(cell.x + nx * move, r, WORLD_SIZE - r)
-      cell.y = clamp(cell.y + ny * move, r, WORLD_SIZE - r)
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
         cell.splitVx *= 0.86
         cell.splitVy *= 0.86
         if (Math.abs(cell.splitVx) < 0.05) { cell.splitVx = 0; cell.splitVy = 0 }
+      } else if (!frozen) {
+        const baseSpeed = speedForMass(cell.mass) * speedMult * 60
+        const dx = (player.inputX || 0) - cell.x
+        const dy = (player.inputY || 0) - cell.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d >= 1) {
+          const nx = dx / d, ny = dy / d
+          const move = Math.min(baseSpeed * dt, d)
+          cell.x = clamp(cell.x + nx * move, r, WORLD_SIZE - r)
+          cell.y = clamp(cell.y + ny * move, r, WORLD_SIZE - r)
+        }
       }
+      cell.x = clamp(cell.x, r, WORLD_SIZE - r)
+      cell.y = clamp(cell.y, r, WORLD_SIZE - r)
     }
     const cx = player.cells.reduce((s, c) => s + c.x, 0) / player.cells.length
     const cy = player.cells.reduce((s, c) => s + c.y, 0) / player.cells.length
@@ -309,54 +312,47 @@ class GameRoom {
 
   _checkPlayerCollisions() {
     const players = Array.from(this.players.values()).filter(p => !p.dead)
+    const eatQueue = []
     for (let i = 0; i < players.length; i++) {
       for (let j = i + 1; j < players.length; j++) {
         const a = players[i], b = players[j]
         if (a.dead || b.dead) continue
         if (a.skillGhostTimer > 0 || b.skillGhostTimer > 0) continue
         const sameTeam = this.mode === 'teams' && a.team === b.team && a.team !== 'none'
+        if (sameTeam) continue
         for (const ac of a.cells) {
           for (const bc of b.cells) {
-            const d = dist(ac, bc)
+            const dx = ac.x - bc.x, dy = ac.y - bc.y
+            const d = Math.sqrt(dx*dx + dy*dy)
             const ra = massToRadius(ac.mass), rb = massToRadius(bc.mass)
-            if (d < Math.max(ra, rb) * 0.9) {
-              if (!sameTeam && ac.mass > bc.mass * MIN_EAT_RATIO) {
-                if (this.mode === 'infection' && this.zombies.has(a.id) && this.zombies.has(b.id)) continue
-                ac.mass += bc.mass
-                b.cells = b.cells.filter(c => c.id !== bc.id)
-                if (!b.cells.length) {
-                  if (this.mode === 'infection' && this.zombies.has(a.id) && !this.zombies.has(b.id)) {
-                    b.dead = false
-                    b.cells = [{ id: rndId(), x: b.x, y: b.y, mass: 30, mergeTimer: 0 }]
-                    b.mass = 30
-                    b.color = '#7cfc00'
-                    b.isZombie = true
-                    this.zombies.add(b.id)
-                    io.to(this.id).emit('infection:converted', { id: b.id })
-                  } else {
-                    b.dead = true; this._notifyKill(a, b)
-                  }
-                }
-              } else if (!sameTeam && bc.mass > ac.mass * MIN_EAT_RATIO) {
-                if (this.mode === 'infection' && this.zombies.has(a.id) && this.zombies.has(b.id)) continue
-                bc.mass += ac.mass
-                a.cells = a.cells.filter(c => c.id !== ac.id)
-                if (!a.cells.length) {
-                  if (this.mode === 'infection' && this.zombies.has(b.id) && !this.zombies.has(a.id)) {
-                    a.dead = false
-                    a.cells = [{ id: rndId(), x: a.x, y: a.y, mass: 30, mergeTimer: 0 }]
-                    a.mass = 30
-                    a.color = '#7cfc00'
-                    a.isZombie = true
-                    this.zombies.add(a.id)
-                    io.to(this.id).emit('infection:converted', { id: a.id })
-                  } else {
-                    a.dead = true; this._notifyKill(b, a)
-                  }
-                }
-              }
+            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra * 0.85) {
+              eatQueue.push({ eater: a, eaterCell: ac, eaten: b, eatenCell: bc })
+            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb * 0.85) {
+              eatQueue.push({ eater: b, eaterCell: bc, eaten: a, eatenCell: ac })
             }
           }
+        }
+      }
+    }
+    const deadCells = new Set()
+    for (const { eater, eaterCell, eaten, eatenCell } of eatQueue) {
+      if (eater.dead || eaten.dead) continue
+      if (deadCells.has(eatenCell.id)) continue
+      if (this.mode === 'infection' && this.zombies.has(eater.id) && this.zombies.has(eaten.id)) continue
+      const gained = eatenCell.mass
+      eaterCell.mass += gained
+      deadCells.add(eatenCell.id)
+      eaten.cells = eaten.cells.filter(c => c.id !== eatenCell.id)
+      if (eater.socketId) io.to(eater.socketId).emit('player:mass_gain', { gain: Math.floor(gained), x: eatenCell.x, y: eatenCell.y })
+      if (!eaten.cells.length) {
+        if (this.mode === 'infection' && this.zombies.has(eater.id) && !this.zombies.has(eaten.id)) {
+          eaten.dead = false
+          eaten.cells = [{ id: rndId(), x: eaten.x, y: eaten.y, mass: 30, mergeTimer: 0 }]
+          eaten.mass = 30; eaten.color = '#7cfc00'; eaten.isZombie = true
+          this.zombies.add(eaten.id)
+          io.to(this.id).emit('infection:converted', { id: eaten.id })
+        } else {
+          eaten.dead = true; this._notifyKill(eater, eaten)
         }
       }
     }
@@ -381,7 +377,7 @@ class GameRoom {
             cell.mass = preMass + 300
           } else {
             player._virusEatCount = (player._virusEatCount || 0) + 1
-            cell.mass = preMass * 2
+            cell.mass = preMass * 1.25
             const shouldSplit = player._virusEatCount % 6 === 0
             if (shouldSplit) {
               this._explodePlayer(player, cell)
@@ -805,6 +801,9 @@ class GameRoom {
       killerName: killer.name,
       victimName: victim.name
     })
+    if (victim.socketId) {
+      io.to(victim.socketId).emit('player:died', { id: victim.id, killedBy: killer.name })
+    }
     io.to(this.id).emit('leaderboard:update', {
       leaderboard: this.getLeaderboard(),
       playerCount: this.players.size

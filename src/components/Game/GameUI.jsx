@@ -60,7 +60,7 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
   const [gold, setGold] = useState(0)
   const [status, setStatus] = useState({ autoMove: false, spectating: false })
   const [milestone, setMilestone] = useState(null)
-  const [prevScore, setPrevScore] = useState(0)
+  const [prevMass, setPrevMass] = useState(0)
   const [gameTimer, setGameTimer] = useState(3600)
   const [skills, setSkills] = useState({ speed: { active: false, timer: 0, cooldown: 0 }, slow: { active: false, timer: 0, cooldown: 0 }, shield: { active: false, timer: 0, cooldown: 0 } })
   const [deathScreen, setDeathScreen] = useState(null)
@@ -114,14 +114,14 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
   useEffect(() => {
     const milestones = [100, 500, 1000, 2000, 5000, 10000, 25000, 50000, 100000]
     for (const m of milestones) {
-      if (prevScore < m && score >= m) {
+      if (prevMass < m && playerMass >= m) {
         setMilestone(m >= 1000 ? `${m/1000}K` : m)
         setTimeout(() => setMilestone(null), 3000)
         break
       }
     }
-    setPrevScore(score)
-  }, [score])
+    setPrevMass(playerMass)
+  }, [playerMass])
 
   const uiBg = 'rgba(6,6,18,0.88)'
   const uiBorder = `rgba(${theme.glowColor},0.22)`
