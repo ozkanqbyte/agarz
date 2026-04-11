@@ -17,6 +17,9 @@ const io = new Server(httpServer, {
 })
 
 const WORLD_SIZE = 6000
+const BOT_COUNT = 20
+const BOT_NAMES = ['Agarz','Shadow','Ghost','Blaze','Storm','Viper','Nova','Titan','Apex','Fury','Zeta','Orion','Hawk','Rex','Bolt','Fang','Ace','Ryze','Echo','Neon']
+const BOT_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#10b981','#6366f1','#84cc16','#e879f9','#38bdf8','#fb923c','#a3e635','#f472b6','#34d399','#c084fc']
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const VIRUS_MIN_MASS = 300
@@ -106,7 +109,92 @@ class GameRoom {
       this.teamEnded = false
     }
 
+    this._initBots()
     this._startLoop()
+  }
+
+  _initBots() {
+    for (let i = 0; i < BOT_COUNT; i++) {
+      const x = 400 + Math.random() * (WORLD_SIZE - 800)
+      const y = 400 + Math.random() * (WORLD_SIZE - 800)
+      const mass = 20 + Math.random() * 30
+      const bot = {
+        id: 'bot_' + rndId(),
+        name: BOT_NAMES[i % BOT_NAMES.length],
+        x, y,
+        mass,
+        cells: [{ id: rndId(), x, y, mass, splitVx: 0, splitVy: 0, mergeTimer: 0 }],
+        color: BOT_COLORS[i % BOT_COLORS.length],
+        inputX: x, inputY: y,
+        dead: false,
+        isBot: true,
+        botThinkTimer: Math.random() * 2,
+        botDifficulty: i < 7 ? 'easy' : i < 14 ? 'medium' : 'hard',
+        botRespawnTimer: 0,
+        frozen: 0, poisoned: 0, skillSpeedTimer: 0, skillSlowTimer: 0,
+        skillShieldTimer: 0, skillMagnetTimer: 0, skillGhostTimer: 0,
+        score: 0, kills: 0, ownedPackage: 'free', isGod: false
+      }
+      this.players.set(bot.id, bot)
+    }
+  }
+
+  _updateBots(dt) {
+    for (const [, player] of this.players) {
+      if (!player.isBot) continue
+      if (player.dead) {
+        player.botRespawnTimer = (player.botRespawnTimer || 0) + dt
+        if (player.botRespawnTimer >= 5) {
+          player.dead = false
+          player.botRespawnTimer = 0
+          const x = 400 + Math.random() * (WORLD_SIZE - 800)
+          const y = 400 + Math.random() * (WORLD_SIZE - 800)
+          const mass = 20 + Math.random() * 30
+          player.x = x; player.y = y; player.mass = mass
+          player.cells = [{ id: rndId(), x, y, mass, splitVx: 0, splitVy: 0, mergeTimer: 0 }]
+          player.inputX = x; player.inputY = y
+        }
+        continue
+      }
+      player.botThinkTimer = (player.botThinkTimer || 0) - dt
+      if (player.botThinkTimer <= 0) {
+        const thinkRate = player.botDifficulty === 'hard' ? 0.3 : player.botDifficulty === 'medium' ? 0.7 : 1.5
+        player.botThinkTimer = thinkRate + Math.random() * thinkRate
+        const cx = player.cells.reduce((s, c) => s + c.x, 0) / player.cells.length
+        const cy = player.cells.reduce((s, c) => s + c.y, 0) / player.cells.length
+        let bestTarget = null, bestScore = -Infinity
+        for (const [, other] of this.players) {
+          if (other.id === player.id || other.dead) continue
+          const dx = other.x - cx, dy = other.y - cy
+          const d = Math.sqrt(dx*dx + dy*dy)
+          if (d > 1800) continue
+          const massRatio = player.mass / Math.max(1, other.mass)
+          const score = massRatio > 1.1 ? (1000 - d) * massRatio : -d
+          if (score > bestScore) { bestScore = score; bestTarget = other }
+        }
+        let nearestFood = null, nearestFoodD = Infinity
+        for (const f of this.food) {
+          const dx = f.x - cx, dy = f.y - cy
+          const d = dx*dx + dy*dy
+          if (d < nearestFoodD) { nearestFoodD = d; nearestFood = f }
+        }
+        if (bestTarget && player.mass > bestTarget.mass * 1.1) {
+          player.inputX = bestTarget.x + (Math.random() - 0.5) * 60
+          player.inputY = bestTarget.y + (Math.random() - 0.5) * 60
+        } else if (bestTarget && bestTarget.mass > player.mass * 1.1) {
+          player.inputX = cx + (cx - bestTarget.x) + (Math.random() - 0.5) * 200
+          player.inputY = cy + (cy - bestTarget.y) + (Math.random() - 0.5) * 200
+        } else if (nearestFood) {
+          player.inputX = nearestFood.x + (Math.random() - 0.5) * 80
+          player.inputY = nearestFood.y + (Math.random() - 0.5) * 80
+        } else {
+          player.inputX = cx + (Math.random() - 0.5) * 600
+          player.inputY = cy + (Math.random() - 0.5) * 600
+        }
+        player.inputX = Math.max(100, Math.min(WORLD_SIZE - 100, player.inputX))
+        player.inputY = Math.max(100, Math.min(WORLD_SIZE - 100, player.inputY))
+      }
+    }
   }
 
   _startLoop() {
@@ -201,6 +289,7 @@ class GameRoom {
       if (player.skillGhostTimer > 0) player.skillGhostTimer -= dt
     }
 
+    this._updateBots(dt)
     this._updateEjectedMasses(dt)
     this._checkFoodCollisions()
     this._checkPlayerCollisions()

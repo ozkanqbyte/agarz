@@ -3607,7 +3607,7 @@ export class GameEngine {
   }
 
   _initBots() {
-    const BOT_COUNT = 30
+    const BOT_COUNT = 20
     const teamColors = { red: '#ef4444', blue: '#3b82f6' }
     for (let i = 0; i < BOT_COUNT; i++) {
       const diff = i < 8 ? 'easy' : i < 20 ? 'medium' : 'hard'
