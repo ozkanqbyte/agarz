@@ -605,7 +605,7 @@ export class GameEngine {
             if (p.poisoned) this._showFloat('☠️ Zehirlendi!', '#a855f7')
           } else {
             activeIds.add(p.id)
-            const cells = p.cs ? p.cs.map(c => ({ x: c.x, y: c.y, mass: c.m })) : []
+            const cells = p.cs ? p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: c.m })) : []
             if (this.otherPlayers[p.id]) {
               const op = this.otherPlayers[p.id]
               op.targetX = p.x; op.targetY = p.y
@@ -613,31 +613,21 @@ export class GameEngine {
               op.name = p.n || op.name; op.color = p.c || op.color
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
               op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null
-              const prev = op.cells || []
-              const usedPrev = new Set()
+              const prevById = new Map((op.cells || []).map(c => [c.id, c]))
               op.cells = cells.map((c) => {
-                let bestPx = null; let bestD = Infinity
-                for (let k = 0; k < prev.length; k++) {
-                  if (usedPrev.has(k)) continue
-                  const pk = prev[k]
-                  const dx = (pk._x ?? pk.x) - c.x, dy = (pk._y ?? pk.y) - c.y
-                  const d = dx*dx + dy*dy
-                  if (d < bestD) { bestD = d; bestPx = k }
-                }
-                if (bestPx !== null && bestD < 300*300) {
-                  usedPrev.add(bestPx)
-                  const px = prev[bestPx]
+                if (c.id && prevById.has(c.id)) {
+                  const px = prevById.get(c.id)
                   px.x = c.x; px.y = c.y; px.mass = c.mass
                   if (px._x === undefined) { px._x = c.x; px._y = c.y }
                   return px
                 }
-                return { x: c.x, y: c.y, mass: c.mass, _x: c.x, _y: c.y }
+                return { id: c.id, x: c.x, y: c.y, mass: c.mass, _x: c.x, _y: c.y }
               })
             } else {
               this.otherPlayers[p.id] = {
                 x: p.x, y: p.y, targetX: p.x, targetY: p.y,
                 mass: p.m || 20,
-                cells: cells.map(c => ({ ...c, _x: c.x, _y: c.y })),
+                cells: cells.map(c => ({ id: c.id, ...c, _x: c.x, _y: c.y })),
                 name: p.n || '?',
                 color: p.c || '#6366f1', isGod: !!p.g, clan: p.cl || null,
                 frozen: !!p.frozen, poisoned: !!p.poisoned, ownedPackage: p.pk || 'free'
