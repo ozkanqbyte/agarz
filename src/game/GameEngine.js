@@ -614,19 +614,33 @@ export class GameEngine {
         for (const p of data.players) {
           if (p.id === this.playerId) {
             this._serverMass = p.m || 0
-            if (p.cs && Array.isArray(p.cs) && p.cs.length > 0 && this.cells.length > 0) {
+            if (p.cs && Array.isArray(p.cs)) {
               const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: c.m }))
-              const byId = new Map(serverCells.map(c => [c.id, c]))
-              for (const cell of this.cells) {
-                const sc = byId.get(cell.id)
-                if (!sc) continue
-                const dx = sc.x - cell.x, dy = sc.y - cell.y
-                const dist2 = dx*dx + dy*dy
-                const lf = dist2 > 200*200 ? 0.6 : 0.12
-                cell.x += dx * lf
-                cell.y += dy * lf
-                if (Math.abs(sc.mass - cell.mass) > 5) {
-                  cell.mass += (sc.mass - cell.mass) * 0.3
+              const clientById = new Map(this.cells.map(c => [c.id, c]))
+              const serverIdSet = new Set(serverCells.map(c => c.id))
+              this.cells = this.cells.filter(c => serverIdSet.has(c.id))
+              const updatedById = new Map(this.cells.map(c => [c.id, c]))
+              for (const sc of serverCells) {
+                if (updatedById.has(sc.id)) {
+                  const cell = updatedById.get(sc.id)
+                  const dx = sc.x - cell.x, dy = sc.y - cell.y
+                  const dist2 = dx*dx + dy*dy
+                  const lf = dist2 > 200*200 ? 0.7 : 0.15
+                  cell.x += dx * lf
+                  cell.y += dy * lf
+                  if (Math.abs(sc.mass - cell.mass) > 5) {
+                    cell.mass += (sc.mass - cell.mass) * 0.4
+                  }
+                } else {
+                  const nearest = this.cells.reduce((best, c) => {
+                    const d2 = (c.x-sc.x)**2 + (c.y-sc.y)**2
+                    return (!best || d2 < best.d2) ? { c, d2 } : best
+                  }, null)
+                  const startX = nearest ? nearest.c.x : sc.x
+                  const startY = nearest ? nearest.c.y : sc.y
+                  const nc = { id: sc.id, x: startX, y: startY, mass: sc.mass, color: this.color, eatPulse: 0, mergeTimer: 0 }
+                  this.cells.push(nc)
+                  updatedById.set(sc.id, nc)
                 }
               }
             }
@@ -1133,7 +1147,10 @@ export class GameEngine {
   }
 
   _split() {
-    if (this._useSocket) socketClient.sendSplit()
+    if (this._useSocket) {
+      socketClient.sendSplit()
+      return
+    }
     if (this.cells.length >= MAX_CELLS) return
     const newCells = []
     for (const cell of [...this.cells]) {
@@ -1295,7 +1312,7 @@ export class GameEngine {
     this._virusAutoEat(dt)
     this._checkEjectedFoodConversion()
     this._checkSelfEatEjected()
-    this._checkSelfMerge()
+    if (!this._useSocket) this._checkSelfMerge()
     this._updateCellEffects(dt)
     this._updateCamera(dt)
     this._massDecay(dt)
@@ -1546,7 +1563,7 @@ export class GameEngine {
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
       cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
     }
-    this._separateCells()
+    if (!this._useSocket) this._separateCells()
   }
 
   _separateCells() {
