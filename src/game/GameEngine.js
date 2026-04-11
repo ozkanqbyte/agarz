@@ -1579,18 +1579,27 @@ export class GameEngine {
 
   _moveCells(dt) {
     if (this._useSocket) {
-      const lf = Math.min(1, dt / 0.10)
+      const now = Date.now()
+      const lf = Math.min(1, dt / 0.033)
       for (const cell of this.cells) {
-        const tx = cell._tx !== undefined ? cell._tx : cell.x
-        const ty = cell._ty !== undefined ? cell._ty : cell.y
-        const dx2 = tx - cell.x, dy2 = ty - cell.y
-        const dist2 = dx2*dx2 + dy2*dy2
-        const alpha = dist2 > 400*400 ? 1 : lf
-        cell.x += dx2 * alpha
-        cell.y += dy2 * alpha
+        const recentSplit = cell._splitTime && (now - cell._splitTime < 350)
+        const svx = cell.vx || 0, svy = cell.vy || 0
+        const svMag = Math.sqrt(svx*svx + svy*svy)
+        if (svMag > 0.05) {
+          cell.x += svx * dt * 60
+          cell.y += svy * dt * 60
+          cell.vx *= 0.82; cell.vy *= 0.82
+          if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
+        }
+        if (!recentSplit && cell._tx !== undefined) {
+          const dx2 = cell._tx - cell.x, dy2 = cell._ty - cell.y
+          const d2 = dx2*dx2 + dy2*dy2
+          const alpha = d2 > 500*500 ? 1 : lf
+          cell.x += dx2 * alpha
+          cell.y += dy2 * alpha
+        }
         if (cell._targetMass !== undefined) {
-          const dm = cell._targetMass - cell.mass
-          cell.mass += dm * Math.min(1, dt / 0.08)
+          cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 12))
         }
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
