@@ -1024,7 +1024,7 @@ io.on('connection', (socket) => {
     if (!player._splitWindow) player._splitWindow = now
     if (now - player._splitWindow > 5000) { player._splitCount5s = 0; player._splitWindow = now }
     player._splitCount5s++
-    if (player._splitCount5s > 20) {
+    if (player._splitCount5s > 60) {
       socket.emit('anticheat:warn', { reason: 'split_spam' })
       player.dead = true
       return

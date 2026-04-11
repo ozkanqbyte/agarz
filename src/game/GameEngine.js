@@ -604,12 +604,21 @@ export class GameEngine {
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
               op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null
               const prev = op.cells || []
-              op.cells = cells.map((c, i) => {
-                const px = prev[i]
-                if (px) {
-                  const nx = c.x, ny = c.y
-                  px.x = nx; px.y = ny; px.mass = c.mass
-                  if (px._x === undefined) { px._x = nx; px._y = ny }
+              const usedPrev = new Set()
+              op.cells = cells.map((c) => {
+                let bestPx = null; let bestD = Infinity
+                for (let k = 0; k < prev.length; k++) {
+                  if (usedPrev.has(k)) continue
+                  const pk = prev[k]
+                  const dx = (pk._x ?? pk.x) - c.x, dy = (pk._y ?? pk.y) - c.y
+                  const d = dx*dx + dy*dy
+                  if (d < bestD) { bestD = d; bestPx = k }
+                }
+                if (bestPx !== null && bestD < 300*300) {
+                  usedPrev.add(bestPx)
+                  const px = prev[bestPx]
+                  px.x = c.x; px.y = c.y; px.mass = c.mass
+                  if (px._x === undefined) { px._x = c.x; px._y = c.y }
                   return px
                 }
                 return { x: c.x, y: c.y, mass: c.mass, _x: c.x, _y: c.y }
