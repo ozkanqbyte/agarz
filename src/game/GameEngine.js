@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 22
+const SPLIT_SPEED = 18
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -630,11 +630,11 @@ export class GameEngine {
                   const cell = updatedById.get(sc.id)
                   const dx = sc.x - cell.x, dy = sc.y - cell.y
                   const dist2 = dx*dx + dy*dy
-                  if (dist2 > 500*500) {
+                  if (dist2 > 350*350) {
                     cell.x = sc.x; cell.y = sc.y
-                  } else if (dist2 > 100*100) {
-                    cell.x += dx * 0.05
-                    cell.y += dy * 0.05
+                  } else if (dist2 > 25*25) {
+                    cell.x += dx * 0.18
+                    cell.y += dy * 0.18
                   }
                   const massDiff = sc.mass - cell.mass
                   if (Math.abs(massDiff) > cell.mass * 0.15) {
@@ -1600,18 +1600,18 @@ export class GameEngine {
       const d = Math.sqrt(dx*dx + dy*dy)
       const speed = Math.max(14, (6 / Math.pow(Math.max(cell.mass, 1), 0.4)) * 90) * speedMult
 
-      const hasSplitVel = Math.abs(cell.vx) > 0.5 || Math.abs(cell.vy) > 0.5
-      if (!hasSplitVel && d > cell.radius / 3) {
-        const s = Math.min(speed * dt, d)
-        cell.x += (dx/d) * s
-        cell.y += (dy/d) * s
+      const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
+      const splitFactor = splitVelMag > 1 ? Math.max(0.2, 1 - splitVelMag / SPLIT_SPEED) : 1
+      if (d > cell.radius / 3) {
+        const s = Math.min(speed * dt * splitFactor, d)
+        if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
       }
 
-      if (Math.abs(cell.vx) > 0.01 || Math.abs(cell.vy) > 0.01) {
+      if (splitVelMag > 0.01) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.85
-        cell.vy *= 0.85
+        cell.vx *= 0.82
+        cell.vy *= 0.82
         if (Math.abs(cell.vx) < 0.01) cell.vx = 0
         if (Math.abs(cell.vy) < 0.01) cell.vy = 0
       }
