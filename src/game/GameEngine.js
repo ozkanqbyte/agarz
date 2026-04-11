@@ -9,8 +9,8 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 38
-const MERGE_TIME = 15000
+const SPLIT_SPEED = 22
+const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
 const EJECT_MASS_SM = 12
@@ -1181,8 +1181,8 @@ export class GameEngine {
         cell.mass = half
         const nr = cell.radius
         const nc = new Cell(
-          clamp(cell.x + (dx/len)*(nr*3+15), nr, WORLD_SIZE-nr),
-          clamp(cell.y + (dy/len)*(nr*3+15), nr, WORLD_SIZE-nr),
+          clamp(cell.x + (dx/len)*(nr+5), nr, WORLD_SIZE-nr),
+          clamp(cell.y + (dy/len)*(nr+5), nr, WORLD_SIZE-nr),
           half, cell.color
         )
         nc.id = cell.id + '_vis'
@@ -1207,8 +1207,8 @@ export class GameEngine {
       cell.mass = half
       const nr2 = cell.radius
       const nc = new Cell(
-        clamp(cell.x + (dx/len)*(nr2*3+15), nr2, WORLD_SIZE-nr2),
-        clamp(cell.y + (dy/len)*(nr2*3+15), nr2, WORLD_SIZE-nr2),
+        clamp(cell.x + (dx/len)*(nr2+5), nr2, WORLD_SIZE-nr2),
+        clamp(cell.y + (dy/len)*(nr2+5), nr2, WORLD_SIZE-nr2),
         half, cell.color
       )
       nc.vx = (dx/len) * SPLIT_SPEED
