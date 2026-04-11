@@ -649,16 +649,20 @@ export class GameEngine {
                   let startX = this.cells.length > 0 ? this.cells[0].x : sc.x
                   let startY = this.cells.length > 0 ? this.cells[0].y : sc.y
                   let bestD = Infinity
+                  let parentCell = null
                   for (const existing of this.cells) {
                     const d2 = (existing.x - sc.x)**2 + (existing.y - sc.y)**2
-                    if (d2 < bestD) { bestD = d2; startX = existing.x; startY = existing.y }
+                    if (d2 < bestD) { bestD = d2; startX = existing.x; startY = existing.y; parentCell = existing }
                   }
+                  const mergeAt = Date.now() + MERGE_TIME
                   const nc = new Cell(startX, startY, sc.mass, this.color)
                   nc.id = sc.id
                   nc._splitTime = Date.now()
+                  nc.mergeTimer = mergeAt
                   nc._tx = sc.x; nc._ty = sc.y; nc._targetMass = sc.mass
                   nc.vx = sc.vx || 0
                   nc.vy = sc.vy || 0
+                  if (parentCell) parentCell.mergeTimer = mergeAt
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -1606,6 +1610,7 @@ export class GameEngine {
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
       }
+      this._separateCells()
       return
     }
     for (const cell of this.cells) {
@@ -1638,7 +1643,6 @@ export class GameEngine {
   }
 
   _separateCells() {
-    if (this._useSocket) return
     const now = Date.now()
     for (let i = 0; i < this.cells.length; i++) {
       for (let j = i+1; j < this.cells.length; j++) {
