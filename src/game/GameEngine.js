@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 30
+const SPLIT_SPEED = 38
 const MERGE_TIME = 15000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -647,8 +647,18 @@ export class GameEngine {
                     }
                     const ddx = sc.x - parentX, ddy = sc.y - parentY
                     const dlen = Math.sqrt(ddx*ddx + ddy*ddy) || 1
-                    nc.vx = (ddx / dlen) * SPLIT_SPEED * 0.7
-                    nc.vy = (ddy / dlen) * SPLIT_SPEED * 0.7
+                    nc.vx = (ddx / dlen) * SPLIT_SPEED * 0.8
+                    nc.vy = (ddy / dlen) * SPLIT_SPEED * 0.8
+                    for (const existing of this.cells) {
+                      const edx = nc.x - existing.x, edy = nc.y - existing.y
+                      const ed = Math.sqrt(edx*edx + edy*edy) || 1
+                      const minSep = nc.radius + existing.radius
+                      if (ed < minSep) {
+                        const push = (minSep - ed) / ed
+                        nc.x += edx * push * 0.6
+                        nc.y += edy * push * 0.6
+                      }
+                    }
                   }
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
@@ -1170,8 +1180,8 @@ export class GameEngine {
         cell.mass = half
         const nr = cell.radius
         const nc = new Cell(
-          clamp(cell.x + (dx/len)*(nr*2+12), nr, WORLD_SIZE-nr),
-          clamp(cell.y + (dy/len)*(nr*2+12), nr, WORLD_SIZE-nr),
+          clamp(cell.x + (dx/len)*(nr*3+15), nr, WORLD_SIZE-nr),
+          clamp(cell.y + (dy/len)*(nr*3+15), nr, WORLD_SIZE-nr),
           half, cell.color
         )
         nc.id = cell.id + '_vis'
@@ -1194,8 +1204,8 @@ export class GameEngine {
       cell.mass = half
       const nr2 = cell.radius
       const nc = new Cell(
-        clamp(cell.x + (dx/len)*(nr2*2+12), nr2, WORLD_SIZE-nr2),
-        clamp(cell.y + (dy/len)*(nr2*2+12), nr2, WORLD_SIZE-nr2),
+        clamp(cell.x + (dx/len)*(nr2*3+15), nr2, WORLD_SIZE-nr2),
+        clamp(cell.y + (dy/len)*(nr2*3+15), nr2, WORLD_SIZE-nr2),
         half, cell.color
       )
       nc.vx = (dx/len) * SPLIT_SPEED
