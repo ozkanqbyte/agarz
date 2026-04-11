@@ -616,8 +616,8 @@ export class GameEngine {
             this._serverMass = p.m || 0
             if (p.cs && Array.isArray(p.cs) && p.cs.length > 0) {
               const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10) }))
-              const clientById = new Map(this.cells.map(c => [c.id, c]))
               const serverIdSet = new Set(serverCells.map(c => c.id))
+              const visualOnlyCells = this.cells.filter(c => c._visualOnly)
               this.cells = this.cells.filter(c => serverIdSet.has(c.id))
               const updatedById = new Map(this.cells.map(c => [c.id, c]))
               for (const sc of serverCells) {
@@ -636,8 +636,19 @@ export class GameEngine {
                     cell.mass += massDiff * 0.35
                   }
                 } else {
-                  const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
+                  let startX = sc.x, startY = sc.y
+                  if (visualOnlyCells.length > 0) {
+                    let best = null, bestD = Infinity
+                    for (const vc of visualOnlyCells) {
+                      const d2 = (vc.x - sc.x)**2 + (vc.y - sc.y)**2
+                      if (d2 < bestD) { bestD = d2; best = vc }
+                    }
+                    if (best && bestD < 600*600) { startX = best.x; startY = best.y }
+                  }
+                  const nc = new Cell(startX, startY, sc.mass, this.color)
                   nc.id = sc.id
+                  nc.vx = (sc.x - startX) * 0.15
+                  nc.vy = (sc.y - startY) * 0.15
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
