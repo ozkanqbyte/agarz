@@ -348,6 +348,7 @@ class GameRoom {
       deadCells.add(eatenCell.id)
       eaten.cells = eaten.cells.filter(c => c.id !== eatenCell.id)
       if (eater.socketId) io.to(eater.socketId).emit('player:mass_gain', { gain: Math.floor(gained), x: eatenCell.x, y: eatenCell.y })
+      if (eaten.socketId) io.to(eaten.socketId).emit('cell:eaten', { cellId: eatenCell.id, x: eatenCell.x, y: eatenCell.y })
       if (!eaten.cells.length) {
         if (this.mode === 'infection' && this.zombies.has(eater.id) && !this.zombies.has(eaten.id)) {
           eaten.dead = false

@@ -581,6 +581,15 @@ export class GameEngine {
           this.cells.reduce((a, b) => a.mass > b.mass ? a : b).eatPulse = 1.3
         }
       })
+      .on('cell:eaten', (d) => {
+        if (!d?.cellId) return
+        const before = this.cells.length
+        this.cells = this.cells.filter(c => c.id !== d.cellId)
+        if (this.cells.length < before) {
+          this._spawnExplosion(d.x ?? 0, d.y ?? 0, '#ef4444')
+          this.onMassChange(Math.floor(this.cells.reduce((s,c)=>s+c.mass,0)))
+        }
+      })
       .on('anticheat:warn', (d) => {
         console.warn('[AntiCheat]', d.reason)
         this._showFloat('⛔ Hile Tespit! Bağlantı Kesildi.', '#ef4444')
@@ -636,9 +645,9 @@ export class GameEngine {
                 let startX = c.x, startY = c.y
                 let bestD = Infinity
                 for (const [, pCell] of prevById) {
-                  const dx = (pCell._x ?? pCell.x) - c.x, dy = (pCell._y ?? pCell.y) - c.y
+                  const dx = pCell.x - c.x, dy = pCell.y - c.y
                   const d = dx*dx + dy*dy
-                  if (d < bestD) { bestD = d; startX = pCell._x ?? pCell.x; startY = pCell._y ?? pCell.y }
+                  if (d < bestD) { bestD = d; startX = pCell.x; startY = pCell.y }
                 }
                 return { id: c.id, x: c.x, y: c.y, mass: c.mass, _x: startX, _y: startY }
               })
