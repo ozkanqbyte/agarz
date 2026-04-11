@@ -256,6 +256,25 @@ class GameRoom {
       cell.x = clamp(cell.x, r, WORLD_SIZE - r)
       cell.y = clamp(cell.y, r, WORLD_SIZE - r)
     }
+    if (player.cells.length > 1) {
+      for (let i = 0; i < player.cells.length; i++) {
+        for (let j = i + 1; j < player.cells.length; j++) {
+          const ca = player.cells[i], cb = player.cells[j]
+          if (ca.mergeTimer >= MERGE_TIME && cb.mergeTimer >= MERGE_TIME) continue
+          const adx = ca.x - cb.x, ady = ca.y - cb.y
+          const ad = Math.sqrt(adx * adx + ady * ady) || 1
+          const minD = massToRadius(ca.mass) + massToRadius(cb.mass)
+          if (ad < minD) {
+            const push = (minD - ad) / (2 * ad)
+            const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
+            ca.x = clamp(ca.x + adx * push, ra, WORLD_SIZE - ra)
+            ca.y = clamp(ca.y + ady * push, ra, WORLD_SIZE - ra)
+            cb.x = clamp(cb.x - adx * push, rb, WORLD_SIZE - rb)
+            cb.y = clamp(cb.y - ady * push, rb, WORLD_SIZE - rb)
+          }
+        }
+      }
+    }
     const cx = player.cells.reduce((s, c) => s + c.x, 0) / player.cells.length
     const cy = player.cells.reduce((s, c) => s + c.y, 0) / player.cells.length
     player.x = cx; player.y = cy

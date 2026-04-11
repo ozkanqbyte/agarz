@@ -638,6 +638,7 @@ export class GameEngine {
                 } else {
                   const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
                   nc.id = sc.id
+                  nc._splitTime = Date.now()
                   if (this.cells.length > 0) {
                     let parentX = 0, parentY = 0
                     let bestD = Infinity
@@ -1188,6 +1189,8 @@ export class GameEngine {
         nc.vx = (dx/len) * SPLIT_SPEED
         nc.vy = (dy/len) * SPLIT_SPEED
         nc._visualOnly = true
+        nc._splitTime = Date.now()
+        cell._splitTime = Date.now()
         this.cells.push(nc)
       }
       return
@@ -1628,9 +1631,9 @@ export class GameEngine {
       for (let j = i+1; j < this.cells.length; j++) {
         const a = this.cells[i]; const b = this.cells[j]
         if (this._useSocket) {
-          const hasVel = (a.vx && Math.abs(a.vx) > 0.5) || (b.vx && Math.abs(b.vx) > 0.5) ||
-                         (a.vy && Math.abs(a.vy) > 0.5) || (b.vy && Math.abs(b.vy) > 0.5)
-          if (!hasVel) continue
+          const aSplit = a._splitTime && (now - a._splitTime < MERGE_TIME)
+          const bSplit = b._splitTime && (now - b._splitTime < MERGE_TIME)
+          if (!aSplit && !bSplit) continue
         } else {
           if (a.mergeTimer < now && b.mergeTimer < now) continue
         }
