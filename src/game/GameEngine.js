@@ -614,8 +614,8 @@ export class GameEngine {
         for (const p of data.players) {
           if (p.id === this.playerId) {
             this._serverMass = p.m || 0
-            if (p.cs && Array.isArray(p.cs)) {
-              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: c.m }))
+            if (p.cs && Array.isArray(p.cs) && p.cs.length > 0) {
+              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10) }))
               const clientById = new Map(this.cells.map(c => [c.id, c]))
               const serverIdSet = new Set(serverCells.map(c => c.id))
               this.cells = this.cells.filter(c => serverIdSet.has(c.id))
@@ -638,7 +638,8 @@ export class GameEngine {
                   }, null)
                   const startX = nearest ? nearest.c.x : sc.x
                   const startY = nearest ? nearest.c.y : sc.y
-                  const nc = { id: sc.id, x: startX, y: startY, mass: sc.mass, color: this.color, eatPulse: 0, mergeTimer: 0 }
+                  const nc = new Cell(startX, startY, sc.mass, this.color)
+                  nc.id = sc.id
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
