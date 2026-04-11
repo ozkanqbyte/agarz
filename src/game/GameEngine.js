@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 22
+const SPLIT_SPEED = 30
 const MERGE_TIME = 15000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -636,19 +636,20 @@ export class GameEngine {
                     cell.mass += massDiff * 0.35
                   }
                 } else {
-                  let startX = sc.x, startY = sc.y
-                  if (visualOnlyCells.length > 0) {
-                    let best = null, bestD = Infinity
-                    for (const vc of visualOnlyCells) {
-                      const d2 = (vc.x - sc.x)**2 + (vc.y - sc.y)**2
-                      if (d2 < bestD) { bestD = d2; best = vc }
-                    }
-                    if (best && bestD < 600*600) { startX = best.x; startY = best.y }
-                  }
-                  const nc = new Cell(startX, startY, sc.mass, this.color)
+                  const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
                   nc.id = sc.id
-                  nc.vx = (sc.x - startX) * 0.15
-                  nc.vy = (sc.y - startY) * 0.15
+                  if (this.cells.length > 0) {
+                    let parentX = 0, parentY = 0
+                    let bestD = Infinity
+                    for (const existing of this.cells) {
+                      const d2 = (existing.x - sc.x)**2 + (existing.y - sc.y)**2
+                      if (d2 < bestD) { bestD = d2; parentX = existing.x; parentY = existing.y }
+                    }
+                    const ddx = sc.x - parentX, ddy = sc.y - parentY
+                    const dlen = Math.sqrt(ddx*ddx + ddy*ddy) || 1
+                    nc.vx = (ddx / dlen) * SPLIT_SPEED * 0.7
+                    nc.vy = (ddy / dlen) * SPLIT_SPEED * 0.7
+                  }
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -658,7 +659,7 @@ export class GameEngine {
             if (p.poisoned) this._showFloat('☠️ Zehirlendi!', '#a855f7')
           } else {
             activeIds.add(p.id)
-            const cells = p.cs ? p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: c.m })) : []
+            const cells = p.cs ? p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: c.m, vx: c.vx || 0, vy: c.vy || 0 })) : []
             if (this.otherPlayers[p.id]) {
               const op = this.otherPlayers[p.id]
               op.targetX = p.x; op.targetY = p.y
@@ -685,11 +686,12 @@ export class GameEngine {
                 let startX = c.x, startY = c.y
                 let bestD = Infinity
                 for (const [, pCell] of prevById) {
-                  const dx = pCell.x - c.x, dy = pCell.y - c.y
+                  const dx = pCell._x !== undefined ? (pCell._x - c.x) : (pCell.x - c.x)
+                  const dy = pCell._y !== undefined ? (pCell._y - c.y) : (pCell.y - c.y)
                   const d = dx*dx + dy*dy
-                  if (d < bestD) { bestD = d; startX = pCell.x; startY = pCell.y }
+                  if (d < bestD) { bestD = d; startX = pCell._x ?? pCell.x; startY = pCell._y ?? pCell.y }
                 }
-                return { id: c.id, x: c.x, y: c.y, mass: c.mass, _x: startX, _y: startY }
+                return { id: c.id, x: c.x, y: c.y, mass: c.mass, _x: startX, _y: startY, _vx: c.vx * 0.9, _vy: c.vy * 0.9 }
               })
             } else {
               this.otherPlayers[p.id] = {
@@ -1166,7 +1168,12 @@ export class GameEngine {
         const len = Math.sqrt(dx*dx + dy*dy) || 1
         const half = cell.mass / 2
         cell.mass = half
-        const nc = new Cell(cell.x, cell.y, half, cell.color)
+        const nr = cell.radius
+        const nc = new Cell(
+          clamp(cell.x + (dx/len)*nr, nr, WORLD_SIZE-nr),
+          clamp(cell.y + (dy/len)*nr, nr, WORLD_SIZE-nr),
+          half, cell.color
+        )
         nc.id = cell.id + '_vis'
         nc.vx = (dx/len) * SPLIT_SPEED
         nc.vy = (dy/len) * SPLIT_SPEED
@@ -1391,8 +1398,14 @@ export class GameEngine {
       if (op.cells?.length) {
         for (const cell of op.cells) {
           if (cell._x === undefined) { cell._x = cell.x; cell._y = cell.y }
+          if (cell._vx || cell._vy) {
+            cell._x += cell._vx * dt * 60
+            cell._y += cell._vy * dt * 60
+            cell._vx *= 0.82; cell._vy *= 0.82
+            if (Math.abs(cell._vx) < 0.05) { cell._vx = 0; cell._vy = 0 }
+          }
           const dist2 = (cell._x - cell.x) ** 2 + (cell._y - cell.y) ** 2
-          const cellLf = dist2 > 400 * 400 ? 0.7 : lf
+          const cellLf = dist2 > 400 * 400 ? 0.7 : (dist2 > 100 * 100 ? lf : lf * 0.6)
           cell._x = lerp(cell._x, cell.x, cellLf)
           cell._y = lerp(cell._y, cell.y, cellLf)
         }
@@ -1591,21 +1604,29 @@ export class GameEngine {
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
       cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
     }
-    if (!this._useSocket) this._separateCells()
+    this._separateCells()
   }
 
   _separateCells() {
+    const now = Date.now()
     for (let i = 0; i < this.cells.length; i++) {
       for (let j = i+1; j < this.cells.length; j++) {
         const a = this.cells[i]; const b = this.cells[j]
-        if (a.mergeTimer < Date.now() && b.mergeTimer < Date.now()) continue
+        if (this._useSocket) {
+          const hasVel = (a.vx && Math.abs(a.vx) > 0.5) || (b.vx && Math.abs(b.vx) > 0.5) ||
+                         (a.vy && Math.abs(a.vy) > 0.5) || (b.vy && Math.abs(b.vy) > 0.5)
+          if (!hasVel) continue
+        } else {
+          if (a.mergeTimer < now && b.mergeTimer < now) continue
+        }
         const d = dist(a, b)
         const minD = a.radius + b.radius
         if (d < minD && d > 0) {
           const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
           const ov = (minD-d)/2
-          a.x -= dx*ov*0.5; a.y -= dy*ov*0.5
-          b.x += dx*ov*0.5; b.y += dy*ov*0.5
+          const push = this._useSocket ? 0.4 : 0.5
+          a.x -= dx*ov*push; a.y -= dy*ov*push
+          b.x += dx*ov*push; b.y += dy*ov*push
         }
       }
     }

@@ -29,7 +29,7 @@ const EJECT_COST = 14
 const EJECT_MASS = 12
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 22
+const SPLIT_SPEED = 30
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -545,14 +545,16 @@ class GameRoom {
       const d = Math.sqrt(dx * dx + dy * dy) || 1
       cell.mass /= 2
       cell.mergeTimer = 0
+      const nr = massToRadius(cell.mass)
+      const nx = dx / d, ny = dy / d
       newCells.push({
         id: rndId(),
-        x: cell.x,
-        y: cell.y,
+        x: clamp(cell.x + nx * nr, nr, WORLD_SIZE - nr),
+        y: clamp(cell.y + ny * nr, nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
-        splitVx: (dx / d) * SPLIT_SPEED,
-        splitVy: (dy / d) * SPLIT_SPEED
+        splitVx: nx * SPLIT_SPEED,
+        splitVy: ny * SPLIT_SPEED
       })
     }
     player.cells.push(...newCells)
@@ -876,7 +878,7 @@ class GameRoom {
         id: p.id,
         x: p.x, y: p.y,
         m: p.mass,
-        cs: p.cells.map(c => ({ i: c.id, x: Math.round(c.x), y: Math.round(c.y), m: Math.round(c.mass) })),
+        cs: p.cells.map(c => ({ i: c.id, x: Math.round(c.x), y: Math.round(c.y), m: Math.round(c.mass), vx: c.splitVx ? Math.round(c.splitVx*10)/10 : 0, vy: c.splitVy ? Math.round(c.splitVy*10)/10 : 0 })),
         c: p.color,
         n: p.name,
         g: p.isGod ? 1 : 0,
