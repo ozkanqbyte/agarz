@@ -618,6 +618,11 @@ export class GameEngine {
               const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10) }))
               const serverIdSet = new Set(serverCells.map(c => c.id))
               const visualOnlyCells = this.cells.filter(c => c._visualOnly)
+              const visualByParent = new Map()
+              for (const vc of visualOnlyCells) {
+                const pid = vc.id.replace('_vis', '')
+                visualByParent.set(pid, { x: vc.x, y: vc.y })
+              }
               this.cells = this.cells.filter(c => serverIdSet.has(c.id))
               const updatedById = new Map(this.cells.map(c => [c.id, c]))
               for (const sc of serverCells) {
@@ -625,42 +630,33 @@ export class GameEngine {
                   const cell = updatedById.get(sc.id)
                   const dx = sc.x - cell.x, dy = sc.y - cell.y
                   const dist2 = dx*dx + dy*dy
-                  if (dist2 > 400*400) {
+                  if (dist2 > 500*500) {
                     cell.x = sc.x; cell.y = sc.y
-                  } else if (dist2 > 80*80) {
-                    cell.x += dx * 0.08
-                    cell.y += dy * 0.08
+                  } else if (dist2 > 100*100) {
+                    cell.x += dx * 0.05
+                    cell.y += dy * 0.05
                   }
                   const massDiff = sc.mass - cell.mass
                   if (Math.abs(massDiff) > cell.mass * 0.15) {
-                    cell.mass += massDiff * 0.35
+                    cell.mass += massDiff * 0.25
                   }
                 } else {
-                  const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
-                  nc.id = sc.id
-                  nc._splitTime = Date.now()
+                  let startX = sc.x, startY = sc.y
                   if (this.cells.length > 0) {
-                    let parentX = 0, parentY = 0
-                    let bestD = Infinity
+                    let bestD = Infinity, bx = sc.x, by = sc.y
                     for (const existing of this.cells) {
                       const d2 = (existing.x - sc.x)**2 + (existing.y - sc.y)**2
-                      if (d2 < bestD) { bestD = d2; parentX = existing.x; parentY = existing.y }
+                      if (d2 < bestD) { bestD = d2; bx = existing.x; by = existing.y }
                     }
-                    const ddx = sc.x - parentX, ddy = sc.y - parentY
-                    const dlen = Math.sqrt(ddx*ddx + ddy*ddy) || 1
-                    nc.vx = (ddx / dlen) * SPLIT_SPEED * 0.8
-                    nc.vy = (ddy / dlen) * SPLIT_SPEED * 0.8
-                    for (const existing of this.cells) {
-                      const edx = nc.x - existing.x, edy = nc.y - existing.y
-                      const ed = Math.sqrt(edx*edx + edy*edy) || 1
-                      const minSep = nc.radius + existing.radius
-                      if (ed < minSep) {
-                        const push = (minSep - ed) / ed
-                        nc.x += edx * push * 0.6
-                        nc.y += edy * push * 0.6
-                      }
-                    }
+                    startX = bx; startY = by
                   }
+                  const nc = new Cell(startX, startY, sc.mass, this.color)
+                  nc.id = sc.id
+                  nc._splitTime = Date.now()
+                  const ddx = sc.x - startX, ddy = sc.y - startY
+                  const dlen = Math.sqrt(ddx*ddx + ddy*ddy) || 1
+                  nc.vx = (ddx / dlen) * SPLIT_SPEED
+                  nc.vy = (ddy / dlen) * SPLIT_SPEED
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -1604,7 +1600,8 @@ export class GameEngine {
       const d = Math.sqrt(dx*dx + dy*dy)
       const speed = Math.max(14, (6 / Math.pow(Math.max(cell.mass, 1), 0.4)) * 90) * speedMult
 
-      if (d > cell.radius / 3) {
+      const hasSplitVel = Math.abs(cell.vx) > 0.5 || Math.abs(cell.vy) > 0.5
+      if (!hasSplitVel && d > cell.radius / 3) {
         const s = Math.min(speed * dt, d)
         cell.x += (dx/d) * s
         cell.y += (dy/d) * s
@@ -1613,8 +1610,8 @@ export class GameEngine {
       if (Math.abs(cell.vx) > 0.01 || Math.abs(cell.vy) > 0.01) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.87
-        cell.vy *= 0.87
+        cell.vx *= 0.85
+        cell.vy *= 0.85
         if (Math.abs(cell.vx) < 0.01) cell.vx = 0
         if (Math.abs(cell.vy) < 0.01) cell.vy = 0
       }
