@@ -551,14 +551,13 @@ export class GameEngine {
         if (gain > 0 && this.cells.length > 0) {
           const biggest = this.cells.reduce((a, b) => a.mass > b.mass ? a : b)
           biggest.mass += gain
-          biggest.eatPulse = 1.4
+          biggest.eatPulse = 1.8
           this.lastEatTime = Date.now()
-          const scoreGain = Math.floor(gain * 1.5)
-          this.score += scoreGain
-          this.onScoreChange(Math.floor(this.score))
+          this.onMassChange(Math.floor(this.cells.reduce((s,c)=>s+c.mass,0)))
           this.onXPGain(50)
-          this._showFloat(`+${gain} OYUNCU YENİLDİ!`, '#f59e0b')
+          this._showFloat(`+${Math.floor(gain)} OYUNCU YENİLDİ!`, '#f59e0b')
           this._spawnExplosion(d.x ?? biggest.x, d.y ?? biggest.y, '#f59e0b')
+          this.screenFlash = 0.3
           soundSystem.eat && soundSystem.eat()
         }
       })
@@ -1279,7 +1278,7 @@ export class GameEngine {
     }
 
     for (const op of Object.values(this.otherPlayers)) {
-      const lf = 0.45
+      const lf = 0.18
       op.x = lerp(op.x, op.targetX, lf)
       op.y = lerp(op.y, op.targetY, lf)
       if (op.cells?.length) {

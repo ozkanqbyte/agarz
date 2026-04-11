@@ -326,9 +326,9 @@ class GameRoom {
             const dx = ac.x - bc.x, dy = ac.y - bc.y
             const d = Math.sqrt(dx*dx + dy*dy)
             const ra = massToRadius(ac.mass), rb = massToRadius(bc.mass)
-            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra + rb * 0.4) {
+            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra + rb * 0.25) {
               eatQueue.push({ eater: a, eaterCell: ac, eaten: b, eatenCell: bc })
-            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb + ra * 0.4) {
+            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb + ra * 0.25) {
               eatQueue.push({ eater: b, eaterCell: bc, eaten: a, eatenCell: ac })
             }
           }
