@@ -543,6 +543,7 @@ class GameRoom {
       const dy = (player.inputY || 0) - cell.y
       const d = Math.sqrt(dx * dx + dy * dy) || 1
       cell.mass /= 2
+      cell.mergeTimer = 0
       newCells.push({
         id: rndId(),
         x: cell.x,

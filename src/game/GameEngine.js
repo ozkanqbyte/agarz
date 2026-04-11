@@ -636,13 +636,7 @@ export class GameEngine {
                     cell.mass += massDiff * 0.35
                   }
                 } else {
-                  const nearest = this.cells.reduce((best, c) => {
-                    const d2 = (c.x-sc.x)**2 + (c.y-sc.y)**2
-                    return (!best || d2 < best.d2) ? { c, d2 } : best
-                  }, null)
-                  const startX = nearest ? nearest.c.x : sc.x
-                  const startY = nearest ? nearest.c.y : sc.y
-                  const nc = new Cell(startX, startY, sc.mass, this.color)
+                  const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
                   nc.id = sc.id
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
@@ -1154,6 +1148,20 @@ export class GameEngine {
   _split() {
     if (this._useSocket) {
       socketClient.sendSplit()
+      for (const cell of [...this.cells]) {
+        if (cell.mass < 70) continue
+        const dx = this.mouse.x - cell.x || 1
+        const dy = this.mouse.y - cell.y || 0
+        const len = Math.sqrt(dx*dx + dy*dy) || 1
+        const half = cell.mass / 2
+        cell.mass = half
+        const nc = new Cell(cell.x, cell.y, half, cell.color)
+        nc.id = cell.id + '_vis'
+        nc.vx = (dx/len) * SPLIT_SPEED
+        nc.vy = (dy/len) * SPLIT_SPEED
+        nc._visualOnly = true
+        this.cells.push(nc)
+      }
       return
     }
     if (this.cells.length >= MAX_CELLS) return
