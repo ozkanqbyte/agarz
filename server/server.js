@@ -6,6 +6,7 @@ const cors = require('cors')
 const app = express()
 app.use(cors())
 app.use(express.json())
+app.get('/health', (_, res) => res.json({ ok: true }))
 
 const httpServer = http.createServer(app)
 const io = new Server(httpServer, {
@@ -22,14 +23,14 @@ const VIRUS_MIN_MASS = 300
 const TICK_RATE = 30
 const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 1
-const BASE_SPEED = 7.5
+const BASE_SPEED = 9
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 2
 const EJECT_MASS = 12
 const MERGE_TIME = 30000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 10
-const MIN_EAT_RATIO = 1.10
+const SPLIT_SPEED = 12
+const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
 
@@ -325,9 +326,9 @@ class GameRoom {
             const dx = ac.x - bc.x, dy = ac.y - bc.y
             const d = Math.sqrt(dx*dx + dy*dy)
             const ra = massToRadius(ac.mass), rb = massToRadius(bc.mass)
-            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra * 0.85) {
+            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra + rb * 0.4) {
               eatQueue.push({ eater: a, eaterCell: ac, eaten: b, eatenCell: bc })
-            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb * 0.85) {
+            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb + ra * 0.4) {
               eatQueue.push({ eater: b, eaterCell: bc, eaten: a, eatenCell: ac })
             }
           }
@@ -995,6 +996,21 @@ io.on('connection', (socket) => {
     if (typeof data.y === 'number') player.inputY = clamp(data.y, 0, WORLD_SIZE)
     if (typeof data.clientMass === 'number' && data.clientMass > 0 && data.clientMass < 500000) {
       player.reportedMass = data.clientMass
+    }
+    if (Array.isArray(data.cells) && data.cells.length > 0 && data.cells.length <= MAX_CELLS) {
+      for (let i = 0; i < Math.min(data.cells.length, player.cells.length); i++) {
+        const cc = data.cells[i]
+        const sc = player.cells[i]
+        if (typeof cc.x !== 'number' || typeof cc.y !== 'number') continue
+        const cx = clamp(cc.x, 0, WORLD_SIZE), cy = clamp(cc.y, 0, WORLD_SIZE)
+        const maxMove = speedForMass(sc.mass || 20) * 60 * 0.5
+        const dx = cx - sc.x, dy = cy - sc.y
+        const d = Math.sqrt(dx*dx + dy*dy)
+        if (d < maxMove) { sc.x = cx; sc.y = cy }
+      }
+      const cx = player.cells.reduce((s,c)=>s+c.x,0)/player.cells.length
+      const cy = player.cells.reduce((s,c)=>s+c.y,0)/player.cells.length
+      player.x = cx; player.y = cy
     }
   })
 

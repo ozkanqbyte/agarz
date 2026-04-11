@@ -824,7 +824,8 @@ export class GameEngine {
       const mx = this.mouse?.x ?? this.camera.x
       const my = this.mouse?.y ?? this.camera.y
       const clientMass = Math.floor(this.cells.reduce((s,c) => s+c.mass, 0))
-      socketClient.sendInput(mx | 0, my | 0, clientMass)
+      const cellPositions = this.cells.map(c => ({ x: Math.round(c.x), y: Math.round(c.y) }))
+      socketClient.sendInput(mx | 0, my | 0, clientMass, cellPositions)
     }, 33)
   }
 
