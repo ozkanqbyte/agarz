@@ -220,6 +220,9 @@ class GameRoom {
     if (this._tick % BROADCAST_EVERY === 0) {
       this._broadcast()
     }
+    if (this._tick % (TICK_RATE * 2) === 0) {
+      io.to(this.id).emit('leaderboard:update', { leaderboard: this.getLeaderboard(), playerCount: this.players.size })
+    }
     if (this._tick % (TICK_RATE * 10) === 0) {
       this.lastActivity = Date.now()
     }
@@ -467,6 +470,8 @@ class GameRoom {
       em.x = clamp(em.x + em.vx * dt * 60, 5, WORLD_SIZE - 5)
       em.y = clamp(em.y + em.vy * dt * 60, 5, WORLD_SIZE - 5)
       if (em.age > 30) toRemove.push(em.id)
+      const speed2 = em.vx * em.vx + em.vy * em.vy
+      if (speed2 > 1) this._checkEjectedVirus(em)
     }
     if (toRemove.length) {
       const s = new Set(toRemove)
@@ -911,12 +916,10 @@ class GameRoom {
 
   getLeaderboard() {
     return Array.from(this.players.values())
-      .filter(p => !p.dead)
-      .map(p => ({ ...p, _displayMass: p.reportedMass || p.mass }))
-      .filter(p => p._displayMass > 0)
-      .sort((a, b) => b._displayMass - a._displayMass)
+      .filter(p => !p.dead && p.mass > 0)
+      .sort((a, b) => b.mass - a.mass)
       .slice(0, 10)
-      .map(p => ({ id: p.id, name: p.name, mass: Math.floor(p._displayMass), color: p.color, isGod: !!p.isGod, clan: p.clan || null }))
+      .map(p => ({ id: p.id, name: p.name, mass: Math.floor(p.mass), color: p.color, isGod: !!p.isGod, clan: p.clan || null }))
   }
 
   getPublicPlayers(excludeId) {

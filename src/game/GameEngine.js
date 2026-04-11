@@ -614,6 +614,22 @@ export class GameEngine {
         for (const p of data.players) {
           if (p.id === this.playerId) {
             this._serverMass = p.m || 0
+            if (p.cs && Array.isArray(p.cs) && p.cs.length > 0 && this.cells.length > 0) {
+              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: c.m }))
+              const byId = new Map(serverCells.map(c => [c.id, c]))
+              for (const cell of this.cells) {
+                const sc = byId.get(cell.id)
+                if (!sc) continue
+                const dx = sc.x - cell.x, dy = sc.y - cell.y
+                const dist2 = dx*dx + dy*dy
+                const lf = dist2 > 200*200 ? 0.6 : 0.12
+                cell.x += dx * lf
+                cell.y += dy * lf
+                if (Math.abs(sc.mass - cell.mass) > 5) {
+                  cell.mass += (sc.mass - cell.mass) * 0.3
+                }
+              }
+            }
             if (p.frozen) this._showFloat('❄️ Donduruldu!', '#38bdf8')
             if (p.poisoned) this._showFloat('☠️ Zehirlendi!', '#a855f7')
           } else {
