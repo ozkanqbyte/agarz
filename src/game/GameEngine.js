@@ -297,6 +297,7 @@ export class GameEngine {
     this.modeBannerTimer = 0
     this.infectionCountdown = 0
     this.zombieParticles = []
+    this.dyingCells = []
     this.modeCrystals = []
     this.modeBoss = null
     this.kothZone = null
@@ -567,6 +568,9 @@ export class GameEngine {
           this.onXPGain(50)
           this._showFloat(`+${Math.floor(gain)} OYUNCU YENİLDİ!`, '#f59e0b')
           this._spawnExplosion(d.x ?? eaterCell.x, d.y ?? eaterCell.y, '#f59e0b')
+          this._spawnAbsorb(d.x ?? eaterCell.x, d.y ?? eaterCell.y, eaterCell.x, eaterCell.y, '#f59e0b')
+          const eatR = Math.sqrt(gain) * 4.5
+          this.dyingCells.push({ x: d.x ?? eaterCell.x, y: d.y ?? eaterCell.y, tx: eaterCell.x, ty: eaterCell.y, r: eatR, color: '#f59e0b', life: 1 })
           this.screenFlash = 0.3
           soundSystem.eat && soundSystem.eat()
         }
@@ -614,6 +618,14 @@ export class GameEngine {
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
               op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null
               const prevById = new Map((op.cells || []).filter(c => c.id).map(c => [c.id, c]))
+              const newIdSet = new Set(cells.map(c => c.id).filter(Boolean))
+              for (const [cid, pCell] of prevById) {
+                if (!newIdSet.has(cid)) {
+                  const nearX = cells[0]?.x ?? op.x, nearY = cells[0]?.y ?? op.y
+                  this.dyingCells.push({ x: pCell._x ?? pCell.x, y: pCell._y ?? pCell.y, tx: nearX, ty: nearY, r: Math.sqrt(pCell.mass || 20) * 4.5, color: op.color || '#6366f1', life: 1 })
+                  this._spawnAbsorb(pCell._x ?? pCell.x, pCell._y ?? pCell.y, nearX, nearY, op.color || '#6366f1')
+                }
+              }
               op.cells = cells.map((c) => {
                 if (c.id && prevById.has(c.id)) {
                   const px = prevById.get(c.id)
@@ -1244,6 +1256,7 @@ export class GameEngine {
     this._updateFloatingTexts(dt)
     this._updatePremiumEffects(dt)
     this._updateAbsorbParticles(dt)
+    this._updateDyingCells(dt)
     this._checkFoodCollisions()
     if (!this._useSocket) this._checkVirusCollisions()
     else this._checkVirusCollisionsClient()
@@ -1287,10 +1300,12 @@ export class GameEngine {
         this._lastValidMass = totalMass
       }
     }
-    const rawMass = Math.floor(totalMass)
-    if (rawMass !== this._lastRawMass) {
-      this._lastRawMass = rawMass
-      this.onMassChange(rawMass)
+    const displayMass = (this._useSocket && this._serverMass > 0)
+      ? Math.floor(lerp(this._serverMass, totalMass, 0.5))
+      : Math.floor(totalMass)
+    if (displayMass !== this._lastRawMass) {
+      this._lastRawMass = displayMass
+      this.onMassChange(displayMass)
     }
 
     for (const op of Object.values(this.otherPlayers)) {
@@ -1343,6 +1358,17 @@ export class GameEngine {
       p.size *= 0.97
     }
     this.absorbParticles = this.absorbParticles.filter(p => p.life > 0)
+  }
+
+  _updateDyingCells(dt) {
+    for (const d of this.dyingCells) {
+      const speed = dt * 5
+      d.x = lerp(d.x, d.tx, speed)
+      d.y = lerp(d.y, d.ty, speed)
+      d.life -= dt * 3
+      d.r *= 0.92
+    }
+    this.dyingCells = this.dyingCells.filter(d => d.life > 0 && d.r > 1)
   }
 
   _premiumEatEffect(x, y, color) {
@@ -2010,6 +2036,7 @@ export class GameEngine {
     this._drawZombieParticles()
     this._drawAbsorbParticles()
     this._drawParticles()
+    this._drawDyingCells()
     this._drawOtherPlayers()
     this._drawMyPlayer()
     this._drawPremiumEffects()
@@ -2641,6 +2668,22 @@ export class GameEngine {
       ctx.globalAlpha = p.life * 0.8
       ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.5, p.size), 0, Math.PI*2)
       ctx.fillStyle = p.color; ctx.fill()
+    }
+    ctx.globalAlpha = 1
+  }
+
+  _drawDyingCells() {
+    const { ctx } = this
+    for (const d of this.dyingCells) {
+      if (d.r < 1) continue
+      ctx.globalAlpha = Math.max(0, d.life) * 0.75
+      ctx.beginPath()
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2)
+      ctx.fillStyle = d.color
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)'
+      ctx.lineWidth = 2
+      ctx.stroke()
     }
     ctx.globalAlpha = 1
   }
