@@ -625,11 +625,15 @@ export class GameEngine {
                   const cell = updatedById.get(sc.id)
                   const dx = sc.x - cell.x, dy = sc.y - cell.y
                   const dist2 = dx*dx + dy*dy
-                  const lf = dist2 > 200*200 ? 0.7 : 0.15
-                  cell.x += dx * lf
-                  cell.y += dy * lf
-                  if (Math.abs(sc.mass - cell.mass) > 5) {
-                    cell.mass += (sc.mass - cell.mass) * 0.4
+                  if (dist2 > 400*400) {
+                    cell.x = sc.x; cell.y = sc.y
+                  } else if (dist2 > 80*80) {
+                    cell.x += dx * 0.08
+                    cell.y += dy * 0.08
+                  }
+                  const massDiff = sc.mass - cell.mass
+                  if (Math.abs(massDiff) > cell.mass * 0.15) {
+                    cell.mass += massDiff * 0.35
                   }
                 } else {
                   const nearest = this.cells.reduce((best, c) => {
@@ -1190,6 +1194,10 @@ export class GameEngine {
   _eject(massAmount, angleOffset = 0) {
     for (const cell of this.cells) {
       if (cell.mass < massAmount * 2) continue
+      if (this._useSocket) {
+        cell.mass -= massAmount + 2
+        continue
+      }
       cell.mass -= massAmount + 2
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
@@ -1211,7 +1219,7 @@ export class GameEngine {
       setTimeout(() => {
         const angleOffset = (Math.random() - 0.5) * 0.18
         this._eject(massAmount, angleOffset)
-        if (this._useSocket && i === 0) socketClient.sendEject()
+        if (this._useSocket) socketClient.sendEject()
       }, delay)
     })
   }
