@@ -106,6 +106,9 @@ class Virus {
     this.vx = (Math.random() - 0.5) * 0.8
     this.vy = (Math.random() - 0.5) * 0.8
     this.moveTimer = 3 + Math.random() * 4
+    this._pts = new Float32Array(64)
+    this._ptsV = new Float32Array(64)
+    for (let i = 0; i < 64; i++) this._ptsV[i] = (Math.random() - 0.5) * 3
   }
   get radius() { return massToRadius(this.mass) }
 }
@@ -2683,51 +2686,72 @@ export class GameEngine {
       const vInfo = VIRUS_TYPES[v.type] || VIRUS_TYPES.normal
       const fc = v.feedCount || 0
       const feedPct = Math.min((fc % 5) / 5, 1)
-      const baseR = v.radius * (1 + feedPct * 0.4) * 1.6
-      const innerR = baseR * 0.58
-      const numSpikes = 14
-      const spikeRatio = 0.48
-      const rotOffset = 0
+      const baseR = v.radius * (1 + feedPct * 0.3) * 1.55
+      const innerR = baseR * 0.55
+      const spikeSize = baseR * 0.88
+      const N = 64
+      const spikeMod = 4
+      const distMax = baseR * 0.06
+      const distHeight = 5, distWide = 3
+
+      if (!v._pts) {
+        v._pts = new Float32Array(N)
+        v._ptsV = new Float32Array(N)
+        for (let i = 0; i < N; i++) v._ptsV[i] = (Math.random() - 0.5) * distMax
+      }
+      const prevPts = v._pts.slice()
+      for (let i = 0; i < N; i++) {
+        v._ptsV[i] += (Math.random() - 0.5) * distMax
+        const cap = distMax * 2.5
+        if (v._ptsV[i] > cap) v._ptsV[i] = cap
+        else if (v._ptsV[i] < -cap) v._ptsV[i] = -cap
+        const pi = prevPts[(i - 1 + N) % N]
+        const ni = prevPts[(i + 1) % N]
+        v._pts[i] = (pi + ni + distWide * v._ptsV[i]) / (distHeight + 2)
+      }
 
       ctx.save()
-
-      ctx.shadowBlur = 22 + feedPct * 18
+      ctx.shadowBlur = 20 + feedPct * 15
       ctx.shadowColor = vInfo.color
 
       ctx.beginPath()
-      for (let i = 0; i < numSpikes * 2; i++) {
-        const angle = (i / (numSpikes * 2)) * Math.PI * 2 + rotOffset
-        const r = i % 2 === 0 ? baseR : baseR * spikeRatio
+      for (let i = 0; i < N; i++) {
+        const angle = (i / N) * Math.PI * 2
+        let r = baseR + v._pts[i]
+        if (i % spikeMod === 0) r += spikeSize
         const px = v.x + Math.cos(angle) * r
         const py = v.y + Math.sin(angle) * r
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
       }
       ctx.closePath()
 
-      const grad = ctx.createRadialGradient(v.x - baseR * 0.2, v.y - baseR * 0.25, baseR * 0.04, v.x, v.y, baseR)
+      const outerR2 = baseR + spikeSize
+      const grad = ctx.createRadialGradient(v.x - outerR2 * 0.18, v.y - outerR2 * 0.22, outerR2 * 0.03, v.x, v.y, outerR2)
       grad.addColorStop(0, lighten(vInfo.color, 55, 0.92))
-      grad.addColorStop(0.45, hexAlpha(vInfo.color, 0.78))
-      grad.addColorStop(1, darken(vInfo.color, 50, 0.65))
+      grad.addColorStop(0.45, hexAlpha(vInfo.color, 0.82))
+      grad.addColorStop(1, darken(vInfo.color, 50, 0.70))
       ctx.fillStyle = grad
       ctx.fill()
 
       ctx.shadowBlur = 0
       ctx.beginPath()
-      for (let i = 0; i < numSpikes * 2; i++) {
-        const angle = (i / (numSpikes * 2)) * Math.PI * 2 + rotOffset
-        const r = i % 2 === 0 ? baseR : baseR * spikeRatio
+      for (let i = 0; i < N; i++) {
+        const angle = (i / N) * Math.PI * 2
+        let r = baseR + v._pts[i]
+        if (i % spikeMod === 0) r += spikeSize
         const px = v.x + Math.cos(angle) * r
         const py = v.y + Math.sin(angle) * r
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
       }
       ctx.closePath()
-      ctx.strokeStyle = hexAlpha(vInfo.border, 0.95)
-      ctx.lineWidth = 2 + feedPct * 2.5
+      ctx.strokeStyle = hexAlpha(vInfo.border, 0.92)
+      ctx.lineWidth = 2.5 + feedPct * 2
+      ctx.lineJoin = 'miter'
       ctx.stroke()
 
       const innerGrad = ctx.createRadialGradient(v.x, v.y, 0, v.x, v.y, innerR)
       innerGrad.addColorStop(0, darken(vInfo.color, 70, 0.95))
-      innerGrad.addColorStop(1, darken(vInfo.color, 40, 0.85))
+      innerGrad.addColorStop(1, darken(vInfo.color, 40, 0.88))
       ctx.beginPath()
       ctx.arc(v.x, v.y, innerR, 0, Math.PI * 2)
       ctx.fillStyle = innerGrad
