@@ -29,7 +29,7 @@ const EJECT_COST = 2
 const EJECT_MASS = 12
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 8
+const SPLIT_SPEED = 14
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -872,7 +872,7 @@ class GameRoom {
   getPublicPlayers(excludeId) {
     return Array.from(this.players.values())
       .filter(p => p.id !== excludeId && !p.dead)
-      .map(p => ({ id: p.id, x: p.x, y: p.y, mass: p.mass, cells: p.cells.map(c => ({ x: c.x, y: c.y, mass: c.mass })), name: p.name, color: p.color, isGod: !!p.isGod, clan: p.clan || null }))
+      .map(p => ({ id: p.id, x: p.x, y: p.y, mass: p.mass, cells: p.cells.map(c => ({ id: c.id, x: c.x, y: c.y, mass: c.mass })), name: p.name, color: p.color, isGod: !!p.isGod, clan: p.clan || null }))
   }
 }
 

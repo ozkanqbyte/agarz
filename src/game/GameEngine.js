@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 8
+const SPLIT_SPEED = 14
 const MERGE_TIME = 15000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -613,7 +613,7 @@ export class GameEngine {
               op.name = p.n || op.name; op.color = p.c || op.color
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
               op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null
-              const prevById = new Map((op.cells || []).map(c => [c.id, c]))
+              const prevById = new Map((op.cells || []).filter(c => c.id).map(c => [c.id, c]))
               op.cells = cells.map((c) => {
                 if (c.id && prevById.has(c.id)) {
                   const px = prevById.get(c.id)
@@ -621,7 +621,14 @@ export class GameEngine {
                   if (px._x === undefined) { px._x = c.x; px._y = c.y }
                   return px
                 }
-                return { id: c.id, x: c.x, y: c.y, mass: c.mass, _x: c.x, _y: c.y }
+                let startX = c.x, startY = c.y
+                let bestD = Infinity
+                for (const [, pCell] of prevById) {
+                  const dx = (pCell._x ?? pCell.x) - c.x, dy = (pCell._y ?? pCell.y) - c.y
+                  const d = dx*dx + dy*dy
+                  if (d < bestD) { bestD = d; startX = pCell._x ?? pCell.x; startY = pCell._y ?? pCell.y }
+                }
+                return { id: c.id, x: c.x, y: c.y, mass: c.mass, _x: startX, _y: startY }
               })
             } else {
               this.otherPlayers[p.id] = {
@@ -1287,14 +1294,16 @@ export class GameEngine {
     }
 
     for (const op of Object.values(this.otherPlayers)) {
-      const lf = 0.18
+      const lf = 0.28
       op.x = lerp(op.x, op.targetX, lf)
       op.y = lerp(op.y, op.targetY, lf)
       if (op.cells?.length) {
         for (const cell of op.cells) {
           if (cell._x === undefined) { cell._x = cell.x; cell._y = cell.y }
-          cell._x = lerp(cell._x, cell.x, lf)
-          cell._y = lerp(cell._y, cell.y, lf)
+          const dist2 = (cell._x - cell.x) ** 2 + (cell._y - cell.y) ** 2
+          const cellLf = dist2 > 400 * 400 ? 0.7 : lf
+          cell._x = lerp(cell._x, cell.x, cellLf)
+          cell._y = lerp(cell._y, cell.y, cellLf)
         }
       }
     }
