@@ -1245,6 +1245,42 @@ export class GameEngine {
   }
 
   _ejectFan(massAmount) {
+    if (this.cells.length > 1) {
+      let targetCell = null
+      let bestDot = -Infinity
+      const mx = this.mouse.x, my = this.mouse.y
+      for (const cell of this.cells) {
+        const dx = mx - cell.x, dy = my - cell.y
+        const d = Math.sqrt(dx*dx + dy*dy)
+        if (d < 1) continue
+        const dot = dx/d
+        if (dot > bestDot) { bestDot = dot; targetCell = cell }
+      }
+      if (targetCell) {
+        const delays = [0, 80, 160]
+        delays.forEach(() => {
+          setTimeout(() => {
+            for (const cell of this.cells) {
+              if (cell === targetCell) continue
+              if (cell.mass < massAmount * 2) continue
+              if (this._useSocket) { cell.mass -= massAmount + 2; socketClient.sendEject(); continue }
+              cell.mass -= massAmount + 2
+              const dx = targetCell.x - cell.x, dy = targetCell.y - cell.y
+              const baseAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.15
+              const spd = 22
+              const em = new EjectedMass(
+                cell.x + Math.cos(baseAngle) * (cell.radius + 6),
+                cell.y + Math.sin(baseAngle) * (cell.radius + 6),
+                Math.cos(baseAngle) * spd, Math.sin(baseAngle) * spd,
+                cell.color, massAmount
+              )
+              this.ejected.push(em)
+            }
+          }, 0)
+        })
+        return
+      }
+    }
     const delays = [0, 80, 160]
     delays.forEach((delay, i) => {
       setTimeout(() => {
@@ -1591,7 +1627,7 @@ export class GameEngine {
         const dy = this.mouse.y - cell.y
         const d = Math.sqrt(dx * dx + dy * dy)
         if (d > cell.radius / 3) {
-          const speed = (9 / Math.pow(Math.max(20, cell.mass), 0.35)) * 60
+          const speed = Math.max(1.5, 9 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60
           const s = Math.min(speed * dt * splitFactor, d)
           cell.x += (dx / d) * s
           cell.y += (dy / d) * s
@@ -1620,7 +1656,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = (6.5 / Math.pow(Math.max(20, cell.mass), 0.4)) * 60 * speedMult
+      const speed = Math.max(1.5, 6.5 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
       const splitFactor = splitVelMag > 1 ? Math.max(0.25, 1 - splitVelMag / SPLIT_SPEED) : 1

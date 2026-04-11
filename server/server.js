@@ -50,7 +50,7 @@ function rndId() { return Math.random().toString(36).slice(2, 12) }
 function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 function massToRadius(mass) { return Math.sqrt(mass) * 4.5 }
-function speedForMass(mass) { return BASE_SPEED / Math.pow(Math.max(20, mass), 0.4) }
+function speedForMass(mass) { return Math.max(1.5, BASE_SPEED / Math.pow(Math.max(20, mass), 0.3)) }
 
 class GameRoom {
   constructor(id, mode) {
@@ -441,9 +441,9 @@ class GameRoom {
             const dx = ac.x - bc.x, dy = ac.y - bc.y
             const d = Math.sqrt(dx*dx + dy*dy)
             const ra = massToRadius(ac.mass), rb = massToRadius(bc.mass)
-            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra * 0.9 + rb * 0.5) {
+            if (ac.mass > bc.mass * MIN_EAT_RATIO && d < ra - rb * 0.2) {
               eatQueue.push({ eater: a, eaterCell: ac, eaten: b, eatenCell: bc })
-            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb * 0.9 + ra * 0.5) {
+            } else if (bc.mass > ac.mass * MIN_EAT_RATIO && d < rb - ra * 0.2) {
               eatQueue.push({ eater: b, eaterCell: bc, eaten: a, eatenCell: ac })
             }
           }
