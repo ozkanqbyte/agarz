@@ -355,6 +355,13 @@ export class GameEngine {
 
     this.trailHistory = []
     this._trailTimer = 0
+
+    this._gradCache = new Map()
+    this._gridCanvas = null
+    this._gridCtx = null
+    this._gridZoom = -1
+    this._gridCamX = -1
+    this._gridCamY = -1
   }
 
   async init() {
@@ -2580,17 +2587,51 @@ export class GameEngine {
 
   _drawGrid() {
     const { ctx, theme, camera, canvas } = this
-    const gs = 50, z = camera.zoom
+    const gs = 100, z = camera.zoom
     const sx = Math.floor((camera.x - canvas.width/(2*z))/gs)*gs
     const sy = Math.floor((camera.y - canvas.height/(2*z))/gs)*gs
     const ex = sx + canvas.width/z + gs*2
     const ey = sy + canvas.height/z + gs*2
-    ctx.strokeStyle = theme.gridLineColor
-    ctx.lineWidth = 0.5
-    ctx.beginPath()
-    for (let x = sx; x <= ex; x += gs) { ctx.moveTo(x, sy); ctx.lineTo(x, ey) }
-    for (let y = sy; y <= ey; y += gs) { ctx.moveTo(sx, y); ctx.lineTo(ex, y) }
-    ctx.stroke()
+
+    const camBlockX = Math.floor(camera.x / gs)
+    const camBlockY = Math.floor(camera.y / gs)
+    const zRound = Math.round(z * 10)
+    if (
+      this._gridZoom !== zRound ||
+      this._gridCamX !== camBlockX ||
+      this._gridCamY !== camBlockY ||
+      !this._gridCanvas ||
+      this._gridCanvas.width !== canvas.width ||
+      this._gridCanvas.height !== canvas.height
+    ) {
+      if (!this._gridCanvas) {
+        this._gridCanvas = document.createElement('canvas')
+        this._gridCtx = this._gridCanvas.getContext('2d')
+      }
+      this._gridCanvas.width = canvas.width
+      this._gridCanvas.height = canvas.height
+      const gc = this._gridCtx
+      gc.clearRect(0, 0, canvas.width, canvas.height)
+      gc.save()
+      gc.translate(canvas.width/2, canvas.height/2)
+      gc.scale(z, z)
+      gc.translate(-camera.x, -camera.y)
+      gc.strokeStyle = theme.gridLineColor || 'rgba(99,102,241,0.12)'
+      gc.lineWidth = 0.5 / z
+      gc.beginPath()
+      for (let x = sx; x <= ex; x += gs) { gc.moveTo(x, sy); gc.lineTo(x, ey) }
+      for (let y = sy; y <= ey; y += gs) { gc.moveTo(sx, y); gc.lineTo(ex, y) }
+      gc.stroke()
+      gc.restore()
+      this._gridZoom = zRound
+      this._gridCamX = camBlockX
+      this._gridCamY = camBlockY
+    }
+
+    ctx.save()
+    ctx.setTransform(1,0,0,1,0,0)
+    ctx.drawImage(this._gridCanvas, 0, 0)
+    ctx.restore()
   }
 
   _drawBorder() {
@@ -2604,29 +2645,43 @@ export class GameEngine {
   _drawFood() {
     const { ctx, camera, canvas } = this
     const zoom = camera.zoom
-    const margin = 50
-    const VIEW_RADIUS = 1200
-    const vl = Math.max(camera.x - canvas.width / (2 * zoom) - margin, camera.x - VIEW_RADIUS)
-    const vr = Math.min(camera.x + canvas.width / (2 * zoom) + margin, camera.x + VIEW_RADIUS)
-    const vt = Math.max(camera.y - canvas.height / (2 * zoom) - margin, camera.y - VIEW_RADIUS)
-    const vb = Math.min(camera.y + canvas.height / (2 * zoom) + margin, camera.y + VIEW_RADIUS)
+    const VIEW_RADIUS = 1400
+    const vl = camera.x - canvas.width / (2 * zoom) - 60
+    const vr = camera.x + canvas.width / (2 * zoom) + 60
+    const vt = camera.y - canvas.height / (2 * zoom) - 60
+    const vb = camera.y + canvas.height / (2 * zoom) + 60
+    const clampL = camera.x - VIEW_RADIUS, clampR = camera.x + VIEW_RADIUS
+    const clampT = camera.y - VIEW_RADIUS, clampB = camera.y + VIEW_RADIUS
+
+    const byColor = new Map()
+    const poisonList = []
     for (const f of this.food) {
-      if (f.x < vl || f.x > vr || f.y < vt || f.y > vb) continue
-      f.pulse += 0.06
-      const r = f.radius * (0.88 + 0.12 * Math.sin(f.pulse))
-      ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, Math.PI * 2)
-      ctx.fillStyle = f.poison ? '#ef4444' : f.color
-      if (this.qualityLevel !== 'low') {
-        ctx.shadowBlur = f.poison ? 14 : 8
-        ctx.shadowColor = f.poison ? '#ef4444' : f.color
+      const fx = f.x, fy = f.y
+      if (fx < vl || fx > vr || fy < vt || fy > vb) continue
+      if (fx < clampL || fx > clampR || fy < clampT || fy > clampB) continue
+      if (f.poison) { poisonList.push(f); continue }
+      const col = f.color
+      let arr = byColor.get(col)
+      if (!arr) { arr = []; byColor.set(col, arr) }
+      arr.push(f)
+    }
+
+    const TWO_PI = Math.PI * 2
+    for (const [col, items] of byColor) {
+      ctx.fillStyle = col
+      ctx.beginPath()
+      for (const f of items) {
+        ctx.moveTo(f.x + f.radius, f.y)
+        ctx.arc(f.x, f.y, f.radius, 0, TWO_PI)
       }
-      ctx.fill(); ctx.shadowBlur = 0
-      if (f.poison) {
-        ctx.fillStyle = 'white'
-        ctx.font = `${r * 1.4}px sans-serif`
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText('☠', f.x, f.y)
-      }
+      ctx.fill()
+    }
+
+    for (const f of poisonList) {
+      ctx.fillStyle = '#ef4444'
+      ctx.beginPath()
+      ctx.arc(f.x, f.y, f.radius, 0, TWO_PI)
+      ctx.fill()
     }
   }
 
@@ -2754,19 +2809,29 @@ export class GameEngine {
   }
 
   _drawEjected() {
-    const { ctx } = this
+    const { ctx, camera, canvas } = this
+    if (!this.ejected.length) return
+    const zoom = camera.zoom
+    const vl = camera.x - canvas.width / (2 * zoom) - 20
+    const vr = camera.x + canvas.width / (2 * zoom) + 20
+    const vt = camera.y - canvas.height / (2 * zoom) - 20
+    const vb = camera.y + canvas.height / (2 * zoom) + 20
+    const byColor = new Map()
+    const TWO_PI = Math.PI * 2
     for (const em of this.ejected) {
-      em._pulse = (em._pulse || Math.random() * Math.PI * 2) + 0.06
-      const r = 5 + 0.8 * Math.sin(em._pulse)
+      if (em.x < vl || em.x > vr || em.y < vt || em.y > vb) continue
+      let arr = byColor.get(em.color)
+      if (!arr) { arr = []; byColor.set(em.color, arr) }
+      arr.push(em)
+    }
+    for (const [col, items] of byColor) {
+      ctx.fillStyle = col
       ctx.beginPath()
-      ctx.arc(em.x, em.y, r, 0, Math.PI * 2)
-      ctx.fillStyle = em.color
-      if (this.qualityLevel !== 'low') {
-        ctx.shadowBlur = 8
-        ctx.shadowColor = em.color
+      for (const em of items) {
+        ctx.moveTo(em.x + 6, em.y)
+        ctx.arc(em.x, em.y, 6, 0, TWO_PI)
       }
       ctx.fill()
-      ctx.shadowBlur = 0
     }
   }
 
@@ -2774,15 +2839,13 @@ export class GameEngine {
     const { ctx } = this
     const maxParticles = this.qualityLevel === 'low' ? 60 : this.qualityLevel === 'medium' ? 120 : 300
     const toRender = this.particles.slice(0, maxParticles)
+    const TWO_PI = Math.PI * 2
     for (const p of toRender) {
       ctx.globalAlpha = Math.min(1, p.life) * 0.85
-      if (p.glow) {
-        ctx.shadowBlur = 12
-        ctx.shadowColor = p.color
-      }
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2)
-      ctx.fillStyle = p.color; ctx.fill()
-      if (p.glow) ctx.shadowBlur = 0
+      ctx.fillStyle = p.color
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.size, 0, TWO_PI)
+      ctx.fill()
     }
     ctx.globalAlpha = 1
   }
@@ -2981,10 +3044,16 @@ export class GameEngine {
     ctx.clip()
 
     const sc = safeColor(color)
+    let cs = this._gradCache.get(sc)
+    if (!cs) {
+      cs = { l: lighten(sc, 55), m: hexAlpha(sc, 1), d: darken(sc, 35) }
+      if (this._gradCache.size > 120) this._gradCache.clear()
+      this._gradCache.set(sc, cs)
+    }
     const grad = ctx.createRadialGradient(x - dr*0.35, y - dr*0.35, dr*0.05, x, y, dr)
-    grad.addColorStop(0, lighten(sc, 55))
-    grad.addColorStop(0.6, hexAlpha(sc, 1))
-    grad.addColorStop(1, darken(sc, 35))
+    grad.addColorStop(0, cs.l)
+    grad.addColorStop(0.6, cs.m)
+    grad.addColorStop(1, cs.d)
     ctx.fillStyle = grad; ctx.fill()
 
     if (avatar === 'stripes' && dr > 10) {
@@ -3008,8 +3077,11 @@ export class GameEngine {
     const shieldActive = isMe && this.skills?.shield?.active
 
     ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
-    ctx.shadowBlur = speedActive ? 40 : shieldActive ? 40 : isMe ? 25 : (isGod ? 35 : 12)
-    ctx.shadowColor = shieldActive ? '#06b6d4' : speedActive ? '#fbbf24' : frozen ? '#38bdf8' : poisoned ? '#a855f7' : isGod ? '#fbbf24' : color
+    const needGlow = isMe || isGod || frozen || poisoned || speedActive || shieldActive || dr > 40
+    if (needGlow) {
+      ctx.shadowBlur = speedActive ? 40 : shieldActive ? 40 : isMe ? 25 : (isGod ? 35 : 10)
+      ctx.shadowColor = shieldActive ? '#06b6d4' : speedActive ? '#fbbf24' : frozen ? '#38bdf8' : poisoned ? '#a855f7' : isGod ? '#fbbf24' : color
+    }
 
     if (eatPulse > 0.1) {
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3 + eatPulse * 4
