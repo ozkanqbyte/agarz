@@ -29,7 +29,7 @@ const EJECT_COST = 14
 const EJECT_MASS = 12
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 14
+const SPLIT_SPEED = 22
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -204,6 +204,7 @@ class GameRoom {
     this._updateEjectedMasses(dt)
     this._checkFoodCollisions()
     this._checkPlayerCollisions()
+    this._checkVirusCollisions()
     this._checkEjectedCollisions()
     this._checkCrystalCollisions()
     this._checkBossCollisions()
@@ -237,8 +238,8 @@ class GameRoom {
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        cell.splitVx *= 0.86
-        cell.splitVy *= 0.86
+        cell.splitVx *= 0.82
+        cell.splitVy *= 0.82
         if (Math.abs(cell.splitVx) < 0.05) { cell.splitVx = 0; cell.splitVy = 0 }
       } else if (!frozen) {
         const baseSpeed = speedForMass(cell.mass) * speedMult * 60
@@ -1223,19 +1224,7 @@ io.on('connection', (socket) => {
   socket.on('ping', (cb) => { if (typeof cb === 'function') cb(Date.now()) })
 
   socket.on('virus:touch', (data) => {
-    if (!room || !playerId) return
-    const player = room.players.get(playerId)
-    if (!player || player.dead) return
-    const virusId = data.id
-    const virusIdx = room.viruses.findIndex(v => v.id === virusId)
-    if (virusIdx === -1) return
-    io.to(room.id).emit('virus:eaten', { id: virusId })
-    room.viruses.splice(virusIdx, 1)
-    while (room.viruses.length < VIRUS_COUNT) {
-      const nv = room._makeVirus()
-      room.viruses.push(nv)
-      io.to(room.id).emit('virus:spawned', nv)
-    }
+    // virus:touch is just a client hint — server loop handles mass gain via _checkVirusCollisions
   })
 
   socket.on('disconnect', () => {

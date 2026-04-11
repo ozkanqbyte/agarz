@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 14
+const SPLIT_SPEED = 22
 const MERGE_TIME = 15000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -1754,29 +1754,13 @@ export class GameEngine {
         this._massProtectUntil = Date.now() + 12000
 
         this._virusEatCount++
-        const shouldSplit = this._virusEatCount % 6 === 0
         const preMass = cell.mass
 
-        if (this.skills.shield.active) {
-          cell.mass = preMass + 300
-          this._showFloat('+300 KALKAN', '#06b6d4')
-          this._spawnExplosion(virus.x, virus.y, '#06b6d4')
-        } else {
-          cell.mass = preMass * 1.25
-          if (shouldSplit) {
-            this._explodeCellMouse(cell, Math.min(8, Math.max(2, Math.floor(preMass / 100))))
-            this._showFloat(`PATLAMA +${Math.floor(preMass * 0.25)}`, '#fbbf24')
-          } else {
-            this._showFloat(`+25% DIKEN +${Math.floor(preMass * 0.25)}`, '#4ade80')
-          }
-        }
-
-        if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('ZEHIR', '#a855f7') }
-        else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('DOND', '#38bdf8') }
-
-        this.onXPGain(20)
+        this._showFloat(`+25% DİKEN`, '#4ade80')
         this._spawnVirusExplosion(virus.x, virus.y, vInfo.color)
-        socketClient.emit('virus:touch', { id: virus.id, cellMass: Math.floor(preMass) })
+        this._spawnExplosion(virus.x, virus.y, vInfo.color)
+        cell.eatPulse = 1.5
+        this.onXPGain(20)
         break
       }
     }
