@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 18
+const SPLIT_SPEED = 26
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -638,14 +638,15 @@ export class GameEngine {
                   const cell = updatedById.get(sc.id)
                   const dx = sc.x - cell.x, dy = sc.y - cell.y
                   const dist2 = dx*dx + dy*dy
-                  if (dist2 > 300*300) {
+                  const recentSplit = cell._splitTime && (Date.now() - cell._splitTime < 400)
+                  if (dist2 > 250*250) {
                     cell.x = sc.x; cell.y = sc.y
-                  } else if (dist2 > 40*40) {
-                    cell.x += dx * 0.10
-                    cell.y += dy * 0.10
+                  } else if (!recentSplit && dist2 > 60*60) {
+                    cell.x += dx * 0.07
+                    cell.y += dy * 0.07
                   }
                   const massDiff = sc.mass - cell.mass
-                  if (Math.abs(massDiff) > cell.mass * 0.15) {
+                  if (!recentSplit && Math.abs(massDiff) > cell.mass * 0.15) {
                     cell.mass += massDiff * 0.25
                   }
                 } else {

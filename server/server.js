@@ -29,7 +29,7 @@ const EJECT_COST = 14
 const EJECT_MASS = 12
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 18
+const SPLIT_SPEED = 26
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -463,13 +463,16 @@ class GameRoom {
       const dx = (player.inputX || 0) - cell.x
       const dy = (player.inputY || 0) - cell.y
       const d = Math.sqrt(dx * dx + dy * dy) || 1
+      const baseAngle = Math.atan2(dy, dx)
+      const scatter = (Math.random() - 0.5) * 0.42
+      const angle = baseAngle + scatter
       const em = {
         id: rndId(),
         ownerId: player.id,
-        x: cell.x + (dx / d) * (massToRadius(cell.mass) + 10),
-        y: cell.y + (dy / d) * (massToRadius(cell.mass) + 10),
-        vx: (dx / d) * 22,
-        vy: (dy / d) * 22,
+        x: cell.x + Math.cos(angle) * (massToRadius(cell.mass) + 10),
+        y: cell.y + Math.sin(angle) * (massToRadius(cell.mass) + 10),
+        vx: Math.cos(angle) * 22,
+        vy: Math.sin(angle) * 22,
         color: player.color,
         mass: EJECT_MASS,
         age: 0
