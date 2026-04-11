@@ -617,12 +617,7 @@ export class GameEngine {
             if (p.cs && Array.isArray(p.cs) && p.cs.length > 0) {
               const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10) }))
               const serverIdSet = new Set(serverCells.map(c => c.id))
-              const visualOnlyCells = this.cells.filter(c => c._visualOnly)
-              const visualByParent = new Map()
-              for (const vc of visualOnlyCells) {
-                const pid = vc.id.replace('_vis', '')
-                visualByParent.set(pid, { x: vc.x, y: vc.y })
-              }
+              const savedVisuals = this.cells.filter(c => c._visualOnly)
               const removedCells = this.cells.filter(c => !c._visualOnly && !serverIdSet.has(c.id))
               for (const rc of removedCells) {
                 let tx = rc.x, ty = rc.y
@@ -634,7 +629,7 @@ export class GameEngine {
                     if (d2 < bestD) { bestD = d2; tx = rem.x; ty = rem.y }
                   }
                 }
-                this.dyingCells.push({ x: rc.x, y: rc.y, tx, ty, r: rc.radius * 0.85, color: rc.color || this.color, life: 0.9 })
+                this.dyingCells.push({ x: rc.x, y: rc.y, tx, ty, r: rc.radius * 0.85, color: rc.color || this.color, life: 1, _merge: true })
               }
               this.cells = this.cells.filter(c => serverIdSet.has(c.id))
               const updatedById = new Map(this.cells.map(c => [c.id, c]))
@@ -655,21 +650,35 @@ export class GameEngine {
                   }
                 } else {
                   let startX = sc.x, startY = sc.y
-                  if (this.cells.length > 0) {
-                    let bestD = Infinity, bx = sc.x, by = sc.y
+                  let matchedVis = null
+                  if (savedVisuals.length > 0) {
+                    let bestD = Infinity
+                    for (const vc of savedVisuals) {
+                      if (vc._used) continue
+                      const d2 = (vc.x - sc.x)**2 + (vc.y - sc.y)**2
+                      if (d2 < bestD) { bestD = d2; matchedVis = vc }
+                    }
+                    if (matchedVis && bestD < 400*400) {
+                      startX = matchedVis.x; startY = matchedVis.y
+                      matchedVis._used = true
+                    }
+                  }
+                  if (startX === sc.x && this.cells.length > 0) {
+                    let bestD = Infinity
                     for (const existing of this.cells) {
                       const d2 = (existing.x - sc.x)**2 + (existing.y - sc.y)**2
-                      if (d2 < bestD) { bestD = d2; bx = existing.x; by = existing.y }
+                      if (d2 < bestD) { bestD = d2; startX = existing.x; startY = existing.y }
                     }
-                    startX = bx; startY = by
                   }
                   const nc = new Cell(startX, startY, sc.mass, this.color)
                   nc.id = sc.id
                   nc._splitTime = Date.now()
                   const ddx = sc.x - startX, ddy = sc.y - startY
                   const dlen = Math.sqrt(ddx*ddx + ddy*ddy) || 1
-                  nc.vx = (ddx / dlen) * SPLIT_SPEED
-                  nc.vy = (ddy / dlen) * SPLIT_SPEED
+                  if (dlen > 5) {
+                    nc.vx = (ddx / dlen) * SPLIT_SPEED
+                    nc.vy = (ddy / dlen) * SPLIT_SPEED
+                  }
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -1187,6 +1196,27 @@ export class GameEngine {
   _split() {
     if (this._useSocket) {
       socketClient.sendSplit()
+      for (const cell of [...this.cells]) {
+        if (cell.mass < 35 || cell._visualOnly) continue
+        const dx = this.mouse.x - cell.x || 1
+        const dy = this.mouse.y - cell.y || 0
+        const len = Math.sqrt(dx*dx + dy*dy) || 1
+        const half = cell.mass / 2
+        cell.mass = half
+        cell._splitTime = Date.now()
+        const nr = cell.radius
+        const nc = new Cell(
+          clamp(cell.x + (dx/len)*(nr+5), nr, WORLD_SIZE-nr),
+          clamp(cell.y + (dy/len)*(nr+5), nr, WORLD_SIZE-nr),
+          half, cell.color
+        )
+        nc.id = cell.id + '_vis'
+        nc.vx = (dx/len) * SPLIT_SPEED
+        nc.vy = (dy/len) * SPLIT_SPEED
+        nc._visualOnly = true
+        nc._splitTime = Date.now()
+        this.cells.push(nc)
+      }
       return
     }
     if (this.cells.length >= MAX_CELLS) return
@@ -1463,10 +1493,11 @@ export class GameEngine {
 
   _updateDyingCells(dt) {
     for (const d of this.dyingCells) {
-      d.x = lerp(d.x, d.tx, dt * 3.5)
-      d.y = lerp(d.y, d.ty, dt * 3.5)
-      d.life -= dt * 1.8
-      d.r = lerp(d.r, 0, dt * 2.5)
+      const speed = d._merge ? dt * 1.2 : dt * 4
+      d.x = lerp(d.x, d.tx, speed)
+      d.y = lerp(d.y, d.ty, speed)
+      d.life -= d._merge ? dt * 0.4 : dt * 2.5
+      d.r = lerp(d.r, 0, d._merge ? dt * 0.55 : dt * 3)
     }
     this.dyingCells = this.dyingCells.filter(d => d.life > 0 && d.r > 1)
   }
