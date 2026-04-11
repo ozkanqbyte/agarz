@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 26
+const SPLIT_SPEED = 18
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -1579,28 +1579,30 @@ export class GameEngine {
 
   _moveCells(dt) {
     if (this._useSocket) {
-      const now = Date.now()
-      const lf = Math.min(1, dt / 0.033)
       for (const cell of this.cells) {
-        const recentSplit = cell._splitTime && (now - cell._splitTime < 350)
         const svx = cell.vx || 0, svy = cell.vy || 0
-        const svMag = Math.sqrt(svx*svx + svy*svy)
+        const svMag = Math.sqrt(svx * svx + svy * svy)
+        const splitFactor = svMag > 1 ? Math.max(0.25, 1 - svMag / SPLIT_SPEED) : 1
+        const dx = this.mouse.x - cell.x
+        const dy = this.mouse.y - cell.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d > cell.radius / 3) {
+          const speed = (9 / Math.pow(Math.max(20, cell.mass), 0.35)) * 60
+          const s = Math.min(speed * dt * splitFactor, d)
+          cell.x += (dx / d) * s
+          cell.y += (dy / d) * s
+        }
         if (svMag > 0.05) {
-          cell.x += svx * dt * 60
-          cell.y += svy * dt * 60
+          cell.x += svx * dt * 60; cell.y += svy * dt * 60
           cell.vx *= 0.82; cell.vy *= 0.82
           if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
         }
-        if (!recentSplit && cell._tx !== undefined) {
-          const dx2 = cell._tx - cell.x, dy2 = cell._ty - cell.y
-          const d2 = dx2*dx2 + dy2*dy2
-          const alpha = d2 > 500*500 ? 1 : lf
-          cell.x += dx2 * alpha
-          cell.y += dy2 * alpha
+        if (cell._tx !== undefined) {
+          const ex = cell._tx - cell.x, ey = cell._ty - cell.y
+          const e2 = ex * ex + ey * ey
+          if (e2 > 380 * 380) { cell.x = cell._tx; cell.y = cell._ty }
         }
-        if (cell._targetMass !== undefined) {
-          cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 12))
-        }
+        if (cell._targetMass !== undefined) cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 8))
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
       }
