@@ -691,9 +691,15 @@ export class GameEngine {
               const newIdSet = new Set(cells.map(c => c.id).filter(Boolean))
               for (const [cid, pCell] of prevById) {
                 if (!newIdSet.has(cid)) {
-                  const nearX = cells[0]?.x ?? op.x, nearY = cells[0]?.y ?? op.y
-                  this.dyingCells.push({ x: pCell._x ?? pCell.x, y: pCell._y ?? pCell.y, tx: nearX, ty: nearY, r: Math.sqrt(pCell.mass || 20) * 4.5, color: op.color || '#6366f1', life: 1 })
-                  this._spawnAbsorb(pCell._x ?? pCell.x, pCell._y ?? pCell.y, nearX, nearY, op.color || '#6366f1')
+                  let nearX = op.x, nearY = op.y
+                  let bestD = Infinity
+                  for (const rc of cells) {
+                    const d2 = (rc.x - (pCell._x ?? pCell.x))**2 + (rc.y - (pCell._y ?? pCell.y))**2
+                    if (d2 < bestD) { bestD = d2; nearX = rc.x; nearY = rc.y }
+                  }
+                  const px = pCell._x ?? pCell.x, py = pCell._y ?? pCell.y
+                  const r = Math.sqrt(Math.max(pCell.mass || 20, 1)) * 4.5
+                  this.dyingCells.push({ x: px, y: py, tx: nearX, ty: nearY, r, color: op.color || '#6366f1', life: 1 })
                 }
               }
               op.cells = cells.map((c) => {
@@ -1181,27 +1187,6 @@ export class GameEngine {
   _split() {
     if (this._useSocket) {
       socketClient.sendSplit()
-      for (const cell of [...this.cells]) {
-        if (cell.mass < 70) continue
-        const dx = this.mouse.x - cell.x || 1
-        const dy = this.mouse.y - cell.y || 0
-        const len = Math.sqrt(dx*dx + dy*dy) || 1
-        const half = cell.mass / 2
-        cell.mass = half
-        const nr = cell.radius
-        const nc = new Cell(
-          clamp(cell.x + (dx/len)*(nr+5), nr, WORLD_SIZE-nr),
-          clamp(cell.y + (dy/len)*(nr+5), nr, WORLD_SIZE-nr),
-          half, cell.color
-        )
-        nc.id = cell.id + '_vis'
-        nc.vx = (dx/len) * SPLIT_SPEED
-        nc.vy = (dy/len) * SPLIT_SPEED
-        nc._visualOnly = true
-        nc._splitTime = Date.now()
-        cell._splitTime = Date.now()
-        this.cells.push(nc)
-      }
       return
     }
     if (this.cells.length >= MAX_CELLS) return
@@ -1478,10 +1463,10 @@ export class GameEngine {
 
   _updateDyingCells(dt) {
     for (const d of this.dyingCells) {
-      d.x = lerp(d.x, d.tx, dt * 6)
-      d.y = lerp(d.y, d.ty, dt * 6)
-      d.life -= dt * 2.5
-      d.r = lerp(d.r, 0, dt * 4)
+      d.x = lerp(d.x, d.tx, dt * 3.5)
+      d.y = lerp(d.y, d.ty, dt * 3.5)
+      d.life -= dt * 1.8
+      d.r = lerp(d.r, 0, dt * 2.5)
     }
     this.dyingCells = this.dyingCells.filter(d => d.life > 0 && d.r > 1)
   }
