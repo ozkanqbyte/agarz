@@ -251,7 +251,7 @@ function TierCard({ tier, unlocked, currentTier, claimedFree, claimedPremium, is
 export default function BattlePassPage() {
   const navigate = useNavigate()
   const { currentTier, bpXP, isPremium, seasonEnd, claimedFree, claimedPremium, buyPremium, claimTierReward } = useBattlePassStore()
-  const { level } = useProgressStore()
+  const { level, pendingLootBoxes } = useProgressStore()
   const { currentTheme } = useGameStore()
   const theme = getTheme(currentTheme)
   const [now, setNow] = useState(Date.now())
@@ -358,6 +358,36 @@ export default function BattlePassPage() {
           )}
         </div>
       </div>
+
+      {pendingLootBoxes > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+          style={{
+            margin: '12px 24px 0', borderRadius: 14, padding: '12px 20px',
+            background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(236,72,153,0.1))',
+            border: '1px solid rgba(139,92,246,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 24 }}>🎁</span>
+            <div>
+              <div style={{ color: '#a78bfa', fontWeight: 900, fontSize: 14 }}>
+                {pendingLootBoxes} Açılmamış Kutu!
+              </div>
+              <div style={{ color: '#6b7280', fontSize: 11, fontWeight: 600 }}>Battle Pass'ten kazandığın kutular mağazada seni bekliyor</div>
+            </div>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+            onClick={() => navigate('/shop')}
+            style={{
+              padding: '8px 20px', borderRadius: 10, fontWeight: 900, fontSize: 13, cursor: 'pointer',
+              background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', color: '#fff', border: 'none',
+            }}>
+            Kutularını Aç →
+          </motion.button>
+        </motion.div>
+      )}
 
       <div style={{ padding: '16px 24px' }}>
         <div style={{

@@ -6,6 +6,7 @@ import { signInAnonymously, updateProfile } from 'firebase/auth'
 import { db, auth } from '../../firebase/config'
 import useAuthStore from '../../store/useAuthStore'
 import useGameStore from '../../store/useGameStore'
+import useProgressStore from '../../store/useProgressStore'
 import { getTheme } from '../../themes/themes'
 import FriendSystem from '../Friends/FriendSystem'
 import toast from 'react-hot-toast'
@@ -37,6 +38,7 @@ export default function Lobby() {
   const navigate = useNavigate()
   const { user, profile } = useAuthStore()
   const { currentTheme, gameMode } = useGameStore()
+  const { level, prestige, activeFrame } = useProgressStore()
   const theme = getTheme(currentTheme)
 
   const playerId = user?.uid || getOrCreateGuestId()
@@ -98,6 +100,9 @@ export default function Lobby() {
           color: playerColor,
           isGod: profile?.isGod || false,
           clan: profile?.clan || null,
+          level: level || 1,
+          prestige: prestige || 0,
+          frame: activeFrame || null,
           ready: false,
           joinedAt: Date.now()
         })
@@ -190,6 +195,14 @@ export default function Lobby() {
   }
 
   const startGame = async () => {
+    if (!isHost) { toast.error('Sadece host oyunu başlatabilir!'); return }
+    if (players.length > 1) {
+      const notReady = players.filter(p => !p.ready)
+      if (notReady.length > 0) {
+        toast.error(`${notReady.length} oyuncu henüz hazır değil!`)
+        return
+      }
+    }
     try {
       await update(ref(db, `lobbies/${roomId}`), { starting: true, countdown: 5, mode: selectedMode })
     } catch (e) {
@@ -440,7 +453,14 @@ export default function Lobby() {
                 </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {players.map((p, i) => (
+                {players.map((p, i) => {
+                  const frameColors = {
+                    silver: '#9ca3af', gold: '#f59e0b', diamond: '#38bdf8', legendary: '#ec4899',
+                    fire: '#ef4444', ice: '#60a5fa', neon: '#a78bfa', rainbow: '#ec4899',
+                    galaxy: '#818cf8', sakura: '#fda4af',
+                  }
+                  const frameBorder = p.frame ? frameColors[p.frame] || '#6366f1' : (p.color || '#6366f1')
+                  return (
                   <motion.div key={p.uid || i}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -456,30 +476,61 @@ export default function Lobby() {
                         : '1px solid rgba(255,255,255,0.06)',
                       cursor: p.uid !== playerId ? 'pointer' : 'default'
                     }}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-lg flex-shrink-0"
-                      style={{
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <div style={{
+                        width: 42, height: 42, borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 900, fontSize: 18,
                         background: p.color || '#6366f1',
-                        boxShadow: `0 0 15px ${p.color || '#6366f1'}66`
+                        boxShadow: `0 0 14px ${frameBorder}88`,
+                        border: `2.5px solid ${frameBorder}`,
                       }}>
-                      {p.isGod ? '👑' : p.name?.[0] || '?'}
+                        {p.isGod ? '👑' : p.name?.[0] || '?'}
+                      </div>
+                      {(p.level > 1 || p.prestige > 0) && (
+                        <div style={{
+                          position: 'absolute', bottom: -4, right: -4,
+                          background: p.prestige > 0 ? '#f59e0b' : 'rgba(30,30,50,0.95)',
+                          border: `1px solid ${p.prestige > 0 ? '#f59e0b' : 'rgba(255,255,255,0.2)'}`,
+                          borderRadius: 8, padding: '1px 5px',
+                          fontSize: 9, fontWeight: 900,
+                          color: p.prestige > 0 ? '#000' : '#9ca3af',
+                        }}>
+                          {p.prestige > 0 ? `✦${p.prestige}` : `${p.level}`}
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-bold text-white text-sm truncate">
-                        {p.isGod ? '👑 ' : ''}{p.name}
-                        {p.uid === lobby?.host && <span className="ml-1 text-yellow-400 text-xs">(Host)</span>}
-                        {p.uid === playerId && <span className="ml-1 text-xs" style={{ color: theme.uiAccent }}>(Sen)</span>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                        <span className="font-bold text-white text-sm truncate">
+                          {p.isGod ? '👑 ' : ''}{p.name}
+                        </span>
+                        {p.uid === lobby?.host && (
+                          <span style={{ fontSize: 9, fontWeight: 900, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', padding: '1px 5px', borderRadius: 5, border: '1px solid rgba(245,158,11,0.3)' }}>HOST</span>
+                        )}
+                        {p.uid === playerId && (
+                          <span style={{ fontSize: 9, fontWeight: 900, color: theme.uiAccent, background: `rgba(${theme.glowColor},0.12)`, padding: '1px 5px', borderRadius: 5, border: `1px solid rgba(${theme.glowColor},0.3)` }}>SEN</span>
+                        )}
                       </div>
                       {p.clan && <div className="text-xs text-gray-500">[{p.clan}]</div>}
+                      {p.frame && (
+                        <div style={{ fontSize: 9, color: frameBorder, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {p.frame} çerçeve
+                        </div>
+                      )}
                     </div>
-                    <div className={`px-2 py-1 rounded-lg text-xs font-bold ${p.ready ? 'text-green-400' : 'text-gray-500'}`}
-                      style={{
-                        background: p.ready ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)',
-                        border: p.ready ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(255,255,255,0.08)'
-                      }}>
+                    <div style={{
+                      padding: '4px 8px', borderRadius: 8, fontSize: 11, fontWeight: 800,
+                      color: p.ready ? '#4ade80' : '#6b7280',
+                      background: p.ready ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)',
+                      border: p.ready ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(255,255,255,0.07)',
+                      flexShrink: 0,
+                    }}>
                       {p.ready ? '✓ Hazır' : '○ Bekle'}
                     </div>
                   </motion.div>
-                ))}
+                  )
+                })}
 
                 {[...Array(Math.max(0, 4 - players.length))].map((_, i) => (
                   <div key={`empty-${i}`}
@@ -543,13 +594,30 @@ export default function Lobby() {
               {ready ? '✓ Hazırım!' : '○ Hazır Değilim'}
             </motion.button>
 
-            <motion.button onClick={startGame}
-              whileHover={{ scale: 1.03, boxShadow: `0 0 30px rgba(${theme.glowColor},0.6)` }}
-              whileTap={{ scale: 0.97 }}
-              className="px-8 py-4 rounded-xl font-black text-white text-lg"
-              style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 20px rgba(${theme.glowColor},0.4)` }}>
-              ▶ BAŞLAT
-            </motion.button>
+            {isHost && (
+              <motion.button onClick={startGame}
+                whileHover={{ scale: 1.03, boxShadow: `0 0 30px rgba(${theme.glowColor},0.6)` }}
+                whileTap={{ scale: 0.97 }}
+                className="px-8 py-4 rounded-xl font-black text-white text-lg"
+                style={{
+                  background: (readyCount === players.length && players.length > 0) || players.length <= 1
+                    ? `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`
+                    : 'rgba(255,255,255,0.07)',
+                  boxShadow: (readyCount === players.length && players.length > 0) || players.length <= 1
+                    ? `0 0 20px rgba(${theme.glowColor},0.4)` : 'none',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: (readyCount === players.length && players.length > 0) || players.length <= 1 ? '#fff' : '#4b5563',
+                  cursor: 'pointer',
+                }}>
+                {(readyCount === players.length && players.length > 0) || players.length <= 1 ? '▶ BAŞLAT' : `⏳ ${players.length - readyCount} Bekle`}
+              </motion.button>
+            )}
+            {!isHost && (
+              <div className="px-6 py-4 rounded-xl font-bold text-sm flex items-center"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#4b5563' }}>
+                Host başlatacak
+              </div>
+            )}
           </div>
         </div>
 

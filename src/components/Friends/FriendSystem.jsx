@@ -402,7 +402,7 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
 
   if (compact) {
     return (
-      <div style={{ position: 'relative' }}>
+      <>
         <motion.button
           onClick={() => setOpen(!open)}
           whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
@@ -420,6 +420,15 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
           Arkadaslar
+          {friends.filter(f => f.online).length > 0 && (
+            <span style={{
+              fontSize: 10, fontWeight: 800, color: '#4ade80',
+              background: 'rgba(34,197,94,0.15)', padding: '1px 6px', borderRadius: 8,
+              border: '1px solid rgba(34,197,94,0.3)',
+            }}>
+              {friends.filter(f => f.online).length} çevrimiçi
+            </span>
+          )}
           {requests.length > 0 && (
             <span style={{
               position: 'absolute', top: -4, right: -4,
@@ -433,19 +442,50 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
 
         <AnimatePresence>
           {open && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              style={{
-                position: 'absolute', right: 0, top: 48, width: 340, borderRadius: 18, zIndex: 50, overflow: 'hidden',
-                ...panelStyle,
-              }}>
-              {content}
-            </motion.div>
+            <>
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => setOpen(false)}
+                style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+                  zIndex: 200, backdropFilter: 'blur(3px)',
+                }}
+              />
+              <motion.div
+                initial={{ x: 380 }} animate={{ x: 0 }} exit={{ x: 380 }}
+                transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+                style={{
+                  position: 'fixed', top: 0, right: 0, bottom: 0, width: 360,
+                  zIndex: 201, overflowY: 'auto',
+                  background: 'rgba(6,6,20,0.98)',
+                  borderLeft: `1px solid rgba(${theme.glowColor},0.22)`,
+                  backdropFilter: 'blur(28px)',
+                  WebkitBackdropFilter: 'blur(28px)',
+                }}>
+                <div style={{
+                  padding: '16px 14px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', position: 'sticky', top: 0,
+                  background: 'rgba(6,6,20,0.98)', zIndex: 1,
+                  borderBottom: `1px solid rgba(${theme.glowColor},0.15)`,
+                }}>
+                  <div style={{ fontWeight: 900, fontSize: 15, color: '#fff' }}>👥 Arkadaşlar</div>
+                  <motion.button
+                    onClick={() => setOpen(false)}
+                    whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+                    style={{
+                      width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
+                      color: '#9ca3af', fontSize: 16, cursor: 'pointer',
+                    }}>
+                    ×
+                  </motion.button>
+                </div>
+                {content}
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
-      </div>
+      </>
     )
   }
 
