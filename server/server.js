@@ -477,35 +477,28 @@ class GameRoom {
 
   _checkVirusCollisions() {
     const toRemove = new Map()
-    for (const [, player] of this.players) {
-      if (player.dead) continue
+    const allPlayers = Array.from(this.players.values()).filter(p => !p.dead)
+    for (const player of allPlayers) {
       for (const cell of player.cells) {
         if (cell.mass < VIRUS_MIN_MASS) continue
         const r = massToRadius(cell.mass)
         for (const virus of this.viruses) {
           if (toRemove.has(virus.id)) continue
           const virusR = massToRadius(virus.mass)
-          if (dist(cell, virus) >= virusR + r * 0.8) continue
+          if (dist(cell, virus) >= r - virusR * 0.3) continue
 
           const shield = player.skillShieldTimer > 0
-          const preMass = cell.mass
+          const gainMass = virus.mass
 
-          if (shield) {
-            cell.mass = preMass + 300
-          } else {
-            player._virusEatCount = (player._virusEatCount || 0) + 1
-            cell.mass = preMass * 1.25
-            const shouldSplit = player._virusEatCount % 6 === 0
-            if (shouldSplit) {
-              this._explodePlayer(player, cell)
-            }
+          cell.mass += gainMass
+          if (!shield) {
+            this._explodePlayer(player, cell)
           }
 
           if (virus.type === 'poison' && !shield) player.poisoned = 5
           if (virus.type === 'freeze' && !shield) player.frozen = 4
 
-          const gainAmount = Math.floor(cell.mass - preMass)
-          toRemove.set(virus.id, { socketId: player.socketId, gain: gainAmount })
+          toRemove.set(virus.id, { socketId: player.socketId, gain: gainMass })
         }
       }
     }
@@ -516,11 +509,28 @@ class GameRoom {
       }
       this.viruses = this.viruses.filter(v => !toRemove.has(v.id))
       while (this.viruses.length < VIRUS_COUNT) {
-        const nv = this._makeVirus()
+        const nv = this._makeVirusAwayFromPlayers(allPlayers)
         this.viruses.push(nv)
         io.to(this.id).emit('virus:spawned', nv)
       }
     }
+  }
+
+  _makeVirusAwayFromPlayers(players) {
+    let best = null, bestD = 0
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const x = 300 + Math.random() * (WORLD_SIZE - 600)
+      const y = 300 + Math.random() * (WORLD_SIZE - 600)
+      let minD = Infinity
+      for (const p of players) {
+        const dx = p.x - x, dy = p.y - y
+        const d = dx*dx + dy*dy
+        if (d < minD) minD = d
+      }
+      if (minD > bestD) { bestD = minD; best = { x, y } }
+      if (minD > 500 * 500) break
+    }
+    return this._makeVirus(best ? best.x : undefined, best ? best.y : undefined)
   }
 
   _explodePlayer(player, sourceCell) {
@@ -627,7 +637,8 @@ class GameRoom {
       const dx = em.x - virus.x, dy = em.y - virus.y
       if (Math.sqrt(dx * dx + dy * dy) < 80) {
         virus.feedCount = (virus.feedCount || 0) + 1
-        if (virus.feedCount % VIRUS_FEED_SPLIT === 0) {
+        if (virus.feedCount >= VIRUS_FEED_SPLIT) {
+          virus.feedCount = 0
           const ejectD = Math.sqrt(em.vx * em.vx + em.vy * em.vy) || 1
           const nx = em.vx / ejectD, ny = em.vy / ejectD
           const scatter = (Math.random() - 0.5) * 0.5
@@ -640,6 +651,9 @@ class GameRoom {
           )
           this.viruses.push(nv)
           io.to(this.id).emit('virus:spawned', nv)
+          io.to(this.id).emit('virus:update', { id: virus.id, feedCount: virus.feedCount })
+        } else {
+          io.to(this.id).emit('virus:update', { id: virus.id, feedCount: virus.feedCount })
         }
         break
       }

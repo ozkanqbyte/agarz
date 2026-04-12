@@ -557,6 +557,10 @@ export class GameEngine {
         this.viruses = this.viruses.filter(v => v.id !== d.id)
         if (this._clientEatenViruses) this._clientEatenViruses.delete(d.id)
       })
+      .on('virus:update', (d) => {
+        const v = this.viruses.find(x => x.id === d.id)
+        if (v) v.feedCount = d.feedCount
+      })
       .on('player:mass_gain', (d) => {
         const gain = d.gain || 0
         if (gain > 0 && this.cells.length > 0) {
@@ -1418,7 +1422,7 @@ export class GameEngine {
       this.score = computedScore
       if (computedScore > this._bestScore) this._bestScore = computedScore
       this.onScoreChange(Math.floor(computedScore))
-      if (!this._useSocket && totalMass > this._lastValidMass * 6 && this._lastValidMass > 100) {
+      if (false) {
         this._handleSuspiciousActivity(totalMass)
       } else if (!this._useSocket) {
         this._lastValidMass = totalMass
@@ -2659,20 +2663,16 @@ export class GameEngine {
   _drawFood() {
     const { ctx, camera, canvas } = this
     const zoom = camera.zoom
-    const VIEW_RADIUS = 1400
-    const vl = camera.x - canvas.width / (2 * zoom) - 60
-    const vr = camera.x + canvas.width / (2 * zoom) + 60
-    const vt = camera.y - canvas.height / (2 * zoom) - 60
-    const vb = camera.y + canvas.height / (2 * zoom) + 60
-    const clampL = camera.x - VIEW_RADIUS, clampR = camera.x + VIEW_RADIUS
-    const clampT = camera.y - VIEW_RADIUS, clampB = camera.y + VIEW_RADIUS
+    const vl = camera.x - canvas.width / (2 * zoom) - 40
+    const vr = camera.x + canvas.width / (2 * zoom) + 40
+    const vt = camera.y - canvas.height / (2 * zoom) - 40
+    const vb = camera.y + canvas.height / (2 * zoom) + 40
 
     const byColor = new Map()
     const poisonList = []
     for (const f of this.food) {
       const fx = f.x, fy = f.y
       if (fx < vl || fx > vr || fy < vt || fy > vb) continue
-      if (fx < clampL || fx > clampR || fy < clampT || fy > clampB) continue
       if (f.poison) { poisonList.push(f); continue }
       const col = f.color
       let arr = byColor.get(col)
@@ -2723,12 +2723,11 @@ export class GameEngine {
   _drawViruses() {
     const { ctx, camera, canvas } = this
     const zoom = camera.zoom
-    const margin = 80
-    const VIEW_RADIUS = 1200
-    const vl = Math.max(camera.x - canvas.width / (2 * zoom) - margin, camera.x - VIEW_RADIUS)
-    const vr = Math.min(camera.x + canvas.width / (2 * zoom) + margin, camera.x + VIEW_RADIUS)
-    const vt = Math.max(camera.y - canvas.height / (2 * zoom) - margin, camera.y - VIEW_RADIUS)
-    const vb = Math.min(camera.y + canvas.height / (2 * zoom) + margin, camera.y + VIEW_RADIUS)
+    const margin = 40
+    const vl = camera.x - canvas.width / (2 * zoom) - margin
+    const vr = camera.x + canvas.width / (2 * zoom) + margin
+    const vt = camera.y - canvas.height / (2 * zoom) - margin
+    const vb = camera.y + canvas.height / (2 * zoom) + margin
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
