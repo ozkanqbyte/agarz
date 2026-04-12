@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Disallow: /game
+Disallow: /lobby
+Disallow: /api/
+
+Sitemap: https://agarix.com.tr/sitemap.xml
+
+# Google
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+# Bing
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 2

@@ -32,6 +32,7 @@ const NAV_ITEMS = [
   { id: 'quests', icon: '📋', label: 'Görevler' },
   { id: 'battlepass', icon: '🎖️', label: 'Battle Pass' },
   { id: 'shop', icon: '🏪', label: 'Mağaza' },
+  { id: 'profile', icon: '👤', label: 'Profil' },
 ]
 
 const MOCK_LEADERBOARD = [
@@ -512,6 +513,22 @@ export default function MainMenu() {
                 className="px-10 py-4 rounded-2xl font-black text-white text-lg"
                 style={{ background: 'linear-gradient(135deg, #f59e0b, #ec4899)' }}>
                 🏪 Mağazaya Git →
+              </motion.button>
+            </motion.div>
+          )}
+
+          {tab === 'profile' && (
+            <motion.div key="profile"
+              initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }}
+              className="flex flex-col items-center justify-center min-h-64 gap-6">
+              <div className="text-6xl">👤</div>
+              <div className="text-white font-black text-2xl">Profilim</div>
+              <div className="text-gray-400 text-sm text-center">Avatar • Çerçeve • İstatistikler • Rozetler</div>
+              <motion.button onClick={() => navigate('/profile')}
+                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                className="px-10 py-4 rounded-2xl font-black text-white text-lg"
+                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+                👤 Profile Git →
               </motion.button>
             </motion.div>
           )}

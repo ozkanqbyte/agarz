@@ -18,6 +18,7 @@ import ShopPage from './components/Shop/ShopPage'
 import LandingPage from './components/Landing/LandingPage'
 import ClanWarLobby from './components/ClanWar/ClanWarLobby'
 import PaymentResultPage from './components/Payment/PaymentResultPage'
+import ProfilePage from './components/Profile/ProfilePage'
 
 function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuthStore()
@@ -126,6 +127,9 @@ export default function App() {
         } />
         <Route path="/clan-war" element={
           <ProtectedRoute><ClanWarLobby /></ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute><ProfilePage /></ProtectedRoute>
         } />
         <Route path="/payment/success" element={<PaymentResultPage success={true} />} />
         <Route path="/payment/fail" element={<PaymentResultPage success={false} />} />
