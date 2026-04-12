@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import useProgressStore from './useProgressStore'
+import usePremiumStore from './usePremiumStore'
+import { authRef } from './authRef'
 
 const FREE_REWARDS = [
   { type: 'coins', value: 100, label: '100 Coin', rarity: 'common', color: '#f59e0b' },
@@ -108,6 +110,39 @@ const useBattlePassStore = create(
         } else {
           set(s => ({ claimedPremium: [...s.claimedPremium, tier] }))
         }
+
+        const uid = authRef.uid
+        if (uid && !uid.startsWith('guest_')) {
+          setTimeout(() => {
+            const bpState = get()
+            const ps = useProgressStore.getState()
+            const pms = usePremiumStore.getState()
+            import('../firebase/syncService').then(({ fbSaveBattlePass, fbSaveInventory }) => {
+              fbSaveBattlePass(uid, {
+                currentTier: bpState.currentTier,
+                bpXP: bpState.bpXP,
+                isPremium: bpState.isPremium,
+                seasonNumber: bpState.seasonNumber,
+                claimedFree: bpState.claimedFree,
+                claimedPremium: bpState.claimedPremium,
+                seasonEnd: bpState.seasonEnd,
+              }).catch(() => {})
+              fbSaveInventory(uid, {
+                ownedFrames: ps.ownedFrames,
+                ownedNameEffects: ps.ownedNameEffects,
+                ownedSkills: ps.ownedSkills,
+                ownedSkins: pms.ownedSkins,
+                activeNameEffect: ps.activeNameEffect,
+                activeFrame: ps.activeFrame,
+                ownedDeathEffects: ps.ownedDeathEffects,
+                ownedTrailEffects: ps.ownedTrailEffects,
+                activeDeathEffect: ps.activeDeathEffect,
+                activeTrailEffect: ps.activeTrailEffect,
+              }).catch(() => {})
+            }).catch(() => {})
+          }, 300)
+        }
+
         return true
       },
 
