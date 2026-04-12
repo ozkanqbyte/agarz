@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 22
+const SPLIT_SPEED = 33
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -130,7 +130,7 @@ const SKILL_SHIELD_DURATION = 5
 const SKILL_SHIELD_COOLDOWN = 20
 const SKILL_MAGNET_DURATION = 8
 const SKILL_MAGNET_COOLDOWN = 25
-const SKILL_GHOST_DURATION = 4
+const SKILL_GHOST_DURATION = 10
 const SKILL_GHOST_COOLDOWN = 35
 const SKILL_TELEPORT_COOLDOWN = 45
 const SKILL_PACKAGES = ['free','trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
@@ -1393,6 +1393,10 @@ export class GameEngine {
     this._updateGameMode(dt)
     if (!this._useSocket) this._adaptiveVirusSpawn(dt)
     this.screenFlash = Math.max(0, this.screenFlash - dt * 3)
+    if (this._virusFlashes) {
+      for (const f of this._virusFlashes) { f.life -= dt * 4; f.r += dt * 120 }
+      this._virusFlashes = this._virusFlashes.filter(f => f.life > 0)
+    }
     if (this.foodTrapCooldown > 0) this.foodTrapCooldown = Math.max(0, this.foodTrapCooldown - dt)
     this._frameCount++
     for (const cell of this.cells) {
@@ -1898,25 +1902,8 @@ export class GameEngine {
   }
 
   _spawnVirusExplosion(x, y, color) {
-    for (let i = 0; i < 32; i++) {
-      const angle = Math.random() * Math.PI * 2
-      const speed = 3 + Math.random() * 9
-      this.particles.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        color: i % 3 === 0 ? '#ffffff' : color,
-        life: 1,
-        size: 4 + Math.random() * 8
-      })
-    }
-    if (this.qualityLevel !== 'low') {
-      for (let i = 0; i < 12; i++) {
-        const angle = Math.random() * Math.PI * 2
-        const speed = 1 + Math.random() * 4
-        this.particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed, color: '#fbbf24', life: 0.7, size: 2+Math.random()*4 })
-      }
-    }
+    this._virusFlashes = this._virusFlashes || []
+    this._virusFlashes.push({ x, y, color, life: 1, r: 60 })
   }
 
   _updateViruses(dt) {
@@ -1993,8 +1980,8 @@ export class GameEngine {
           if (typeof em.dirAngle === 'number') virus._lastFeedAngle = em.dirAngle
           if (virus.feedCount % 5 === 0) {
             const angle = virus._lastFeedAngle ?? (Math.random() * Math.PI * 2)
-            const MIN_VD = 220
-            let spawnDist = MIN_VD + Math.random() * 120
+            const MIN_VD = 300
+            let spawnDist = MIN_VD + Math.random() * 150
             let nx = virus.x + Math.cos(angle) * spawnDist
             let ny = virus.y + Math.sin(angle) * spawnDist
             for (let attempt = 0; attempt < 12; attempt++) {
@@ -2182,6 +2169,24 @@ export class GameEngine {
     this._drawPremiumEffects()
     this._drawFloatingTexts()
     this._drawSlowTargetIndicator()
+
+    if (this._virusFlashes?.length) {
+      ctx.save()
+      for (const f of this._virusFlashes) {
+        const sx = (f.x - camera.x) * zoom + W/2
+        const sy = (f.y - camera.y) * zoom + H/2
+        const sr = f.r * zoom
+        const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr)
+        grad.addColorStop(0, `rgba(255,255,255,${f.life * 0.5})`)
+        grad.addColorStop(0.4, `${f.color}${Math.floor(f.life * 180).toString(16).padStart(2,'0')}`)
+        grad.addColorStop(1, 'rgba(0,0,0,0)')
+        ctx.fillStyle = grad
+        ctx.beginPath()
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    }
 
     ctx.restore()
 
@@ -2653,10 +2658,11 @@ export class GameEngine {
   _drawFood() {
     const { ctx, camera, canvas } = this
     const zoom = camera.zoom
-    const vl = camera.x - canvas.width / (2 * zoom) - 40
-    const vr = camera.x + canvas.width / (2 * zoom) + 40
-    const vt = camera.y - canvas.height / (2 * zoom) - 40
-    const vb = camera.y + canvas.height / (2 * zoom) + 40
+    const VIEW_R = 800
+    const vl = camera.x - VIEW_R
+    const vr = camera.x + VIEW_R
+    const vt = camera.y - VIEW_R
+    const vb = camera.y + VIEW_R
 
     const byColor = new Map()
     const poisonList = []
@@ -2713,11 +2719,11 @@ export class GameEngine {
   _drawViruses() {
     const { ctx, camera, canvas } = this
     const zoom = camera.zoom
-    const margin = 40
-    const vl = camera.x - canvas.width / (2 * zoom) - margin
-    const vr = camera.x + canvas.width / (2 * zoom) + margin
-    const vt = camera.y - canvas.height / (2 * zoom) - margin
-    const vb = camera.y + canvas.height / (2 * zoom) + margin
+    const VIEW_R = 800
+    const vl = camera.x - VIEW_R
+    const vr = camera.x + VIEW_R
+    const vt = camera.y - VIEW_R
+    const vb = camera.y + VIEW_R
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue

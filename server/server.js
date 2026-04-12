@@ -1440,7 +1440,7 @@ io.on('connection', (socket) => {
     } else if (skill === 'magnet') {
       player.skillMagnetTimer = player.isPremium ? 12 : 8
     } else if (skill === 'ghost') {
-      player.skillGhostTimer = player.isPremium ? 6 : 4
+      player.skillGhostTimer = 10
     } else if (skill === 'teleport') {
       const nearestTp = _findNearestEnemy(room, player)
       let tpX, tpY
