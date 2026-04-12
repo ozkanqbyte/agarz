@@ -4,8 +4,6 @@ const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
 const crypto = require('crypto')
-const https = require('https')
-const querystring = require('querystring')
 
 const PAYTR_MERCHANT_ID   = process.env.PAYTR_MERCHANT_ID   || ''
 const PAYTR_MERCHANT_KEY  = process.env.PAYTR_MERCHANT_KEY  || ''
@@ -31,30 +29,17 @@ const PAYMENT_PACKAGES = {
 
 const pendingPayments = new Map()
 
-function paytrRequest(params) {
-  return new Promise((resolve, reject) => {
-    const postData = querystring.stringify(params)
-    const options = {
-      hostname: 'www.paytr.com',
-      path: '/odeme/api/get-token',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(postData),
-      },
-    }
-    const req = https.request(options, res => {
-      let data = ''
-      res.on('data', chunk => data += chunk)
-      res.on('end', () => {
-        console.log('PayTR raw response:', data)
-        try { resolve(JSON.parse(data)) } catch { reject(new Error('PayTR yanit hatali: ' + data.substring(0, 500))) }
-      })
-    })
-    req.on('error', reject)
-    req.write(postData)
-    req.end()
+async function paytrRequest(params) {
+  const body = new URLSearchParams(params).toString()
+  console.log('PayTR request params:', Object.keys(params).join(','))
+  const res = await fetch('https://www.paytr.com/odeme/api/get-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
   })
+  const text = await res.text()
+  console.log('PayTR status:', res.status, 'response:', text.substring(0, 500))
+  try { return JSON.parse(text) } catch { throw new Error('PayTR yanit hatali: ' + text.substring(0, 300)) }
 }
 
 const app = express()
