@@ -606,13 +606,6 @@ export class GameEngine {
       })
       .on('anticheat:warn', (d) => {
         console.warn('[AntiCheat]', d.reason)
-        this._showFloat('⛔ Hile Tespit! Bağlantı Kesildi.', '#ef4444')
-        this.screenFlash = 1
-        setTimeout(() => {
-          this.dead = true
-          this.onDeath && this.onDeath()
-          socketClient.disconnect()
-        }, 1500)
       })
       .on('world:state', (data) => {
         if (!data?.players) return

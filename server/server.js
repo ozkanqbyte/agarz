@@ -538,16 +538,20 @@ class GameRoom {
     if (splits <= 0) return
     const massPerPiece = sourceCell.mass / (splits + 1)
     sourceCell.mass = massPerPiece
+    const dx = (player.inputX || sourceCell.x) - sourceCell.x
+    const dy = (player.inputY || sourceCell.y) - sourceCell.y
+    const baseAngle = Math.atan2(dy, dx)
     for (let i = 0; i < splits; i++) {
-      const angle = (i / splits) * Math.PI * 2
+      const spread = (i / splits) * Math.PI * 1.2 - Math.PI * 0.6
+      const angle = baseAngle + spread + (Math.random() - 0.5) * 0.25
       const newCell = {
         id: rndId(),
         x: sourceCell.x + Math.cos(angle) * 2,
         y: sourceCell.y + Math.sin(angle) * 2,
         mass: massPerPiece,
         mergeTimer: 0,
-        splitVx: Math.cos(angle) * SPLIT_SPEED * 0.4,
-        splitVy: Math.sin(angle) * SPLIT_SPEED * 0.4
+        splitVx: Math.cos(angle) * SPLIT_SPEED * 0.45,
+        splitVy: Math.sin(angle) * SPLIT_SPEED * 0.45
       }
       player.cells.push(newCell)
     }
@@ -1206,9 +1210,8 @@ io.on('connection', (socket) => {
     if (!player._splitWindow) player._splitWindow = now
     if (now - player._splitWindow > 5000) { player._splitCount5s = 0; player._splitWindow = now }
     player._splitCount5s++
-    if (player._splitCount5s > 60) {
-      socket.emit('anticheat:warn', { reason: 'split_spam' })
-      player.dead = true
+    if (player._splitCount5s > 200) {
+      player._splitCount5s = 0
       return
     }
     if (now - player._lastSplit < 80) return
@@ -1226,12 +1229,11 @@ io.on('connection', (socket) => {
     if (!player._ejectWindow) player._ejectWindow = now
     if (now - player._ejectWindow > 5000) { player._ejectCount5s = 0; player._ejectWindow = now }
     player._ejectCount5s++
-    if (player._ejectCount5s > 80) {
-      socket.emit('anticheat:warn', { reason: 'eject_spam' })
-      player.dead = true
+    if (player._ejectCount5s > 600) {
+      player._ejectCount5s = 0
       return
     }
-    if (now - player._lastEject < 25) return
+    if (now - player._lastEject < 15) return
     player._lastEject = now
     room._handleEject(player)
   })
