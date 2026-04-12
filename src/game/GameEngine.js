@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 33
+const SPLIT_SPEED = 48
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -1080,7 +1080,7 @@ export class GameEngine {
     this.keys[e.code] = true
     const now = Date.now()
 
-    if (e.code === 'Space') { this._split(); soundSystem.split() }
+    if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
     if (e.code === 'KeyW' && now - this.lastEjectTime > 25) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyE' && now - this.lastEjectTime > 80) { this._ejectFan(EJECT_MASS_MD); this.lastEjectTime = now }
     if (e.code === 'KeyR' && now - this.lastEjectTime > 12) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
@@ -1178,22 +1178,25 @@ export class GameEngine {
     }
     if (this.cells.length >= MAX_CELLS) return
     const newCells = []
+    const fd = this._frozenSplitDir
+    const gdx = fd ? fd.dx : (this.mouse.x - this.camera.x)
+    const gdy = fd ? fd.dy : (this.mouse.y - this.camera.y)
+    const glen = fd ? 1 : (Math.sqrt(gdx*gdx + gdy*gdy) || 1)
+    const ndx = gdx / glen, ndy = gdy / glen
+
     for (const cell of [...this.cells]) {
       if (cell.mass < MIN_MASS_SPLIT) continue
       if (this.cells.length + newCells.length >= MAX_CELLS) break
-      const dx = this.mouse.x - cell.x
-      const dy = this.mouse.y - cell.y
-      const len = Math.sqrt(dx*dx + dy*dy) || 1
       const half = cell.mass / 2
       cell.mass = half
       const nr2 = cell.radius
       const nc = new Cell(
-        clamp(cell.x + (dx/len)*(nr2+5), nr2, WORLD_SIZE-nr2),
-        clamp(cell.y + (dy/len)*(nr2+5), nr2, WORLD_SIZE-nr2),
+        clamp(cell.x + ndx*(nr2+5), nr2, WORLD_SIZE-nr2),
+        clamp(cell.y + ndy*(nr2+5), nr2, WORLD_SIZE-nr2),
         half, cell.color
       )
-      nc.vx = (dx/len) * SPLIT_SPEED
-      nc.vy = (dy/len) * SPLIT_SPEED
+      nc.vx = ndx * SPLIT_SPEED
+      nc.vy = ndy * SPLIT_SPEED
       nc.mergeTimer = Date.now() + MERGE_TIME
       cell.mergeTimer = Date.now() + MERGE_TIME
       newCells.push(nc)
@@ -1201,12 +1204,23 @@ export class GameEngine {
     if (newCells.length > 0) this.cells.push(...newCells)
   }
 
+  _freezeSplitDir() {
+    const dx = this.mouse.x - this.camera.x
+    const dy = this.mouse.y - this.camera.y
+    const len = Math.sqrt(dx*dx + dy*dy) || 1
+    this._frozenSplitDir = { dx: dx/len, dy: dy/len }
+    clearTimeout(this._frozenSplitClear)
+    this._frozenSplitClear = setTimeout(() => { this._frozenSplitDir = null }, 600)
+  }
+
   _macroDoubleSplit() {
+    this._freezeSplitDir()
     this._split()
     setTimeout(() => this._split(), 80)
   }
 
   _macroMaxSplit() {
+    this._freezeSplitDir()
     let attempts = 4
     const doSplit = () => {
       if (attempts-- <= 0 || this.cells.length >= MAX_CELLS) return
@@ -1217,16 +1231,25 @@ export class GameEngine {
   }
 
   _eject(massAmount, angleOffset = 0) {
-    for (const cell of this.cells) {
+    const EJECT_SPREAD = 0.42
+    const NEARBY_DIST = 80
+    for (let ci = 0; ci < this.cells.length; ci++) {
+      const cell = this.cells[ci]
       if (cell.mass < massAmount * 2) continue
       if (this._useSocket) {
         cell.mass -= massAmount + 2
         continue
       }
+      const nearbyCount = this.ejected.filter(e => {
+        const edx = e.x - cell.x, edy = e.y - cell.y
+        return Math.sqrt(edx*edx+edy*edy) < NEARBY_DIST && !e.settled
+      }).length
+      if (nearbyCount >= 2) continue
       cell.mass -= massAmount + 2
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
-      const baseAngle = Math.atan2(dy, dx) + angleOffset
+      const spread = (Math.random() - 0.5) * EJECT_SPREAD
+      const baseAngle = Math.atan2(dy, dx) + angleOffset + spread
       const spd = 22
       const em = new EjectedMass(
         cell.x + Math.cos(baseAngle) * (cell.radius + 6),
@@ -1787,9 +1810,7 @@ export class GameEngine {
 
         if (this.skills.shield.active) {
           this._showFloat('+300 KALKAN', '#06b6d4')
-          this._spawnExplosion(virus.x, virus.y, '#06b6d4')
           cell.mass += 300
-          cell.eatPulse = 1
           virus.dead = true
           this.score += Math.floor(cell.mass * 2)
           this.onScoreChange(Math.floor(this.score))
@@ -1801,7 +1822,6 @@ export class GameEngine {
         const shouldSplit = this._virusEatCount % 6 === 1
         const preMass = cell.mass
         cell.mass = preMass * 1.25
-        cell.eatPulse = 1.3
         this.lastEatTime = Date.now()
         soundSystem.virusEat()
 
@@ -1820,7 +1840,6 @@ export class GameEngine {
         if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('ZEHIR', '#a855f7') }
         else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('DOND', '#38bdf8') }
 
-        this._spawnVirusExplosion(virus.x, virus.y, vInfo.color)
         virus.dead = true
         break
       }
@@ -1843,7 +1862,6 @@ export class GameEngine {
         virus.dead = true
 
         const vInfo = VIRUS_TYPES[virus.type] || VIRUS_TYPES.normal
-        cell.eatPulse = 1.3
         this.lastEatTime = Date.now()
         soundSystem.virusEat && soundSystem.virusEat()
         this._massProtectUntil = Date.now() + 12000
@@ -1852,9 +1870,6 @@ export class GameEngine {
         const preMass = cell.mass
 
         this._showFloat(`+25% DİKEN`, '#4ade80')
-        this._spawnVirusExplosion(virus.x, virus.y, vInfo.color)
-        this._spawnExplosion(virus.x, virus.y, vInfo.color)
-        cell.eatPulse = 1.5
         this.onXPGain(20)
         break
       }
@@ -2139,6 +2154,7 @@ export class GameEngine {
   _render() {
     const { ctx, canvas, camera, theme } = this
     const W = canvas.width, H = canvas.height
+    const zoom = camera.zoom
     ctx.clearRect(0, 0, W, H)
     ctx.fillStyle = theme.bg
     ctx.fillRect(0, 0, W, H)
@@ -2839,13 +2855,13 @@ export class GameEngine {
   }
 
   _drawEjected() {
-    const { ctx, camera, canvas } = this
+    const { ctx, camera } = this
     if (!this.ejected.length) return
-    const zoom = camera.zoom
-    const vl = camera.x - canvas.width / (2 * zoom) - 20
-    const vr = camera.x + canvas.width / (2 * zoom) + 20
-    const vt = camera.y - canvas.height / (2 * zoom) - 20
-    const vb = camera.y + canvas.height / (2 * zoom) + 20
+    const VIEW_R = 800
+    const vl = camera.x - VIEW_R
+    const vr = camera.x + VIEW_R
+    const vt = camera.y - VIEW_R
+    const vb = camera.y + VIEW_R
     const byColor = new Map()
     const TWO_PI = Math.PI * 2
     for (const em of this.ejected) {
