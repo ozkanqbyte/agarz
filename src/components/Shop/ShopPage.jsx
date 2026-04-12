@@ -2,13 +2,17 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import useProgressStore from '../../store/useProgressStore'
+import useAuthStore from '../../store/useAuthStore'
 import { GOLD_PACKAGES, LUCKY_BOXES, NAME_EFFECTS, FRAMES } from '../../store/useShopStore'
+import { PREMIUM_PACKAGES } from '../../store/usePremiumStore'
 import LuckyBoxModal from './LuckyBoxModal'
+import PaymentModal from '../Payment/PaymentModal'
 import toast from 'react-hot-toast'
 
 const TABS = [
   { id: 'boxes', label: 'SANS KUTUSU' },
   { id: 'gold', label: 'GOLD AL' },
+  { id: 'premium', label: 'PREMİUM' },
   { id: 'effects', label: 'AD EFEKTI' },
   { id: 'frames', label: 'CERCEVE' },
   { id: 'boosts', label: 'BOOST' },
@@ -47,18 +51,30 @@ export default function ShopPage() {
     ownedNameEffects, ownedFrames, activeNameEffect, activeFrame,
     setActiveNameEffect, setActiveFrame, addNameEffect, addFrame,
   } = useProgressStore()
+  const { user } = useAuthStore()
 
   const [tab, setTab] = useState('boxes')
   const [openBox, setOpenBox] = useState(null)
+  const [paymentData, setPaymentData] = useState(null)
 
   const boostMs = xpBoostRemaining()
   const boostHours = Math.floor(boostMs / 3600000)
   const boostMins = Math.floor((boostMs % 3600000) / 60000)
   const boostActive = isXpBoostActive()
 
+  const openPayment = (pkgId, pkgName, priceLabel) => {
+    if (!user) { toast.error('Ödeme için giriş yapmalısın!'); return }
+    setPaymentData({ packageId: pkgId, packageName: pkgName, priceLabel })
+  }
+
   const handleBuyGold = (pkg) => {
-    toast('Odeme sistemi yakin zamanda aktif!', { duration: 2000 })
-    addCoins(pkg.amount)
+    const serverPkgId = pkg.id
+    openPayment(serverPkgId, pkg.name, pkg.price)
+  }
+
+  const handleBuyPremium = (pkg) => {
+    const serverPkgId = `premium_${pkg.id}`
+    openPayment(serverPkgId, pkg.name, pkg.price)
   }
 
   const handleBuyEffect = (effect) => {
@@ -424,12 +440,87 @@ export default function ShopPage() {
             </motion.div>
           )}
 
+          {tab === 'premium' && (
+            <motion.div key="premium"
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+                PREMİUM PAKETLER — GERÇEK PARA İLE
+              </div>
+              {PREMIUM_PACKAGES.map(pkg => (
+                <motion.div key={pkg.id}
+                  whileHover={{ scale: 1.01, y: -1 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => handleBuyPremium(pkg)}
+                  style={{
+                    position: 'relative', borderRadius: 16, padding: '18px 20px',
+                    background: `${pkg.color}0a`,
+                    border: `1.5px solid ${pkg.color}30`,
+                    cursor: 'pointer',
+                  }}>
+                  {pkg.popular && (
+                    <div style={{
+                      position: 'absolute', top: -10, right: 16,
+                      background: '#818cf8', borderRadius: 8,
+                      padding: '3px 12px', fontWeight: 900, fontSize: 10, letterSpacing: 2, color: '#fff',
+                    }}>EN POPULER</div>
+                  )}
+                  {pkg.bestValue && (
+                    <div style={{
+                      position: 'absolute', top: -10, right: 16,
+                      background: '#f59e0b', borderRadius: 8,
+                      padding: '3px 12px', fontWeight: 900, fontSize: 10, letterSpacing: 2, color: '#000',
+                    }}>EN İYİ DEĞER</div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ fontWeight: 900, fontSize: 17, color: pkg.color }}>{pkg.name}</div>
+                    <div style={{ fontWeight: 900, fontSize: 20, color: '#fff' }}>{pkg.price}</div>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {pkg.features.map((f, i) => (
+                      <span key={i} style={{
+                        fontSize: 10, fontWeight: 700,
+                        background: `${pkg.color}15`,
+                        border: `1px solid ${pkg.color}30`,
+                        borderRadius: 6, padding: '3px 8px',
+                        color: pkg.color,
+                      }}>✓ {f}</span>
+                    ))}
+                  </div>
+                </motion.div>
+              ))}
+              <div style={{
+                borderRadius: 14, padding: '14px 18px', marginTop: 4,
+                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+                fontSize: 11, color: '#4b5563', fontWeight: 600, lineHeight: 1.8,
+              }}>
+                🔒 Kredi kartı · Banka kartı · Mobil ödeme (Turkcell, Vodafone, Türk Telekom) · iyzico güvencesiyle
+              </div>
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </div>
 
       <AnimatePresence>
         {openBox && (
           <LuckyBoxModal key={openBox} boxType={openBox} onClose={() => setOpenBox(null)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {paymentData && (
+          <PaymentModal
+            key="payment"
+            packageId={paymentData.packageId}
+            packageName={paymentData.packageName}
+            priceLabel={paymentData.priceLabel}
+            uid={user?.uid}
+            email={user?.email}
+            userName={user?.displayName || user?.email}
+            onClose={() => setPaymentData(null)}
+            onSuccess={() => { setPaymentData(null); toast.success('Satın alma başarılı!') }}
+          />
         )}
       </AnimatePresence>
     </div>

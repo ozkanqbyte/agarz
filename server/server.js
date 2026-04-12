@@ -1,12 +1,163 @@
+require('dotenv').config()
 const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
+const crypto = require('crypto')
+const https = require('https')
+const querystring = require('querystring')
+
+const PAYTR_MERCHANT_ID   = process.env.PAYTR_MERCHANT_ID   || ''
+const PAYTR_MERCHANT_KEY  = process.env.PAYTR_MERCHANT_KEY  || ''
+const PAYTR_MERCHANT_SALT = process.env.PAYTR_MERCHANT_SALT || ''
+const CLIENT_URL          = process.env.CLIENT_URL  || 'https://agarix.com.tr'
+const SERVER_URL          = process.env.SERVER_URL  || 'http://localhost:3001'
+
+const PAYMENT_PACKAGES = {
+  gold_500:         { name: '500 Gold',       goldAmount: 500,  priceTL: '9.99'   },
+  gold_1500:        { name: '1500 Gold',       goldAmount: 1700, priceTL: '24.99'  },
+  gold_5000:        { name: '5000 Gold',       goldAmount: 6000, priceTL: '59.99'  },
+  premium_trial:    { name: 'Deneme Paketi',   packageId: 'trial',    priceTL: '9.99'   },
+  premium_starter:  { name: 'Starter Pack',    packageId: 'starter',  priceTL: '24.99'  },
+  premium_player:   { name: 'Oyuncu Paketi',   packageId: 'player',   priceTL: '49.99'  },
+  premium_pro:      { name: 'Pro Oyuncu',      packageId: 'pro',      priceTL: '79.99'  },
+  premium_elite:    { name: 'Elite',           packageId: 'elite',    priceTL: '119.99' },
+  premium_champion: { name: 'Sampiyon',        packageId: 'champion', priceTL: '149.99' },
+  premium_master:   { name: 'Master',          packageId: 'master',   priceTL: '179.99' },
+  premium_legend:   { name: 'Efsane',          packageId: 'legend',   priceTL: '229.99' },
+  premium_apex:     { name: 'APEX',            packageId: 'apex',     priceTL: '299.99' },
+  premium_immortal: { name: 'IMMORTAL',        packageId: 'immortal', priceTL: '449.99' },
+}
+
+const pendingPayments = new Map()
+
+function paytrRequest(params) {
+  return new Promise((resolve, reject) => {
+    const postData = querystring.stringify(params)
+    const options = {
+      hostname: 'www.paytr.com',
+      path: '/odeme/api/get-token',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(postData),
+      },
+    }
+    const req = https.request(options, res => {
+      let data = ''
+      res.on('data', chunk => data += chunk)
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)) } catch { reject(new Error('PayTR yanit hatali')) }
+      })
+    })
+    req.on('error', reject)
+    req.write(postData)
+    req.end()
+  })
+}
 
 const app = express()
 app.use(cors())
 app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 app.get('/health', (_, res) => res.json({ ok: true }))
+
+app.post('/payment/create-checkout', async (req, res) => {
+  const { packageId, uid, email, name } = req.body
+  const pkg = PAYMENT_PACKAGES[packageId]
+  if (!pkg) return res.status(400).json({ error: 'Gecersiz paket' })
+
+  const merchantOid = crypto.randomBytes(8).toString('hex')
+  const userIp = (req.headers['x-forwarded-for'] || req.ip || '127.0.0.1').split(',')[0].trim()
+  const paymentAmount = Math.round(parseFloat(pkg.priceTL) * 100)
+  const userEmail = email || 'oyuncu@agarix.com.tr'
+  const userBasket = JSON.stringify([[pkg.name, pkg.priceTL, 1]])
+  const testMode = process.env.PAYTR_TEST_MODE === '1' ? '1' : '0'
+  const noInstallment = '0'
+  const maxInstallment = '0'
+  const currency = 'TL'
+  const lang = 'tr'
+
+  const hashStr = PAYTR_MERCHANT_ID + userIp + merchantOid + userEmail + paymentAmount + userBasket + noInstallment + maxInstallment + currency + testMode
+  const paytrToken = crypto.createHmac('sha256', PAYTR_MERCHANT_KEY)
+    .update(hashStr + PAYTR_MERCHANT_SALT)
+    .digest('base64')
+
+  const params = {
+    merchant_id: PAYTR_MERCHANT_ID,
+    user_ip: userIp,
+    merchant_oid: merchantOid,
+    email: userEmail,
+    payment_amount: paymentAmount,
+    paytr_token: paytrToken,
+    user_basket: Buffer.from(userBasket).toString('base64'),
+    debug_on: testMode === '1' ? '1' : '0',
+    no_installment: noInstallment,
+    max_installment: maxInstallment,
+    user_name: name || 'Oyuncu',
+    user_address: 'Dijital Urun',
+    user_phone: '05000000000',
+    merchant_ok_url: `${CLIENT_URL}/payment/success`,
+    merchant_fail_url: `${CLIENT_URL}/payment/fail`,
+    callback_url: `${SERVER_URL}/payment/callback`,
+    timeout_limit: '30',
+    currency,
+    test_mode: testMode,
+    lang,
+  }
+
+  try {
+    const result = await paytrRequest(params)
+    if (result.status !== 'success') {
+      console.error('PayTR token hatasi:', result.reason)
+      return res.status(500).json({ error: result.reason || 'Odeme baslatilamadi' })
+    }
+    pendingPayments.set(merchantOid, { uid, packageId, createdAt: Date.now() })
+    setTimeout(() => pendingPayments.delete(merchantOid), 30 * 60 * 1000)
+    res.json({ token: result.token, merchantOid })
+  } catch (e) {
+    console.error('PayTR hatasi:', e)
+    res.status(500).json({ error: 'Sunucu hatasi' })
+  }
+})
+
+app.post('/payment/callback', (req, res) => {
+  const { merchant_oid, status, total_amount, hash } = req.body
+  if (!merchant_oid || !status || !hash) return res.send('OK')
+
+  const hashStr = merchant_oid + PAYTR_MERCHANT_SALT + status + total_amount
+  const expectedHash = crypto.createHmac('sha256', PAYTR_MERCHANT_KEY)
+    .update(hashStr)
+    .digest('base64')
+
+  if (expectedHash !== hash) {
+    console.error('PayTR hash uyusmuyor:', merchant_oid)
+    return res.send('OK')
+  }
+
+  if (status !== 'success') {
+    console.log('PayTR odeme basarisiz:', merchant_oid)
+    return res.send('OK')
+  }
+
+  const pending = pendingPayments.get(merchant_oid)
+  if (!pending) return res.send('OK')
+
+  const { uid, packageId } = pending
+  const pkg = PAYMENT_PACKAGES[packageId]
+  pendingPayments.delete(merchant_oid)
+
+  console.log(`✅ PayTR odeme onaylandi: ${merchant_oid} | uid:${uid} | pkg:${packageId}`)
+  res.send('OK')
+})
+
+app.get('/payment/result', (req, res) => {
+  const { merchant_oid } = req.query
+  if (!merchant_oid) return res.status(400).json({ error: 'Eksik parametre' })
+  const pending = pendingPayments.get(merchant_oid)
+  if (pending) return res.json({ status: 'pending' })
+  res.json({ status: 'completed' })
+})
 
 const httpServer = http.createServer(app)
 const io = new Server(httpServer, {
