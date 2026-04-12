@@ -65,7 +65,8 @@ app.post('/payment/create-checkout', async (req, res) => {
   const currency = 'TL'
   const lang = 'tr'
 
-  const hashStr = PAYTR_MERCHANT_ID + userIp + merchantOid + userEmail + paymentAmount + userBasket + noInstallment + maxInstallment + currency + testMode
+  const userBasketB64 = Buffer.from(userBasket).toString('base64')
+  const hashStr = PAYTR_MERCHANT_ID + userIp + merchantOid + userEmail + paymentAmount + userBasketB64 + noInstallment + maxInstallment + currency + testMode
   const paytrToken = crypto.createHmac('sha256', PAYTR_MERCHANT_KEY)
     .update(hashStr + PAYTR_MERCHANT_SALT)
     .digest('base64')
@@ -77,7 +78,7 @@ app.post('/payment/create-checkout', async (req, res) => {
     email: userEmail,
     payment_amount: paymentAmount,
     paytr_token: paytrToken,
-    user_basket: Buffer.from(userBasket).toString('base64'),
+    user_basket: userBasketB64,
     debug_on: testMode === '1' ? '1' : '0',
     no_installment: noInstallment,
     max_installment: maxInstallment,
