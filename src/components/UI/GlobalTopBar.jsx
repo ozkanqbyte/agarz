@@ -9,9 +9,8 @@ const HIDE_ON = ['/', '/auth', '/game']
 export default function GlobalTopBar() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { coins, level, prestige, pendingGodGames, xpBoostEndTime } = useProgressStore()
+  const { coins, level, prestige, xpBoostEndTime } = useProgressStore()
   const { user, profile } = useAuthStore()
-  const [godPulse, setGodPulse] = useState(false)
   const [boostMs, setBoostMs] = useState(0)
 
   const path = location.pathname
@@ -27,38 +26,16 @@ export default function GlobalTopBar() {
     return () => clearInterval(id)
   }, [xpBoostEndTime])
 
-  useEffect(() => {
-    if (pendingGodGames > 0) {
-      const id = setInterval(() => setGodPulse(p => !p), 1500)
-      return () => clearInterval(id)
-    }
-  }, [pendingGodGames])
-
   const boostHours = Math.floor(boostMs / 3600000)
   const boostMins = Math.floor((boostMs % 3600000) / 60000)
   const boostActive = boostMs > 0
 
   return (
     <div style={{
-      position: 'fixed', top: 12, right: 16, zIndex: 9000,
+      position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 9000,
       display: 'flex', alignItems: 'center', gap: 8,
       pointerEvents: 'auto',
     }}>
-      {pendingGodGames > 0 && (
-        <motion.div
-          animate={{ boxShadow: godPulse ? '0 0 18px rgba(251,191,36,0.8)' : '0 0 6px rgba(251,191,36,0.3)' }}
-          transition={{ duration: 0.8 }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            padding: '5px 12px', borderRadius: 20,
-            background: 'rgba(251,191,36,0.12)',
-            border: '1px solid rgba(251,191,36,0.45)',
-          }}>
-          <span style={{ fontSize: 13 }}>👑</span>
-          <span style={{ color: '#fbbf24', fontWeight: 900, fontSize: 12 }}>GOD x{pendingGodGames}</span>
-        </motion.div>
-      )}
-
       {boostActive && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 5,

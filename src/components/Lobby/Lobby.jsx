@@ -387,7 +387,7 @@ export default function Lobby() {
         )}
       </AnimatePresence>
 
-      <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b"
+      <header className="relative z-30 flex items-center justify-between px-6 py-4 border-b"
         style={{ borderColor: uiBorder, background: 'rgba(5,5,15,0.9)' }}>
         <div className="flex items-center gap-4">
           <motion.button onClick={() => navigate('/menu')}
@@ -427,7 +427,7 @@ export default function Lobby() {
         </div>
       </header>
 
-      <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 p-6">
+      <div className="relative flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 p-6">
 
         <div className="lg:col-span-2 flex flex-col gap-4">
 
