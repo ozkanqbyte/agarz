@@ -13,10 +13,6 @@ export default function GlobalTopBar() {
   const { user, profile } = useAuthStore()
   const [boostMs, setBoostMs] = useState(0)
 
-  const path = location.pathname
-  if (HIDE_ON.some(p => path === p)) return null
-  if (!user && !profile) return null
-
   useEffect(() => {
     const id = setInterval(() => {
       const ms = Math.max(0, xpBoostEndTime - Date.now())
@@ -25,6 +21,10 @@ export default function GlobalTopBar() {
     setBoostMs(Math.max(0, xpBoostEndTime - Date.now()))
     return () => clearInterval(id)
   }, [xpBoostEndTime])
+
+  const path = location.pathname
+  if (HIDE_ON.some(p => path === p)) return null
+  if (!user && !profile) return null
 
   const boostHours = Math.floor(boostMs / 3600000)
   const boostMins = Math.floor((boostMs % 3600000) / 60000)
