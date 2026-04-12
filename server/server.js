@@ -420,10 +420,21 @@ class GameRoom {
       if (player.skillShieldTimer > 0) player.skillShieldTimer -= dt
       if (player.skillMagnetTimer > 0) {
         player.skillMagnetTimer -= dt
+        const MAGNET_RANGE = 700, MAGNET_SPEED = 5
         for (const food of room.food) {
           const dx = player.x - food.x, dy = player.y - food.y
           const d = Math.sqrt(dx*dx+dy*dy)
-          if (d < 600 && d > 1) { food.x += (dx/d)*4; food.y += (dy/d)*4 }
+          if (d < MAGNET_RANGE && d > 1) { food.x += (dx/d)*MAGNET_SPEED; food.y += (dy/d)*MAGNET_SPEED }
+        }
+        for (const [, enemy] of room.players) {
+          if (enemy.id === player.id || enemy.dead) continue
+          if (enemy.mass > 80) continue
+          for (const ec of enemy.cells) {
+            if (ec.mass > 80) continue
+            const dx = player.x - ec.x, dy = player.y - ec.y
+            const d = Math.sqrt(dx*dx+dy*dy)
+            if (d < MAGNET_RANGE && d > 1) { ec.x += (dx/d)*3; ec.y += (dy/d)*3 }
+          }
         }
       }
       if (player.skillGhostTimer > 0) player.skillGhostTimer -= dt
@@ -461,7 +472,7 @@ class GameRoom {
   _movePlayer(player, dt) {
     if (!player.cells.length) return
     const frozen = player.frozen > 0
-    const speedMult = player.skillSpeedTimer > 0 ? 2 : 1
+    const speedMult = player.skillSpeedTimer > 0 ? 5 : 1
     for (const cell of player.cells) {
       const r = massToRadius(cell.mass)
       if (cell.splitVx) {
@@ -1389,14 +1400,7 @@ io.on('connection', (socket) => {
     const tier = player.ownedPackage || 'free'
     const TIER_ORDER = ['free','trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
     const tierIdx = TIER_ORDER.indexOf(tier)
-    const LEGEND_SKILLS = ['speed','slow','shield','magnet','ghost','teleport']
-    if (LEGEND_SKILLS.includes(skill) && !player.isGod) {
-      const minTier = TIER_ORDER.indexOf('legend')
-      if (tierIdx < minTier) {
-        socket.emit('skill:denied', { skill, reason: 'package_required', remaining: 0 })
-        return
-      }
-    }
+    // Skills are free for all players (geçici: herkese açık)
 
     const now = Date.now()
     if (!player._skillCooldowns) player._skillCooldowns = {}
@@ -1438,16 +1442,28 @@ io.on('connection', (socket) => {
     } else if (skill === 'ghost') {
       player.skillGhostTimer = player.isPremium ? 6 : 4
     } else if (skill === 'teleport') {
-      const angle = Math.random() * Math.PI * 2
-      const dist_t = 800 + Math.random() * 400
-      for (const cell of player.cells) {
-        cell.x = clamp(cell.x + Math.cos(angle) * dist_t, 200, WORLD_SIZE - 200)
-        cell.y = clamp(cell.y + Math.sin(angle) * dist_t, 200, WORLD_SIZE - 200)
+      const nearestTp = _findNearestEnemy(room, player)
+      let tpX, tpY
+      if (nearestTp) {
+        const dx = nearestTp.x - player.x, dy = nearestTp.y - player.y
+        const d = Math.sqrt(dx*dx+dy*dy)
+        const behindDist = massToRadius(nearestTp.mass || 20) + 50
+        tpX = nearestTp.x + (dx/d)*behindDist
+        tpY = nearestTp.y + (dy/d)*behindDist
+      } else {
+        const angle = Math.random() * Math.PI * 2
+        tpX = player.x + Math.cos(angle) * 800
+        tpY = player.y + Math.sin(angle) * 800
       }
-      const cx = player.cells.reduce((s,c)=>s+c.x,0)/player.cells.length
-      const cy = player.cells.reduce((s,c)=>s+c.y,0)/player.cells.length
-      player.x = cx; player.y = cy
-      player.inputX = cx; player.inputY = cy
+      tpX = clamp(tpX, 200, WORLD_SIZE - 200)
+      tpY = clamp(tpY, 200, WORLD_SIZE - 200)
+      const offsetX = tpX - player.x, offsetY = tpY - player.y
+      for (const cell of player.cells) {
+        cell.x = clamp(cell.x + offsetX, 200, WORLD_SIZE - 200)
+        cell.y = clamp(cell.y + offsetY, 200, WORLD_SIZE - 200)
+      }
+      player.x = tpX; player.y = tpY
+      player.inputX = tpX; player.inputY = tpY
     }
 
     socket.emit('skill:activated', { skill, cooldown: cooldownMs })

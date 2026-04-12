@@ -17,6 +17,7 @@ import ClanWarLobby from './components/ClanWar/ClanWarLobby'
 import PaymentResultPage from './components/Payment/PaymentResultPage'
 import ProfilePage from './components/Profile/ProfilePage'
 import GlobalTopBar from './components/UI/GlobalTopBar'
+import LobbyInviteNotifier from './components/Friends/LobbyInviteNotifier'
 
 function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuthStore()
@@ -52,6 +53,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <GlobalTopBar />
+      <LobbyInviteNotifier />
       <Toaster
         position="top-center"
         toastOptions={{
