@@ -108,9 +108,10 @@ app.post('/payment/create-checkout', async (req, res) => {
 
   try {
     const result = await paytrRequest(params)
+    console.log('PayTR result:', JSON.stringify(result))
     if (result.status !== 'success') {
       console.error('PayTR token hatasi:', result.reason)
-      return res.status(500).json({ error: result.reason || 'Odeme baslatilamadi' })
+      return res.status(500).json({ error: result.reason || 'Odeme baslatilamadi', debug: result })
     }
     pendingPayments.set(merchantOid, { uid, packageId, createdAt: Date.now() })
     setTimeout(() => pendingPayments.delete(merchantOid), 30 * 60 * 1000)
