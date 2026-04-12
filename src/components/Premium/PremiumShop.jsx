@@ -5,25 +5,20 @@ import usePremiumStore, { PREMIUM_PACKAGES, SKINS } from '../../store/usePremium
 import { getTheme } from '../../themes/themes'
 import toast from 'react-hot-toast'
 import { useState } from 'react'
+import PaymentModal from '../Payment/PaymentModal'
 
 export default function PremiumShop() {
-  const { showShop, setShowShop, ownedPackage, ownedSkins, coins, mockPurchasePackage, mockPurchaseSkin, addCoins } = usePremiumStore()
+  const { showShop, setShowShop, ownedPackage, ownedSkins, coins, mockPurchaseSkin } = usePremiumStore()
   const { currentTheme } = useGameStore()
-  const { profile, updateProfile } = useAuthStore()
+  const { profile, updateProfile, user } = useAuthStore()
   const theme = getTheme(currentTheme)
   const [tab, setTab] = useState('packages')
-  const [purchasing, setPurchasing] = useState(null)
+  const [paymentData, setPaymentData] = useState(null)
 
-  const handleBuyPackage = async (pkg) => {
+  const handleBuyPackage = (pkg) => {
     if (ownedPackage === pkg.id) { toast.error('Bu pakete zaten sahipsin!'); return }
-    setPurchasing(pkg.id)
-    await new Promise(r => setTimeout(r, 1500))
-    const result = mockPurchasePackage(pkg.id)
-    if (result.success) {
-      await updateProfile({ premium: pkg.id, isGod: pkg.id === 'immortal' || pkg.id === 'apex' })
-      toast.success(`${pkg.name} satın alındı! ${pkg.icon}`, { duration: 4000 })
-    }
-    setPurchasing(null)
+    if (!user) { toast.error('Ödeme için giriş yapmalısın!'); return }
+    setPaymentData({ packageId: `premium_${pkg.id}`, packageName: pkg.name, priceLabel: pkg.price })
   }
 
   const handleBuySkin = (skin) => {
@@ -133,11 +128,11 @@ export default function PremiumShop() {
                       </div>
                       <motion.button
                         onClick={() => handleBuyPackage(pkg)}
-                        disabled={purchasing === pkg.id || ownedPackage === pkg.id}
+                        disabled={ownedPackage === pkg.id}
                         whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                         className="w-full py-3 rounded-xl font-bold text-white disabled:opacity-50"
                         style={{ background: `linear-gradient(135deg, ${pkg.color}, ${pkg.color}99)` }}>
-                        {purchasing === pkg.id ? '⏳ İşleniyor...' : ownedPackage === pkg.id ? '✓ Aktif' : 'Satın Al'}
+                        {ownedPackage === pkg.id ? '✓ Aktif' : 'Satın Al'}
                       </motion.button>
                     </div>
                   </motion.div>
@@ -205,7 +200,12 @@ export default function PremiumShop() {
                     )}
                     <div className="text-white font-bold text-lg mt-3 mb-4">{pack.price}</div>
                     <motion.button
-                      onClick={() => { addCoins(pack.amount + (parseInt(pack.bonus) || 0)); toast.success(`${pack.amount} coin eklendi! 🪙`) }}
+                      onClick={() => {
+                        if (!user) { toast.error('Ödeme için giriş yapmalısın!'); return }
+                        const goldPkgMap = { 1000: 'gold_500', 5000: 'gold_1500', 15000: 'gold_5000' }
+                        const pkgId = goldPkgMap[pack.amount] || 'gold_500'
+                        setPaymentData({ packageId: pkgId, packageName: `${pack.amount} Gold`, priceLabel: pack.price })
+                      }}
                       whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                       className="w-full py-3 rounded-xl font-bold text-black"
                       style={{ background: 'linear-gradient(135deg, #fbbf24, #f59e0b)' }}>
@@ -213,17 +213,26 @@ export default function PremiumShop() {
                     </motion.button>
                   </motion.div>
                 ))}
-                <div className="col-span-full rounded-xl p-4 text-center"
-                  style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)' }}>
-                  <div className="text-gray-400 text-sm">
-                    ℹ️ Bu demo bir ödeme simülasyonudur. Gerçek ödeme entegrasyonu için Firebase + Stripe/İyzico kurulabilir.
-                  </div>
-                </div>
               </div>
             )}
           </div>
         </motion.div>
       </motion.div>
+
+      <AnimatePresence>
+        {paymentData && (
+          <PaymentModal
+            key="payment"
+            packageId={paymentData.packageId}
+            packageName={paymentData.packageName}
+            priceLabel={paymentData.priceLabel}
+            uid={user?.uid}
+            email={user?.email}
+            userName={user?.displayName || user?.email}
+            onClose={() => setPaymentData(null)}
+          />
+        )}
+      </AnimatePresence>
     </AnimatePresence>
   )
 }
