@@ -118,7 +118,7 @@ app.post('/payment/create-checkout', async (req, res) => {
     res.json({ token: result.token, merchantOid })
   } catch (e) {
     console.error('PayTR hatasi:', e)
-    res.status(500).json({ error: 'Sunucu hatasi' })
+    res.status(500).json({ error: 'Sunucu hatasi', detail: e.message, stack: e.stack })
   }
 })
 
