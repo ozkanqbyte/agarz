@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ref, set, remove, onValue, off, get } from 'firebase/database'
+import { ref, set, remove, onValue, off, get, push } from 'firebase/database'
+import { useNavigate } from 'react-router-dom'
 import { db } from '../../firebase/config'
 import useAuthStore from '../../store/useAuthStore'
 import { getTheme } from '../../themes/themes'
@@ -11,6 +12,7 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
   const { user, profile } = useAuthStore()
   const { currentTheme } = useGameStore()
   const theme = getTheme(currentTheme)
+  const navigate = useNavigate()
 
   const [tab, setTab] = useState('friends')
   const [friends, setFriends] = useState([])
@@ -20,6 +22,8 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
   const [searching, setSearching] = useState(false)
   const [open, setOpen] = useState(false)
   const [copiedId, setCopiedId] = useState(false)
+  const [lobbyInvites, setLobbyInvites] = useState([])
+  const [onlineMap, setOnlineMap] = useState({})
 
   const uid = user?.uid
   const myName = profile?.name || user?.displayName || 'Player'
@@ -34,7 +38,23 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
 
     onValue(friendsRef, snap => {
       if (!snap.exists()) { setFriends([]); return }
-      setFriends(Object.entries(snap.val()).map(([fid, f]) => ({ uid: fid, ...f })))
+      const list = Object.entries(snap.val()).map(([fid, f]) => ({ uid: fid, ...f }))
+      setFriends(list)
+      // Check online status for each friend from userSearch
+      Promise.all(
+        list.map(f =>
+          get(ref(db, `userSearch/${f.uid}`))
+            .then(s => {
+              if (!s.exists()) return [f.uid, false]
+              const d = s.val()
+              const online = d.online === true && (Date.now() - (d.updatedAt || 0)) < 8 * 60 * 1000
+              return [f.uid, online]
+            })
+            .catch(() => [f.uid, false])
+        )
+      ).then(entries => {
+        setOnlineMap(Object.fromEntries(entries))
+      }).catch(() => {})
     })
 
     onValue(reqRef, snap => {
@@ -47,6 +67,31 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
 
     return () => { off(friendsRef); off(reqRef) }
   }, [uid])
+
+  // Listen for incoming lobby invites
+  useEffect(() => {
+    if (!uid || uid.startsWith('guest_')) return
+    const inviteRef = ref(db, `users/${uid}/lobbyInvites`)
+    const unsub = onValue(inviteRef, snap => {
+      if (!snap.exists()) { setLobbyInvites([]); return }
+      const list = Object.entries(snap.val()).map(([key, inv]) => ({ key, ...inv }))
+      setLobbyInvites(list)
+    })
+    return () => unsub()
+  }, [uid])
+
+  const acceptLobbyInvite = async (invite) => {
+    try {
+      await remove(ref(db, `users/${uid}/lobbyInvites/${invite.key}`))
+    } catch {}
+    navigate(`/lobby?room=${invite.lobbyId}`)
+    setOpen(false)
+  }
+
+  const declineLobbyInvite = async (invite) => {
+    try { await remove(ref(db, `users/${uid}/lobbyInvites/${invite.key}`)) } catch {}
+    setLobbyInvites(prev => prev.filter(i => i.key !== invite.key))
+  }
 
   useEffect(() => {
     if (!uid || uid.startsWith('guest_') || !myName) return
@@ -154,15 +199,26 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
     } catch {}
   }
 
-  const inviteFriend = (friendUid, friendName) => {
+  const inviteFriend = async (friendUid, friendName) => {
     if (onInviteToLobby) {
       onInviteToLobby(friendUid)
       toast.success(`${friendName} lobiye davet edildi`)
-    } else if (lobbyId) {
+      return
+    }
+    if (!lobbyId) return
+    try {
+      await set(ref(db, `users/${friendUid}/lobbyInvites/${uid}`), {
+        fromName: myName,
+        fromUid: uid,
+        fromColor: myColor,
+        lobbyId,
+        sentAt: Date.now(),
+      })
+      toast.success(`${friendName} lobiye davet edildi! 🎮`)
+    } catch {
       const link = `${window.location.origin}/lobby?room=${lobbyId}`
-      navigator.clipboard.writeText(link).then(() => {
-        toast.success(`Davet linki kopyalandı`)
-      }).catch(() => toast.success(`Davet linki: ${link}`))
+      navigator.clipboard.writeText(link).then(() => toast.success('Davet linki kopyalandı'))
+        .catch(() => toast(`Davet linki: ${link}`))
     }
   }
 
@@ -183,8 +239,52 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
     backdropFilter: 'blur(24px)',
   }
 
+  const onlineFriendsCount = friends.filter(f => onlineMap[f.uid]).length
+  const totalBadge = requests.length + lobbyInvites.length
+
   const content = (
     <div>
+      {/* Lobby invites banner */}
+      {lobbyInvites.length > 0 && (
+        <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6, borderBottom: `1px solid rgba(${theme.glowColor},0.15)` }}>
+          {lobbyInvites.map(inv => (
+            <motion.div key={inv.key}
+              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12,
+                background: 'linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.07))',
+                border: '1px solid rgba(34,197,94,0.35)',
+              }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                background: inv.fromColor || '#6366f1', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontWeight: 900, fontSize: 14, color: '#fff',
+              }}>
+                {inv.fromName?.[0]?.toUpperCase() || '?'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: 12 }}>
+                  <span style={{ color: '#4ade80' }}>{inv.fromName}</span> seni lobiye davet etti!
+                </div>
+                <div style={{ color: '#6b7280', fontSize: 10 }}>🎮 Lobi daveti</div>
+              </div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                <motion.button onClick={() => acceptLobbyInvite(inv)}
+                  whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+                  style={{ padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: 'pointer', background: 'rgba(34,197,94,0.25)', border: '1px solid rgba(34,197,94,0.5)', color: '#4ade80' }}>
+                  Katıl
+                </motion.button>
+                <motion.button onClick={() => declineLobbyInvite(inv)}
+                  whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+                  style={{ padding: '5px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+                  Red
+                </motion.button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
       {myProfileId && (
         <div style={{
           padding: '10px 14px',
@@ -211,9 +311,9 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
 
       <div style={{ display: 'flex', gap: 2, padding: '10px 10px 0', borderBottom: `1px solid rgba(${theme.glowColor},0.12)` }}>
         {[
-          { id: 'friends', label: `Arkadaslar (${friends.length})` },
-          { id: 'requests', label: `İstekler${requests.length > 0 ? ` (${requests.length})` : ''}` },
-          { id: 'search', label: 'Kullanici Ara' },
+          { id: 'friends', label: `Arkadaşlar (${friends.length})` },
+          { id: 'requests', label: `İstekler${(requests.length + lobbyInvites.length) > 0 ? ` (${requests.length + lobbyInvites.length})` : ''}` },
+          { id: 'search', label: 'Kullanıcı Ara' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
@@ -243,21 +343,33 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
                 </div>
                 Henüz arkadaşın yok
               </div>
-            ) : friends.map(f => (
+            ) : friends.map(f => {
+              const isOnline = !!onlineMap[f.uid]
+              return (
               <div key={f.uid} style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12,
-                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+                background: 'rgba(255,255,255,0.04)', border: `1px solid ${isOnline ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.07)'}`,
               }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                  background: f.color || '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 900, fontSize: 14, color: '#fff', boxShadow: `0 0 12px ${f.color || '#6366f1'}66`,
-                }}>
-                  {f.name?.[0]?.toUpperCase() || '?'}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: f.color || '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 900, fontSize: 14, color: '#fff', boxShadow: `0 0 12px ${f.color || '#6366f1'}66`,
+                  }}>
+                    {f.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div style={{
+                    position: 'absolute', bottom: 0, right: 0,
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: isOnline ? '#22c55e' : '#4b5563',
+                    border: '2px solid rgba(6,6,20,0.97)',
+                  }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: '#fff', fontWeight: 800, fontSize: 13 }}>{f.name}</div>
-                  <div style={{ color: '#4b5563', fontSize: 10 }}>Arkadasin</div>
+                  <div style={{ color: isOnline ? '#4ade80' : '#4b5563', fontSize: 10, fontWeight: 700 }}>
+                    {isOnline ? '● Çevrimiçi' : '○ Çevrimdışı'}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 5 }}>
                   {lobbyId && (
@@ -274,7 +386,7 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
                   </motion.button>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
 
@@ -420,13 +532,13 @@ export default function FriendSystem({ onInviteToLobby, lobbyId, compact = false
             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
           Arkadaslar
-          {friends.filter(f => f.online).length > 0 && (
+          {onlineFriendsCount > 0 && (
             <span style={{
               fontSize: 10, fontWeight: 800, color: '#4ade80',
               background: 'rgba(34,197,94,0.15)', padding: '1px 6px', borderRadius: 8,
               border: '1px solid rgba(34,197,94,0.3)',
             }}>
-              {friends.filter(f => f.online).length} çevrimiçi
+              {onlineFriendsCount} çevrimiçi
             </span>
           )}
           {requests.length > 0 && (
