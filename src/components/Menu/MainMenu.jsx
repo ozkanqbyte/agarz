@@ -82,7 +82,7 @@ function FloatingBalls({ theme }) {
 export default function MainMenu() {
   const { user, profile, logout } = useAuthStore()
   const { gameMode, currentTheme, setGameMode, setTheme } = useGameStore()
-  const { setShowShop, ownedPackage } = usePremiumStore()
+  const { ownedPackage } = usePremiumStore()
   const { xp, level, prestige, earnedBadges } = useProgressStore()
   const { quests, checkReset } = useQuestStore()
   const navigate = useNavigate()
@@ -219,7 +219,7 @@ export default function MainMenu() {
                 💎 {profile.premium?.toUpperCase()}
               </div>
             )}
-            <motion.button onClick={() => setShowShop(true)}
+            <motion.button onClick={() => navigate('/shop')}
               whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
               className="px-4 py-2 rounded-xl text-sm font-bold"
               style={{ background: 'linear-gradient(135deg,#fbbf24,#d97706)', color: '#000' }}>
@@ -316,7 +316,7 @@ export default function MainMenu() {
                           onMouseEnter={() => !locked && setHoveredTheme(t.id)}
                           onMouseLeave={() => setHoveredTheme(null)}
                           onClick={() => {
-                            if (locked) { toast.error('Bu tema Premium gerektirir! 💎'); setShowShop(true); return }
+                            if (locked) { toast.error('Bu tema Premium gerektirir! 💎'); navigate('/shop'); return }
                             setTheme(t.id)
                           }}
                           whileHover={{ scale: 1.08, y: -2 }} whileTap={{ scale: 0.95 }}
@@ -442,7 +442,7 @@ export default function MainMenu() {
           {tab === 'profile' && (
             <motion.div key="profile"
               initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -15 }}>
-              <ProfileTab theme={theme} panelStyle={panelStyle} profile={profile} user={user} logout={logout} setShowShop={setShowShop} />
+              <ProfileTab theme={theme} panelStyle={panelStyle} profile={profile} user={user} logout={logout} navigate={navigate} />
             </motion.div>
           )}
 
@@ -717,7 +717,7 @@ function LobbyTab({ theme, panelStyle, onCreateLobby, navigate, playerName }) {
 
 const COLOR_OPTIONS = ['#6366f1','#8b5cf6','#ec4899','#06b6d4','#10b981','#f59e0b','#ef4444','#3b82f6','#14b8a6','#f97316','#a855f7','#84cc16','#f43f5e','#0ea5e9','#d946ef','#65a30d']
 
-function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
+function ProfileTab({ theme, panelStyle, profile, user, logout, navigate }) {
   const { updateProfile } = useAuthStore()
   const { ownedSkins, ownedPackage } = usePremiumStore()
   const { ownedFrames, ownedNameEffects, activeFrame, activeNameEffect, setActiveFrame, setActiveNameEffect, coins, ownedSkills, ownedDeathEffects, ownedTrailEffects, activeDeathEffect, activeTrailEffect, setActiveDeathEffect, setActiveTrailEffect, level: storeLevel, highScore, totalKills, gamesPlayed, totalPlayTime, prestige, xp } = useProgressStore()
@@ -903,7 +903,7 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
           <div style={{ fontSize:13,fontWeight:900,color:theme.uiAccent,marginBottom:4 }}>
             {!profile?.premium || profile.premium==='free' ? 'ÜCRETSİZ' : profile.premium.toUpperCase()}
           </div>
-          <button onClick={()=>setShowShop(true)}
+          <button onClick={()=>navigate('/shop')}
             style={{ width:'100%',padding:'9px',borderRadius:10,background:'linear-gradient(135deg,#fbbf24,#d97706)',color:'#000',fontWeight:900,fontSize:12,border:'none',cursor:'pointer' }}>
             {!profile?.premium||profile.premium==='free'?'SATIN AL':'YÜKSELT'}
           </button>
@@ -948,7 +948,7 @@ function ProfileTab({ theme, panelStyle, profile, user, logout, setShowShop }) {
                   return (
                     <motion.button key={skin.id}
                       onClick={async()=>{
-                        if(!owned){toast.error('Premium gerekli!');setShowShop(true);return}
+                        if(!owned){toast.error('Premium gerekli!');navigate('/shop');return}
                         await updateProfile({skin:skin.id,color:sc})
                         toast.success(`${skin.name} seçildi!`)
                       }}

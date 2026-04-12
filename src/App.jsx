@@ -3,16 +3,13 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AnimatePresence } from 'framer-motion'
 import useAuthStore from './store/useAuthStore'
-import usePremiumStore from './store/usePremiumStore'
 import useProgressStore from './store/useProgressStore'
 import AuthScreen from './components/Auth/AuthScreen'
 import MainMenu from './components/Menu/MainMenu'
 import GameCanvas from './components/Game/GameCanvas'
 import Lobby from './components/Lobby/Lobby'
 import ClanSystem from './components/Clan/ClanSystem'
-import PremiumShop from './components/Premium/PremiumShop'
 import BattlePassPage from './components/BattlePass/BattlePassPage'
-import LootBoxModal from './components/LootBox/LootBoxModal'
 import LevelUpModal from './components/Progress/LevelUpModal'
 import ShopPage from './components/Shop/ShopPage'
 import LandingPage from './components/Landing/LandingPage'
@@ -42,21 +39,12 @@ function LoadingScreen() {
 
 export default function App() {
   const { init, loading } = useAuthStore()
-  const { showShop } = usePremiumStore()
-  const { pendingLootBoxes } = useProgressStore()
-  const [showLootBox, setShowLootBox] = useState(false)
   const [levelUpData, setLevelUpData] = useState(null)
 
   useEffect(() => {
     const unsub = init()
     return () => { if (typeof unsub === 'function') unsub() }
   }, [])
-
-  useEffect(() => {
-    if (pendingLootBoxes > 0 && !showLootBox) {
-      setShowLootBox(true)
-    }
-  }, [pendingLootBoxes])
 
   if (loading) return <LoadingScreen />
 
@@ -77,18 +65,6 @@ export default function App() {
           error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } }
         }}
       />
-
-      {showShop && <PremiumShop />}
-
-      <AnimatePresence>
-        {showLootBox && pendingLootBoxes > 0 && (
-          <LootBoxModal
-            key="lootbox"
-            onClose={() => setShowLootBox(false)}
-            onRewardEarned={() => {}}
-          />
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {levelUpData && (
