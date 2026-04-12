@@ -39,7 +39,8 @@ async function paytrRequest(params) {
   })
   const text = await res.text()
   console.log('PayTR status:', res.status, 'response:', text.substring(0, 500))
-  try { return JSON.parse(text) } catch { throw new Error('PayTR yanit hatali: ' + text.substring(0, 300)) }
+  if (!text) throw new Error(`PayTR bos yanit - HTTP ${res.status} - redirected:${res.redirected} - url:${res.url}`)
+  try { return JSON.parse(text) } catch { throw new Error(`PayTR parse hatasi [${res.status}]: ` + text.substring(0, 300)) }
 }
 
 const app = express()
