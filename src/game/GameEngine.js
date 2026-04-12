@@ -133,12 +133,9 @@ const SKILL_MAGNET_COOLDOWN = 25
 const SKILL_GHOST_DURATION = 4
 const SKILL_GHOST_COOLDOWN = 35
 const SKILL_TELEPORT_COOLDOWN = 45
-const SKILL_PACKAGES = ['legend','apex','immortal']
+const SKILL_PACKAGES = ['free','trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
 function getSkillUses(pkg) {
-  if (pkg === 'immortal') return Infinity
-  if (pkg === 'apex') return 5
-  if (pkg === 'legend') return 3
-  return 0
+  return Infinity
 }
 const BOT_NAMES = ['Zephyr','NeonBlob','CellKing','AgarPro','BlobZilla','MassHunter','VirusKing','StarEater','CyberCell','NightCrawler','ShadowCell','PhantomBlob','IronCore','ThunderMass','VoidEater','SilverFang','GoldenCell','DarkMatter','CrimsonBlob','AzureCell','VenomBlob','FrostKing','PlasmaCore','UltraCell','OmegaBlob','TitanMass','HyperBlob','MegaCell','SuperNova','InfiniteCell']
 const BOT_COLORS = ['#6366f1','#ec4899','#f59e0b','#06b6d4','#10b981','#8b5cf6','#ef4444','#38bdf8','#a855f7','#22c55e','#f97316','#14b8a6','#e11d48','#7c3aed','#0ea5e9','#16a34a','#dc2626','#2563eb','#9333ea','#0d9488','#b45309','#7e22ce','#0284c7','#15803d','#991b1b','#1d4ed8','#6b21a8','#0e7490','#92400e','#3b0764']
@@ -3450,13 +3447,7 @@ export class GameEngine {
   }
 
   _checkSkillAccess(name, icon, color) {
-    const pkg = this.options.ownedPackage || 'free'
     const sk = this.skills[name]
-    const hasPkg = SKILL_PACKAGES.includes(pkg)
-    const hasBoxUses = sk.maxUses > 0
-    if (!hasPkg && !hasBoxUses) {
-      this._showFloat(`${icon} Efsane+ Paketi veya Kutu Gerekli!`, color); return false
-    }
     if (sk.usesLeft !== Infinity && sk.usesLeft <= 0) {
       this._showFloat(`${icon} Kullanim Hakki Bitti!`, color); return false
     }
