@@ -47,7 +47,8 @@ function paytrRequest(params) {
       let data = ''
       res.on('data', chunk => data += chunk)
       res.on('end', () => {
-        try { resolve(JSON.parse(data)) } catch { reject(new Error('PayTR yanit hatali')) }
+        console.log('PayTR raw response:', data)
+        try { resolve(JSON.parse(data)) } catch { reject(new Error('PayTR yanit hatali: ' + data.substring(0, 500))) }
       })
     })
     req.on('error', reject)
