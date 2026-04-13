@@ -1231,7 +1231,7 @@ export class GameEngine {
   }
 
   _eject(massAmount, angleOffset = 0) {
-    const EJECT_SPREAD = 0.42
+    const EJECT_SPREAD = 0.26
     const NEARBY_DIST = 80
     for (let ci = 0; ci < this.cells.length; ci++) {
       const cell = this.cells[ci]
@@ -1240,11 +1240,7 @@ export class GameEngine {
         cell.mass -= massAmount + 2
         continue
       }
-      const nearbyCount = this.ejected.filter(e => {
-        const edx = e.x - cell.x, edy = e.y - cell.y
-        return Math.sqrt(edx*edx+edy*edy) < NEARBY_DIST && !e.settled
-      }).length
-      if (nearbyCount >= 2) continue
+      if (this.ejected.length >= 3) continue
       cell.mass -= massAmount + 2
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
@@ -1274,38 +1270,34 @@ export class GameEngine {
         if (dot > bestDot) { bestDot = dot; targetCell = cell }
       }
       if (targetCell) {
-        const delays = [0, 80, 160]
-        delays.forEach(() => {
-          setTimeout(() => {
-            for (const cell of this.cells) {
-              if (cell === targetCell) continue
-              if (cell.mass < massAmount * 2) continue
-              if (this._useSocket) { cell.mass -= massAmount + 2; socketClient.sendEject(); continue }
-              cell.mass -= massAmount + 2
-              const dx = targetCell.x - cell.x, dy = targetCell.y - cell.y
-              const baseAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.15
-              const spd = 22
-              const em = new EjectedMass(
-                cell.x + Math.cos(baseAngle) * (cell.radius + 6),
-                cell.y + Math.sin(baseAngle) * (cell.radius + 6),
-                Math.cos(baseAngle) * spd, Math.sin(baseAngle) * spd,
-                cell.color, massAmount
-              )
-              this.ejected.push(em)
-            }
-          }, 0)
-        })
+        setTimeout(() => {
+          if (this.ejected.length >= 3) return
+          for (const cell of this.cells) {
+            if (cell === targetCell) continue
+            if (cell.mass < massAmount * 2) continue
+            if (this._useSocket) { cell.mass -= massAmount + 2; socketClient.sendEject(); continue }
+            if (this.ejected.length >= 3) break
+            cell.mass -= massAmount + 2
+            const dx = targetCell.x - cell.x, dy = targetCell.y - cell.y
+            const baseAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.15
+            const spd = 22
+            const em = new EjectedMass(
+              cell.x + Math.cos(baseAngle) * (cell.radius + 6),
+              cell.y + Math.sin(baseAngle) * (cell.radius + 6),
+              Math.cos(baseAngle) * spd, Math.sin(baseAngle) * spd,
+              cell.color, massAmount
+            )
+            this.ejected.push(em)
+          }
+        }, 0)
         return
       }
     }
-    const delays = [0, 80, 160]
-    delays.forEach((delay, i) => {
-      setTimeout(() => {
-        const angleOffset = (Math.random() - 0.5) * 0.18
-        this._eject(massAmount, angleOffset)
-        if (this._useSocket) socketClient.sendEject()
-      }, delay)
-    })
+    setTimeout(() => {
+      const angleOffset = (Math.random() - 0.5) * 0.18
+      this._eject(massAmount, angleOffset)
+      if (this._useSocket) socketClient.sendEject()
+    }, 0)
   }
 
   _buyMass(size) {
@@ -2031,8 +2023,8 @@ export class GameEngine {
     if (ejectedToRemove.size > 0) {
       this.ejected = this.ejected.filter(e => !ejectedToRemove.has(e.id))
     }
-    if (this.ejected.length > 200) {
-      this.ejected = this.ejected.slice(-200)
+    if (this.ejected.length > 3) {
+      this.ejected = this.ejected.slice(-3)
     }
   }
 
@@ -2872,12 +2864,11 @@ export class GameEngine {
     }
     for (const [col, items] of byColor) {
       ctx.fillStyle = col
-      ctx.beginPath()
       for (const em of items) {
-        ctx.moveTo(em.x + 6, em.y)
-        ctx.arc(em.x, em.y, 6, 0, TWO_PI)
+        ctx.beginPath()
+        ctx.ellipse(em.x, em.y, 8, 5, em.dirAngle, 0, TWO_PI)
+        ctx.fill()
       }
-      ctx.fill()
     }
   }
 
