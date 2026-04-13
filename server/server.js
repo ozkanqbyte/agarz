@@ -72,16 +72,20 @@ app.post('/payment/create-checkout', async (req, res) => {
   const pkg = PAYMENT_PACKAGES[packageId]
   if (!pkg) return res.status(400).json({ error: 'Gecersiz paket' })
 
-  const merchantOid = crypto.randomBytes(8).toString('hex')
-  const userIp = (req.headers['x-forwarded-for'] || req.ip || '127.0.0.1').split(',')[0].trim()
+  const merchantOid = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
+  let rawIp = (req.headers['x-forwarded-for'] || req.ip || '127.0.0.1').split(',')[0].trim()
+  if (rawIp.startsWith('::ffff:')) rawIp = rawIp.replace('::ffff:', '')
+  if (rawIp === '::1' || rawIp.includes(':')) rawIp = '1.1.1.1'
+  const userIp = rawIp
   const paymentAmount = Math.round(parseFloat(pkg.priceTL) * 100)
-  const userEmail = email || 'oyuncu@agarix.com.tr'
+  const userEmail = (email || 'oyuncu@agarix.com.tr').toLowerCase().trim()
   const userBasket = JSON.stringify([[pkg.name, pkg.priceTL, 1]])
   const testMode = process.env.PAYTR_TEST_MODE === '1' ? '1' : '0'
-  const noInstallment = '0'
+  const noInstallment = '1'
   const maxInstallment = '0'
   const currency = 'TL'
   const lang = 'tr'
+  console.log('[PayTR] create-checkout:', { packageId, uid, userIp, paymentAmount, testMode, email: userEmail })
 
   const userBasketB64 = Buffer.from(userBasket).toString('base64')
   const paymentAmountStr = String(paymentAmount)
@@ -115,17 +119,18 @@ app.post('/payment/create-checkout', async (req, res) => {
 
   try {
     const result = await paytrRequest(params)
-    console.log('PayTR result:', JSON.stringify(result))
-    if (result.status !== 'success') {
-      console.error('PayTR token hatasi:', result.reason)
-      return res.status(500).json({ error: result.reason || 'Odeme baslatilamadi', debug: result })
+    console.log('[PayTR] result:', JSON.stringify(result))
+    if (!result || result.status !== 'success') {
+      const reason = result?.reason || result?.err_msg || JSON.stringify(result)
+      console.error('[PayTR] Token hatasi:', reason)
+      return res.status(500).json({ error: reason || 'Odeme baslatilamadi' })
     }
     pendingPayments.set(merchantOid, { uid, packageId, createdAt: Date.now() })
     setTimeout(() => pendingPayments.delete(merchantOid), 30 * 60 * 1000)
     res.json({ token: result.token, merchantOid })
   } catch (e) {
-    console.error('PayTR hatasi:', e)
-    res.status(500).json({ error: 'Sunucu hatasi', detail: e.message, stack: e.stack })
+    console.error('[PayTR] Hata:', e.message)
+    res.status(500).json({ error: 'Sunucu hatasi', detail: e.message })
   }
 })
 
