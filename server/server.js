@@ -1,4 +1,12 @@
 try { require('dotenv').config() } catch {}
+
+console.log('[ENV-CHECK] PAYTR_MERCHANT_ID:', process.env.PAYTR_MERCHANT_ID ? 'SET(' + process.env.PAYTR_MERCHANT_ID.length + ')' : 'EMPTY')
+console.log('[ENV-CHECK] PAYTR_MERCHANT_KEY:', process.env.PAYTR_MERCHANT_KEY ? 'SET(' + process.env.PAYTR_MERCHANT_KEY.length + ')' : 'EMPTY')
+console.log('[ENV-CHECK] PAYTR_MERCHANT_SALT:', process.env.PAYTR_MERCHANT_SALT ? 'SET(' + process.env.PAYTR_MERCHANT_SALT.length + ')' : 'EMPTY')
+console.log('[ENV-CHECK] FIREBASE_SERVICE_ACCOUNT:', process.env.FIREBASE_SERVICE_ACCOUNT ? 'SET(' + process.env.FIREBASE_SERVICE_ACCOUNT.length + ')' : 'EMPTY')
+console.log('[ENV-CHECK] NODE_ENV:', process.env.NODE_ENV)
+console.log('[ENV-CHECK] PORT:', process.env.PORT)
+
 const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
@@ -68,9 +76,9 @@ app.use(express.urlencoded({ extended: true }))
 app.get('/health', (_, res) => res.json({ ok: true }))
 
 app.get('/payment/debug-creds', (_, res) => {
-  const mid = PAYTR_MERCHANT_ID
-  const key = PAYTR_MERCHANT_KEY
-  const salt = PAYTR_MERCHANT_SALT
+  const mid  = process.env.PAYTR_MERCHANT_ID   || PAYTR_MERCHANT_ID
+  const key  = process.env.PAYTR_MERCHANT_KEY  || PAYTR_MERCHANT_KEY
+  const salt = process.env.PAYTR_MERCHANT_SALT || PAYTR_MERCHANT_SALT
   res.json({
     merchant_id: mid,
     merchant_key_len: key.length,
@@ -80,6 +88,12 @@ app.get('/payment/debug-creds', (_, res) => {
     merchant_salt_first4: salt.substring(0, 4),
     merchant_salt_last4: salt.substring(salt.length - 4),
     firebase_ok: !!firebaseDb,
+    from_env_live: {
+      id_len: (process.env.PAYTR_MERCHANT_ID||'').length,
+      key_len: (process.env.PAYTR_MERCHANT_KEY||'').length,
+      salt_len: (process.env.PAYTR_MERCHANT_SALT||'').length,
+      fb_len: (process.env.FIREBASE_SERVICE_ACCOUNT||'').length,
+    }
   })
 })
 
