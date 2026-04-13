@@ -43,6 +43,39 @@ function GoldBar({ amount, color = '#f59e0b' }) {
   )
 }
 
+function ConfirmModal({ item, coins, onConfirm, onCancel }) {
+  const canAfford = item?.needsPayment || (coins >= (item?.price || 0))
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
+      <motion.div initial={{ scale: 0.85, y: 30, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.85, opacity: 0 }}
+        style={{ background: 'linear-gradient(180deg,#0f0f28,#080818)', border: `2px solid ${item?.color || '#818cf8'}55`, borderRadius: 24, padding: 32, maxWidth: 360, width: '100%', textAlign: 'center', boxShadow: `0 0 60px ${item?.color || '#818cf8'}33`, fontFamily: '"Exo 2",sans-serif' }}>
+        <div style={{ fontSize: 60, marginBottom: 12 }}>{item?.icon || '🛒'}</div>
+        <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', marginBottom: 6 }}>{item?.name}</div>
+        <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>
+          {item?.needsPayment ? `${item?.priceLabel} ödeme yapılacak` : `${item?.price?.toLocaleString()} Gold harcanacak`}
+        </div>
+        {!item?.needsPayment && !canAfford && (
+          <div style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5', fontSize: 12, fontWeight: 700, marginBottom: 16 }}>
+            Yetersiz Gold! {(item?.price - coins).toLocaleString()} Gold eksik.
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={onCancel}
+            style={{ flex: 1, padding: '12px', borderRadius: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#9ca3af', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: '"Exo 2",sans-serif' }}>
+            İptal
+          </motion.button>
+          <motion.button whileHover={{ scale: canAfford ? 1.04 : 1 }} whileTap={{ scale: canAfford ? 0.96 : 1 }} onClick={canAfford ? onConfirm : undefined}
+            style={{ flex: 1, padding: '12px', borderRadius: 14, background: canAfford ? `linear-gradient(135deg,${item?.color || '#818cf8'},${item?.color || '#818cf8'}99)` : 'rgba(255,255,255,0.05)', border: 'none', color: canAfford ? '#fff' : '#4b5563', fontWeight: 900, fontSize: 14, cursor: canAfford ? 'pointer' : 'not-allowed', fontFamily: '"Exo 2",sans-serif' }}>
+            {item?.needsPayment ? '💳 Öde' : '✓ Al'}
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 export default function ShopPage() {
   const navigate = useNavigate()
   const {
@@ -56,6 +89,7 @@ export default function ShopPage() {
   const [tab, setTab] = useState('boxes')
   const [openBox, setOpenBox] = useState(null)
   const [paymentData, setPaymentData] = useState(null)
+  const [confirmItem, setConfirmItem] = useState(null)
 
   const boostMs = xpBoostRemaining()
   const boostHours = Math.floor(boostMs / 3600000)
@@ -68,35 +102,51 @@ export default function ShopPage() {
   }
 
   const handleBuyGold = (pkg) => {
-    const serverPkgId = pkg.id
-    openPayment(serverPkgId, pkg.name, pkg.price)
+    if (!user) { toast.error('Ödeme için giriş yapmalısın!'); return }
+    setConfirmItem({ name: pkg.name, icon: '🪙', color: '#f59e0b', priceLabel: pkg.price, needsPayment: true, _pkgId: pkg.id })
   }
 
   const handleBuyPremium = (pkg) => {
-    const serverPkgId = `premium_${pkg.id}`
-    openPayment(serverPkgId, pkg.name, pkg.price)
+    if (!user) { toast.error('Ödeme için giriş yapmalısın!'); return }
+    setConfirmItem({ name: pkg.name, icon: pkg.icon || '💎', color: pkg.color, priceLabel: pkg.price, needsPayment: true, _pkgId: `premium_${pkg.id}` })
   }
 
   const handleBuyEffect = (effect) => {
     const owned = ownedNameEffects.includes(effect.id)
     if (owned) { setActiveNameEffect(effect.id); toast.success(`${effect.name} aktif edildi!`); return }
-    if (!spendCoins(effect.price)) { toast.error(`Yetersiz Gold! ${effect.price} Gold gerekiyor.`); return }
-    addNameEffect(effect.id); setActiveNameEffect(effect.id)
-    toast.success(`${effect.name} satin alindi!`)
+    const c = EFFECT_COLORS[effect.id] || '#60a5fa'
+    setConfirmItem({ name: effect.name, icon: '✨', color: c, price: effect.price, _effect: effect })
   }
 
   const handleBuyFrame = (frame) => {
     const owned = ownedFrames.includes(frame.id)
     if (owned) { setActiveFrame(frame.id); toast.success(`${frame.name} aktif edildi!`); return }
-    if (!spendCoins(frame.price)) { toast.error(`Yetersiz Gold! ${frame.price} Gold gerekiyor.`); return }
-    addFrame(frame.id); setActiveFrame(frame.id)
-    toast.success(`${frame.name} satin alindi!`)
+    const c = FRAME_COLORS[frame.id] || '#9ca3af'
+    setConfirmItem({ name: frame.name, icon: '🔮', color: c, price: frame.price, _frame: frame })
   }
 
   const handleBuyBoost = () => {
     if (boostActive) { toast('XP Boost zaten aktif!'); return }
-    if (!spendCoins(300)) { toast.error('Yetersiz Gold! 300 Gold gerekiyor.'); return }
-    activateXpBoost(); toast.success('XP x2 Boost (24 saat) aktif!')
+    setConfirmItem({ name: 'XP x2 Boost (24 saat)', icon: '⚡', color: '#fbbf24', price: 300, _boost: true })
+  }
+
+  const handleConfirm = () => {
+    const item = confirmItem
+    setConfirmItem(null)
+    if (item.needsPayment) {
+      openPayment(item._pkgId, item.name, item.priceLabel)
+    } else if (item._effect) {
+      if (!spendCoins(item._effect.price)) { toast.error('Yetersiz Gold!'); return }
+      addNameEffect(item._effect.id); setActiveNameEffect(item._effect.id)
+      toast.success(`${item._effect.name} satın alındı!`)
+    } else if (item._frame) {
+      if (!spendCoins(item._frame.price)) { toast.error('Yetersiz Gold!'); return }
+      addFrame(item._frame.id); setActiveFrame(item._frame.id)
+      toast.success(`${item._frame.name} satın alındı!`)
+    } else if (item._boost) {
+      if (!spendCoins(300)) { toast.error('Yetersiz Gold!'); return }
+      activateXpBoost(); toast.success('XP x2 Boost (24 saat) aktif!')
+    }
   }
 
   return (
@@ -443,58 +493,55 @@ export default function ShopPage() {
           {tab === 'premium' && (
             <motion.div key="premium"
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
-                PREMİUM PAKETLER — GERÇEK PARA İLE
+              style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ color: '#4b5563', fontSize: 11, fontWeight: 800, letterSpacing: 3, textAlign: 'center', paddingTop: 4 }}>
+                PREMİUM PAKETLER — GERÇEK PARA İLE SATIN AL
               </div>
-              {PREMIUM_PACKAGES.map(pkg => (
-                <motion.div key={pkg.id}
-                  whileHover={{ scale: 1.01, y: -1 }}
-                  whileTap={{ scale: 0.99 }}
-                  onClick={() => handleBuyPremium(pkg)}
-                  style={{
-                    position: 'relative', borderRadius: 16, padding: '18px 20px',
-                    background: `${pkg.color}0a`,
-                    border: `1.5px solid ${pkg.color}30`,
-                    cursor: 'pointer',
-                  }}>
-                  {pkg.popular && (
-                    <div style={{
-                      position: 'absolute', top: -10, right: 16,
-                      background: '#818cf8', borderRadius: 8,
-                      padding: '3px 12px', fontWeight: 900, fontSize: 10, letterSpacing: 2, color: '#fff',
-                    }}>EN POPULER</div>
-                  )}
-                  {pkg.bestValue && (
-                    <div style={{
-                      position: 'absolute', top: -10, right: 16,
-                      background: '#f59e0b', borderRadius: 8,
-                      padding: '3px 12px', fontWeight: 900, fontSize: 10, letterSpacing: 2, color: '#000',
-                    }}>EN İYİ DEĞER</div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <div style={{ fontWeight: 900, fontSize: 17, color: pkg.color }}>{pkg.name}</div>
-                    <div style={{ fontWeight: 900, fontSize: 20, color: '#fff' }}>{pkg.price}</div>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {pkg.features.map((f, i) => (
-                      <span key={i} style={{
-                        fontSize: 10, fontWeight: 700,
-                        background: `${pkg.color}15`,
-                        border: `1px solid ${pkg.color}30`,
-                        borderRadius: 6, padding: '3px 8px',
-                        color: pkg.color,
-                      }}>✓ {f}</span>
-                    ))}
-                  </div>
-                </motion.div>
-              ))}
-              <div style={{
-                borderRadius: 14, padding: '14px 18px', marginTop: 4,
-                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
-                fontSize: 11, color: '#4b5563', fontWeight: 600, lineHeight: 1.8,
-              }}>
-                🔒 Kredi kartı · Banka kartı · Mobil ödeme (Turkcell, Vodafone, Türk Telekom) · iyzico güvencesiyle
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                {PREMIUM_PACKAGES.map(pkg => (
+                  <motion.div key={pkg.id}
+                    whileHover={{ y: -4, boxShadow: `0 16px 40px ${pkg.color}33` }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleBuyPremium(pkg)}
+                    style={{
+                      position: 'relative', borderRadius: 20, overflow: 'hidden', cursor: 'pointer',
+                      background: `linear-gradient(160deg,${pkg.color}18 0%,rgba(5,5,15,0.97) 65%)`,
+                      border: `1.5px solid ${pkg.color}40`,
+                      transition: 'box-shadow 0.2s',
+                    }}>
+                    {pkg.popular && (
+                      <div style={{ position: 'absolute', top: 12, right: 12, padding: '3px 10px', borderRadius: 20, background: pkg.color, color: '#000', fontSize: 9, fontWeight: 900, letterSpacing: 1 }}>🔥 POPÜLER</div>
+                    )}
+                    {pkg.bestValue && (
+                      <div style={{ position: 'absolute', top: 12, right: 12, padding: '3px 10px', borderRadius: 20, background: '#f59e0b', color: '#000', fontSize: 9, fontWeight: 900, letterSpacing: 1 }}>⭐ EN İYİ</div>
+                    )}
+                    <div style={{ padding: '18px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                        <span style={{ fontSize: 28 }}>{pkg.icon || '💎'}</span>
+                        <div>
+                          <div style={{ fontWeight: 900, fontSize: 16, color: '#fff' }}>{pkg.name}</div>
+                          <div style={{ fontWeight: 900, fontSize: 20, color: pkg.color, lineHeight: 1 }}>{pkg.price}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+                        {pkg.features.slice(0, 4).map((f, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#9ca3af' }}>
+                            <span style={{ color: pkg.color, fontSize: 10 }}>✓</span> {f}
+                          </div>
+                        ))}
+                        {pkg.features.length > 4 && (
+                          <div style={{ fontSize: 10, color: '#4b5563', fontWeight: 700 }}>+{pkg.features.length - 4} özellik daha...</div>
+                        )}
+                      </div>
+                      <div style={{ width: '100%', padding: '10px', borderRadius: 12, background: `linear-gradient(135deg,${pkg.color},${pkg.color}bb)`, color: '#fff', fontWeight: 900, fontSize: 13, textAlign: 'center', letterSpacing: 1 }}>
+                        Satın Al
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+              <div style={{ borderRadius: 14, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: '#4b5563', fontWeight: 600 }}>
+                🔒 Kredi kartı · Banka kartı · Mobil ödeme (Turkcell, Vodafone, Türk Telekom) · PayTR güvencesiyle
               </div>
             </motion.div>
           )}
@@ -505,6 +552,18 @@ export default function ShopPage() {
       <AnimatePresence>
         {openBox && (
           <LuckyBoxModal key={openBox} boxType={openBox} onClose={() => setOpenBox(null)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmItem && (
+          <ConfirmModal
+            key="confirm"
+            item={confirmItem}
+            coins={coins}
+            onConfirm={handleConfirm}
+            onCancel={() => setConfirmItem(null)}
+          />
         )}
       </AnimatePresence>
 
