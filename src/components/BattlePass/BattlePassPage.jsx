@@ -4,8 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import useBattlePassStore, { BP_TIERS } from '../../store/useBattlePassStore'
 import useProgressStore from '../../store/useProgressStore'
 import useGameStore from '../../store/useGameStore'
+import useAuthStore from '../../store/useAuthStore'
 import { getTheme } from '../../themes/themes'
 import toast from 'react-hot-toast'
+import PaymentModal from '../Payment/PaymentModal'
 
 function formatCountdown(ms) {
   if (ms <= 0) return 'Sezon Bitti'
@@ -253,10 +255,12 @@ export default function BattlePassPage() {
   const { currentTier, bpXP, isPremium, seasonEnd, claimedFree, claimedPremium, buyPremium, claimTierReward } = useBattlePassStore()
   const { level, pendingLootBoxes } = useProgressStore()
   const { currentTheme } = useGameStore()
+  const { user } = useAuthStore()
   const theme = getTheme(currentTheme)
   const [now, setNow] = useState(Date.now())
   const scrollRef = useRef(null)
   const [viewFilter, setViewFilter] = useState('all')
+  const [paymentPkg, setPaymentPkg] = useState(null)
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000)
@@ -284,8 +288,8 @@ export default function BattlePassPage() {
   }
 
   const handleBuyPremium = () => {
-    buyPremium()
-    toast.success('Premium Battle Pass aktif!')
+    if (!user) { toast.error('Ödeme için giriş yapmalısın!'); return }
+    setPaymentPkg({ packageId: 'premium_trial', packageName: 'Battle Pass Premium', priceLabel: '₺9.99' })
   }
 
   const unclaimedFree = BP_TIERS.filter(t => t.tier <= currentTier && !claimedFree.includes(t.tier)).length
@@ -481,6 +485,17 @@ export default function BattlePassPage() {
           <span style={{ color: '#6b7280', fontSize: 10 }}>Milestone Tier (x10)</span>
         </div>
       </div>
+      {paymentPkg && (
+        <PaymentModal
+          packageId={paymentPkg.packageId}
+          packageName={paymentPkg.packageName}
+          priceLabel={paymentPkg.priceLabel}
+          uid={user?.uid}
+          email={user?.email}
+          userName={user?.displayName || user?.email}
+          onClose={() => setPaymentPkg(null)}
+        />
+      )}
     </div>
   )
 }
