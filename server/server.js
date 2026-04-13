@@ -108,7 +108,7 @@ app.post('/payment/create-checkout', async (req, res) => {
   const pkg = PAYMENT_PACKAGES[packageId]
   if (!pkg) return res.status(400).json({ error: 'Gecersiz paket' })
 
-  const merchantOid = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`
+  const merchantOid = `${Date.now()}${crypto.randomBytes(4).toString('hex')}`
   let rawIp = (req.headers['x-forwarded-for'] || req.ip || '127.0.0.1').split(',')[0].trim()
   if (rawIp.startsWith('::ffff:')) rawIp = rawIp.replace('::ffff:', '')
   if (rawIp === '::1' || rawIp.includes(':')) rawIp = '1.1.1.1'
