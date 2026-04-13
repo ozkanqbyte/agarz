@@ -496,7 +496,7 @@ export class GameEngine {
       .on('player:join', (p) => {
         if (p.id === this.playerId) return
         this.otherPlayers[p.id] = { x: p.x, y: p.y, targetX: p.x, targetY: p.y, mass: p.mass || 20, cells: [], name: p.name, color: p.color, isGod: !!p.isGod, clan: p.clan || null }
-        this._showFloat(`👋 ${p.name} katıldı!`, '#4ade80')
+
       })
       .on('player:leave', (d) => {
         delete this.otherPlayers[d.id]
@@ -1082,9 +1082,9 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 25) { this._eject(EJECT_MASS_SM); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
-    if (e.code === 'KeyE' && now - this.lastEjectTime > 80) { this._ejectFan(EJECT_MASS_MD); this.lastEjectTime = now }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 12) { this._eject(EJECT_MASS_LG); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 22, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { this._ejectBurst3(EJECT_MASS_SM); this.lastEjectTime = now }
+    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 55, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -1231,57 +1231,52 @@ export class GameEngine {
     doSplit()
   }
 
-  _burstEjectedToFood() {
-    for (const em of this.ejected) {
-      const f = new Food(em.x, em.y, em.color, 10)
-      f.radius = 9
-      this.food.push(f)
-    }
-    this.ejected = []
-    this._showFloat('💥 +Yem!', '#fbbf24')
-  }
-
-  _eject(massAmount, angleOffset = 0) {
-    const EJECT_SPREAD = 0.14
-    let fired = false
+  _eject(massAmount, angleOffset = 0, speed = 22, maxCount = 1) {
+    const EJECT_COLOR = '#ef4444'
+    let fired = 0
     for (let ci = 0; ci < this.cells.length; ci++) {
+      if (fired >= maxCount) break
       const cell = this.cells[ci]
       if (cell.mass < massAmount * 2) continue
-      if (this._useSocket) {
-        cell.mass -= massAmount + 2
-        continue
-      }
+      if (this._useSocket) { cell.mass -= massAmount + 2; continue }
       if (this.ejected.length >= 3) {
         const settled = this.ejected.find(e => e.settled)
-        if (settled) {
-          const f = new Food(settled.x, settled.y, settled.color, 10)
-          f.radius = 9
-          this.food.push(f)
-          this.ejected = this.ejected.filter(e => e.id !== settled.id)
-        } else {
-          continue
-        }
+        if (settled) this.ejected = this.ejected.filter(e => e.id !== settled.id)
+        else continue
       }
       cell.mass -= massAmount + 2
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
-      const spread = (Math.random() - 0.5) * EJECT_SPREAD
-      const baseAngle = Math.atan2(dy, dx) + angleOffset + spread
-      const spd = 22
+      const angle = Math.atan2(dy, dx) + angleOffset
       const em = new EjectedMass(
-        cell.x + Math.cos(baseAngle) * (cell.radius + 6),
-        cell.y + Math.sin(baseAngle) * (cell.radius + 6),
-        Math.cos(baseAngle) * spd, Math.sin(baseAngle) * spd,
-        cell.color, massAmount
+        cell.x + Math.cos(angle) * (cell.radius + 6),
+        cell.y + Math.sin(angle) * (cell.radius + 6),
+        Math.cos(angle) * speed, Math.sin(angle) * speed,
+        EJECT_COLOR, massAmount
       )
       this.ejected.push(em)
-      fired = true
+      fired++
     }
-    if (fired) {
-      this._ejectCount++
-      if (this._ejectCount % 5 === 0) {
-        setTimeout(() => this._burstEjectedToFood(), 600)
-      }
+  }
+
+  _ejectBurst3(massAmount) {
+    const EJECT_COLOR = '#ef4444'
+    const SPREAD = 0.18
+    this.ejected = []
+    for (let i = 0; i < 3; i++) {
+      const cell = this.cells[i % this.cells.length]
+      if (!cell || cell.mass < massAmount * 2) continue
+      if (this._useSocket) { cell.mass -= massAmount + 2; socketClient.sendEject(); continue }
+      cell.mass -= massAmount + 2
+      const dx = this.mouse.x - cell.x, dy = this.mouse.y - cell.y
+      const angle = Math.atan2(dy, dx) + (i - 1) * SPREAD
+      const em = new EjectedMass(
+        cell.x + Math.cos(angle) * (cell.radius + 6),
+        cell.y + Math.sin(angle) * (cell.radius + 6),
+        Math.cos(angle) * 30, Math.sin(angle) * 30,
+        EJECT_COLOR, massAmount
+      )
+      this.ejected.push(em)
     }
   }
 
@@ -1390,8 +1385,8 @@ export class GameEngine {
     this.bgTime += dt
     const now = Date.now()
 
-    if (this.keys['KeyE'] && now - this.lastEjectTime > 100) {
-      this._ejectFan(EJECT_MASS_MD)
+    if (this.keys['KeyR'] && now - this.lastEjectTime > 80) {
+      this._eject(EJECT_MASS_SM, 0, 55, 1)
       this.lastEjectTime = now
     }
 
@@ -1776,7 +1771,6 @@ export class GameEngine {
           }
           eaten.push(food.id)
           eatenSet.add(food.id)
-          cell.eatPulse = 1
           this.lastEatTime = Date.now()
           if (this.qualityLevel !== 'low') this._spawnParticle(food.x, food.y, food.color, 2)
           soundSystem.eatFood()
@@ -3143,9 +3137,7 @@ export class GameEngine {
       ctx.shadowColor = shieldActive ? '#06b6d4' : speedActive ? '#fbbf24' : frozen ? '#38bdf8' : poisoned ? '#a855f7' : isGod ? '#fbbf24' : color
     }
 
-    if (eatPulse > 0.1) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3 + eatPulse * 4
-    } else if (speedActive) {
+    if (speedActive) {
       ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 4
     } else if (shieldActive) {
       ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 4
