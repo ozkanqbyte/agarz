@@ -480,16 +480,7 @@ export default function ProfilePage() {
                       {activeFrame === f.id && <span style={{ marginLeft: 'auto', fontSize: 10 }}>✓ AKTİF</span>}
                     </motion.button>
                   ))}
-                  {FRAMES.filter(f => !ownedFrames.includes(f.id)).slice(0, 2).map(f => (
-                    <div key={f.id} style={{
-                      background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)',
-                      borderRadius: 12, padding: '10px 14px', color: '#374151',
-                      fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8,
-                      opacity: 0.5,
-                    }}>
-                      🔒 {f.name} <span style={{ marginLeft: 'auto', fontSize: 10 }}>{f.price}G</span>
-                    </div>
-                  ))}
+
                 </div>
               </div>
 
@@ -575,24 +566,11 @@ export default function ProfilePage() {
                   </div>
                 </div>
               )}
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 12, color: '#4b5563', letterSpacing: 2, marginBottom: 10 }}>KİLİTLİ</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                  {lockedBadges.map(b => (
-                    <div key={b.id} style={{
-                      background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
-                      borderRadius: 14, padding: '12px 14px',
-                      display: 'flex', alignItems: 'center', gap: 12, opacity: 0.45,
-                    }}>
-                      <div style={{ fontSize: 28, filter: 'grayscale(1)' }}>{b.icon}</div>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 13, color: '#6b7280' }}>{b.name}</div>
-                        <div style={{ fontSize: 11, color: '#374151', marginTop: 2 }}>{b.desc}</div>
-                      </div>
-                    </div>
-                  ))}
+              {badgeList.length === 0 && (
+                <div style={{ textAlign: 'center', color: '#4b5563', fontSize: 13, fontWeight: 600, padding: '20px 0' }}>
+                  Henüz rozet kazanmadın. Oynamaya devam et!
                 </div>
-              </div>
+              )}
             </motion.div>
           )}
 
