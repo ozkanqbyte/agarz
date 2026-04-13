@@ -4,12 +4,29 @@ const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
 const crypto = require('crypto')
+const admin = require('firebase-admin')
 
 const PAYTR_MERCHANT_ID   = process.env.PAYTR_MERCHANT_ID   || ''
 const PAYTR_MERCHANT_KEY  = process.env.PAYTR_MERCHANT_KEY  || ''
 const PAYTR_MERCHANT_SALT = process.env.PAYTR_MERCHANT_SALT || ''
 const CLIENT_URL          = process.env.CLIENT_URL  || 'https://agarix.com.tr'
-const SERVER_URL          = process.env.SERVER_URL  || 'http://localhost:3001'
+const SERVER_URL          = process.env.SERVER_URL  || 'https://agarz-production.up.railway.app'
+const FIREBASE_DB_URL     = process.env.FIREBASE_DATABASE_URL || 'https://agarix-513e9-default-rtdb.firebaseio.com'
+
+let firebaseDb = null
+try {
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT
+  if (serviceAccountJson) {
+    const serviceAccount = JSON.parse(serviceAccountJson)
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount), databaseURL: FIREBASE_DB_URL })
+    firebaseDb = admin.database()
+    console.log('[Firebase] Admin SDK hazir')
+  } else {
+    console.warn('[Firebase] FIREBASE_SERVICE_ACCOUNT env yok, odeme sonrasi Firebase yazamaz')
+  }
+} catch (e) {
+  console.error('[Firebase] Admin init hatasi:', e.message)
+}
 
 const PAYMENT_PACKAGES = {
   gold_500:         { name: '500 Gold',       goldAmount: 500,  priceTL: '9.99'   },
@@ -28,6 +45,7 @@ const PAYMENT_PACKAGES = {
 }
 
 const pendingPayments = new Map()
+const completedPayments = new Map()
 
 async function paytrRequest(params) {
   const body = new URLSearchParams(params).toString()
@@ -66,7 +84,8 @@ app.post('/payment/create-checkout', async (req, res) => {
   const lang = 'tr'
 
   const userBasketB64 = Buffer.from(userBasket).toString('base64')
-  const hashStr = PAYTR_MERCHANT_ID + userIp + merchantOid + userEmail + paymentAmount + userBasketB64 + noInstallment + maxInstallment + currency + testMode
+  const paymentAmountStr = String(paymentAmount)
+  const hashStr = PAYTR_MERCHANT_ID + userIp + merchantOid + userEmail + paymentAmountStr + userBasketB64 + noInstallment + maxInstallment + currency + testMode
   const paytrToken = crypto.createHmac('sha256', PAYTR_MERCHANT_KEY)
     .update(hashStr + PAYTR_MERCHANT_SALT)
     .digest('base64')
@@ -76,13 +95,13 @@ app.post('/payment/create-checkout', async (req, res) => {
     user_ip: userIp,
     merchant_oid: merchantOid,
     email: userEmail,
-    payment_amount: paymentAmount,
+    payment_amount: paymentAmountStr,
     paytr_token: paytrToken,
     user_basket: userBasketB64,
-    debug_on: testMode === '1' ? '1' : '0',
+    debug_on: '1',
     no_installment: noInstallment,
     max_installment: maxInstallment,
-    user_name: name || 'Oyuncu',
+    user_name: (name || 'Oyuncu').substring(0, 50),
     user_address: 'Dijital Urun',
     user_phone: '05000000000',
     merchant_ok_url: `${CLIENT_URL}/payment/success`,
@@ -110,9 +129,11 @@ app.post('/payment/create-checkout', async (req, res) => {
   }
 })
 
-app.post('/payment/callback', (req, res) => {
+app.post('/payment/callback', async (req, res) => {
+  res.send('OK')
+
   const { merchant_oid, status, total_amount, hash } = req.body
-  if (!merchant_oid || !status || !hash) return res.send('OK')
+  if (!merchant_oid || !status || !hash) return
 
   const hashStr = merchant_oid + PAYTR_MERCHANT_SALT + status + total_amount
   const expectedHash = crypto.createHmac('sha256', PAYTR_MERCHANT_KEY)
@@ -120,32 +141,86 @@ app.post('/payment/callback', (req, res) => {
     .digest('base64')
 
   if (expectedHash !== hash) {
-    console.error('PayTR hash uyusmuyor:', merchant_oid)
-    return res.send('OK')
+    console.error('[PayTR] Hash uyusmuyor:', merchant_oid)
+    return
   }
 
   if (status !== 'success') {
-    console.log('PayTR odeme basarisiz:', merchant_oid)
-    return res.send('OK')
+    console.log('[PayTR] Odeme basarisiz:', merchant_oid, status)
+    const pending = pendingPayments.get(merchant_oid)
+    if (pending) {
+      completedPayments.set(merchant_oid, { status: 'failed', ...pending })
+      pendingPayments.delete(merchant_oid)
+    }
+    return
   }
 
   const pending = pendingPayments.get(merchant_oid)
-  if (!pending) return res.send('OK')
+  if (!pending) { console.warn('[PayTR] Bekleyen odeme yok:', merchant_oid); return }
 
   const { uid, packageId } = pending
   const pkg = PAYMENT_PACKAGES[packageId]
   pendingPayments.delete(merchant_oid)
+  completedPayments.set(merchant_oid, { status: 'success', uid, packageId, completedAt: Date.now() })
+  setTimeout(() => completedPayments.delete(merchant_oid), 60 * 60 * 1000)
 
-  console.log(`✅ PayTR odeme onaylandi: ${merchant_oid} | uid:${uid} | pkg:${packageId}`)
-  res.send('OK')
+  console.log(`[PayTR] ✅ Odeme onaylandi: ${merchant_oid} | uid:${uid} | pkg:${packageId}`)
+
+  if (!firebaseDb) {
+    console.error('[PayTR] Firebase Admin yok, odeme yazamadi! uid:', uid)
+    return
+  }
+
+  try {
+    const userRef = firebaseDb.ref(`users/${uid}`)
+    const snap = await userRef.once('value')
+    const userData = snap.val() || {}
+
+    if (pkg.goldAmount) {
+      const currentGold = userData.gold || 0
+      await userRef.update({
+        gold: currentGold + pkg.goldAmount,
+        lastGoldPurchase: Date.now(),
+      })
+      console.log(`[PayTR] Gold yazildi: uid=${uid} +${pkg.goldAmount}`)
+    }
+
+    if (pkg.packageId) {
+      const now = Date.now()
+      const existingExpiry = userData.premiumExpiry || 0
+      const base = existingExpiry > now ? existingExpiry : now
+      const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
+      await userRef.update({
+        ownedPackage: pkg.packageId,
+        isPremium: true,
+        premiumSince: userData.premiumSince || now,
+        premiumExpiry: base + THIRTY_DAYS,
+        lastPackagePurchase: now,
+      })
+      console.log(`[PayTR] Paket yazildi: uid=${uid} pkg=${pkg.packageId}`)
+    }
+
+    await firebaseDb.ref(`paymentHistory/${uid}/${merchant_oid}`).set({
+      packageId, packageName: pkg.name,
+      amount: pkg.priceTL,
+      goldAmount: pkg.goldAmount || 0,
+      premiumPackage: pkg.packageId || null,
+      completedAt: Date.now(),
+      status: 'success',
+    })
+  } catch (e) {
+    console.error('[PayTR] Firebase yazma hatasi:', e.message, e.stack)
+  }
 })
 
 app.get('/payment/result', (req, res) => {
   const { merchant_oid } = req.query
   if (!merchant_oid) return res.status(400).json({ error: 'Eksik parametre' })
+  const completed = completedPayments.get(merchant_oid)
+  if (completed) return res.json(completed)
   const pending = pendingPayments.get(merchant_oid)
   if (pending) return res.json({ status: 'pending' })
-  res.json({ status: 'completed' })
+  res.json({ status: 'not_found' })
 })
 
 const httpServer = http.createServer(app)
