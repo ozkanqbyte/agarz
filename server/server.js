@@ -23,8 +23,12 @@ const FIREBASE_DB_URL     = process.env.FIREBASE_DATABASE_URL || 'https://agarix
 
 let firebaseDb = null
 try {
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT
-  if (serviceAccountJson) {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_B64 || process.env.FIREBASE_SERVICE_ACCOUNT
+  if (raw) {
+    let serviceAccountJson = raw
+    if (!raw.trim().startsWith('{')) {
+      serviceAccountJson = Buffer.from(raw, 'base64').toString('utf8')
+    }
     const serviceAccount = JSON.parse(serviceAccountJson)
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount), databaseURL: FIREBASE_DB_URL })
     firebaseDb = admin.database()
