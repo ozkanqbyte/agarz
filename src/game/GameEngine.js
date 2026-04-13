@@ -214,6 +214,7 @@ export class GameEngine {
     this.food = []
     this.viruses = []
     this.ejected = []
+    this._ejectCount = 0
     this.particles = []
     this.floatingTexts = []
 
@@ -1230,9 +1231,19 @@ export class GameEngine {
     doSplit()
   }
 
+  _burstEjectedToFood() {
+    for (const em of this.ejected) {
+      const f = new Food(em.x, em.y, em.color, 10)
+      f.radius = 9
+      this.food.push(f)
+    }
+    this.ejected = []
+    this._showFloat('💥 +Yem!', '#fbbf24')
+  }
+
   _eject(massAmount, angleOffset = 0) {
     const EJECT_SPREAD = 0.14
-    const NEARBY_DIST = 80
+    let fired = false
     for (let ci = 0; ci < this.cells.length; ci++) {
       const cell = this.cells[ci]
       if (cell.mass < massAmount * 2) continue
@@ -1240,7 +1251,17 @@ export class GameEngine {
         cell.mass -= massAmount + 2
         continue
       }
-      if (this.ejected.length >= 3) continue
+      if (this.ejected.length >= 3) {
+        const settled = this.ejected.find(e => e.settled)
+        if (settled) {
+          const f = new Food(settled.x, settled.y, settled.color, 10)
+          f.radius = 9
+          this.food.push(f)
+          this.ejected = this.ejected.filter(e => e.id !== settled.id)
+        } else {
+          continue
+        }
+      }
       cell.mass -= massAmount + 2
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
@@ -1254,6 +1275,13 @@ export class GameEngine {
         cell.color, massAmount
       )
       this.ejected.push(em)
+      fired = true
+    }
+    if (fired) {
+      this._ejectCount++
+      if (this._ejectCount % 5 === 0) {
+        setTimeout(() => this._burstEjectedToFood(), 600)
+      }
     }
   }
 
@@ -1365,11 +1393,6 @@ export class GameEngine {
     if (this.keys['KeyE'] && now - this.lastEjectTime > 100) {
       this._ejectFan(EJECT_MASS_MD)
       this.lastEjectTime = now
-    }
-    if (this.keys['KeyR'] && now - this.lastEjectTime > 12) {
-      this._eject(EJECT_MASS_LG)
-      this.lastEjectTime = now
-      if (this._useSocket) socketClient.sendEject()
     }
 
     this._rebuildGrids()
