@@ -67,6 +67,22 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.get('/health', (_, res) => res.json({ ok: true }))
 
+app.get('/payment/debug-creds', (_, res) => {
+  const mid = PAYTR_MERCHANT_ID
+  const key = PAYTR_MERCHANT_KEY
+  const salt = PAYTR_MERCHANT_SALT
+  res.json({
+    merchant_id: mid,
+    merchant_key_len: key.length,
+    merchant_key_first4: key.substring(0, 4),
+    merchant_key_last4: key.substring(key.length - 4),
+    merchant_salt_len: salt.length,
+    merchant_salt_first4: salt.substring(0, 4),
+    merchant_salt_last4: salt.substring(salt.length - 4),
+    firebase_ok: !!firebaseDb,
+  })
+})
+
 app.post('/payment/create-checkout', async (req, res) => {
   const { packageId, uid, email, name } = req.body
   const pkg = PAYMENT_PACKAGES[packageId]
@@ -81,7 +97,7 @@ app.post('/payment/create-checkout', async (req, res) => {
   const userEmail = (email || 'oyuncu@agarix.com.tr').toLowerCase().trim()
   const userBasket = JSON.stringify([[pkg.name, pkg.priceTL, 1]])
   const testMode = process.env.PAYTR_TEST_MODE === '1' ? '1' : '0'
-  const noInstallment = '1'
+  const noInstallment = '0'
   const maxInstallment = '0'
   const currency = 'TL'
   const lang = 'tr'
