@@ -1231,7 +1231,7 @@ export class GameEngine {
   }
 
   _eject(massAmount, angleOffset = 0) {
-    const EJECT_SPREAD = 0.26
+    const EJECT_SPREAD = 0.14
     const NEARBY_DIST = 80
     for (let ci = 0; ci < this.cells.length; ci++) {
       const cell = this.cells[ci]
@@ -2062,28 +2062,12 @@ export class GameEngine {
   }
 
   _updateEjected(dt) {
-    const MIN_SEP = 28
     for (const em of this.ejected) {
       em.x += em.vx * dt * 60; em.y += em.vy * dt * 60
       em.vx *= 0.91; em.vy *= 0.91
       em.x = clamp(em.x, 0, WORLD_SIZE); em.y = clamp(em.y, 0, WORLD_SIZE)
       const spd = Math.sqrt(em.vx * em.vx + em.vy * em.vy)
       if (spd < 0.8) { em.settled = true; em.settledTimer = (em.settledTimer || 0) + dt }
-    }
-    for (let i = 0; i < this.ejected.length; i++) {
-      for (let j = i + 1; j < this.ejected.length; j++) {
-        const a = this.ejected[i], b = this.ejected[j]
-        const dx = b.x - a.x, dy = b.y - a.y
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        if (dist < MIN_SEP) {
-          const push = (MIN_SEP - dist) * 0.5
-          const nx = dx / dist, ny = dy / dist
-          a.x -= nx * push; a.y -= ny * push
-          b.x += nx * push; b.y += ny * push
-          a.x = clamp(a.x, 0, WORLD_SIZE); a.y = clamp(a.y, 0, WORLD_SIZE)
-          b.x = clamp(b.x, 0, WORLD_SIZE); b.y = clamp(b.y, 0, WORLD_SIZE)
-        }
-      }
     }
   }
 
