@@ -1273,8 +1273,36 @@ export class GameEngine {
 
   _ejectBurst3(massAmount) {
     const EJECT_COLOR = '#ef4444'
-    const SPREAD = 0.04
     const SPEED = 13
+    if (this._useSocket) { socketClient.sendEject(); return }
+
+    let targetCell = null
+    for (const cell of this.cells) {
+      const d = Math.sqrt((this.mouse.x - cell.x)**2 + (this.mouse.y - cell.y)**2)
+      if (d < cell.radius * 2.2) { targetCell = cell; break }
+    }
+
+    if (targetCell && this.cells.length > 1) {
+      let fed = 0
+      for (const cell of this.cells) {
+        if (cell === targetCell || fed >= 3) break
+        if (cell.mass < massAmount * 2) continue
+        cell.mass -= massAmount + 2
+        const dx = targetCell.x - cell.x, dy = targetCell.y - cell.y
+        const angle = Math.atan2(dy, dx)
+        const scatter = 6
+        const em = new EjectedMass(
+          cell.x + Math.cos(angle) * (cell.radius + 6) + (Math.random()-0.5)*scatter,
+          cell.y + Math.sin(angle) * (cell.radius + 6) + (Math.random()-0.5)*scatter,
+          Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
+          cell.color, massAmount
+        )
+        this.ejected.push(em)
+        fed++
+      }
+      return
+    }
+
     let sourceCell = null
     let closestDist = Infinity
     for (const cell of this.cells) {
@@ -1283,15 +1311,15 @@ export class GameEngine {
       if (d < closestDist) { closestDist = d; sourceCell = cell }
     }
     if (!sourceCell) return
+    const dxM = this.mouse.x - sourceCell.x, dyM = this.mouse.y - sourceCell.y
+    const angle = Math.atan2(dyM, dxM)
     for (let i = 0; i < 3; i++) {
-      if (this._useSocket) { sourceCell.mass -= massAmount + 2; socketClient.sendEject(); continue }
       if (sourceCell.mass < massAmount * 2) break
       sourceCell.mass -= massAmount + 2
-      const dx = this.mouse.x - sourceCell.x, dy = this.mouse.y - sourceCell.y
-      const angle = Math.atan2(dy, dx) + (i - 1) * SPREAD
+      const sc = 7
       const em = new EjectedMass(
-        sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6),
-        sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6),
+        sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6) + (Math.random()-0.5)*sc,
+        sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6) + (Math.random()-0.5)*sc,
         Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
         EJECT_COLOR, massAmount
       )
@@ -2988,7 +3016,6 @@ export class GameEngine {
 
   _drawMyPlayer() {
     const ghostAlpha = this._ghostActive ? 0.35 : 1
-    if (ghostAlpha < 1) this.ctx.globalAlpha = ghostAlpha
     const myTotalMass = Math.floor(this.cells.reduce((s,c) => s+c.mass, 0))
     const trailEffect = this.options.trailEffect
     if (trailEffect && this.cells.length > 0) {
@@ -3004,9 +3031,10 @@ export class GameEngine {
       this.trailHistory = []
     }
     for (const cell of this.cells) {
+      this.ctx.globalAlpha = ghostAlpha
       this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame, this.options.ownedPackage || 'free', myTotalMass)
+      this.ctx.globalAlpha = 1
     }
-    if (ghostAlpha < 1) this.ctx.globalAlpha = 1
   }
 
   _drawTrail(trailEffect) {
@@ -3212,6 +3240,7 @@ export class GameEngine {
     }
 
     if (activeFrame && dr > 16) {
+      ctx.save()
       const FRAME_CFG = {
         silver:    { c1:'#c0c0c0', c2:'#9ca3af', segs:8,  gap:0.55, speed:0.6,  width:3,   glow:8,  rings:1, gems:0 },
         gold:      { c1:'#ffd700', c2:'#f59e0b', segs:10, gap:0.6,  speed:0.9,  width:3.5, glow:14, rings:2, gems:0 },
@@ -3266,6 +3295,7 @@ export class GameEngine {
           ctx.fill(); ctx.shadowBlur = 0; ctx.globalAlpha = 1
         }
       }
+      ctx.restore()
     }
 
     if (dr > 10) {
@@ -3544,7 +3574,10 @@ export class GameEngine {
     this._useSkill('teleport')
     const sk = this.skills.teleport
     sk.cooldown = SKILL_TELEPORT_COOLDOWN
-    for (const c of this.cells) { c.x = tx + (Math.random()-0.5)*30; c.y = ty + (Math.random()-0.5)*30 }
+    for (let i = 0; i < this.cells.length; i++) {
+      this.cells[i].x = clamp(tx + i * 8, 100, WORLD_SIZE - 100)
+      this.cells[i].y = clamp(ty + (Math.random()-0.5)*8, 100, WORLD_SIZE - 100)
+    }
     this.camera.x = tx; this.camera.y = ty
     this._showFloat('⚡ IŞINLANDI!', '#38bdf8')
     this._spawnExplosion(tx, ty, '#38bdf8')
