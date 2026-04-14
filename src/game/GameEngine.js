@@ -763,7 +763,8 @@ export class GameEngine {
             this.ejected.push({
               id: em.id || uuidv4(),
               x: em.x, y: em.y, vx: em.vx || 0, vy: em.vy || 0,
-              color: em.color, mass: em.mass || 12,
+              color: '#ef4444', mass: em.mass || 12,
+              dirAngle: Math.atan2(em.vy || 0, em.vx || 0),
               settled: false, settledTimer: 0, _pulse: 0
             })
           }
