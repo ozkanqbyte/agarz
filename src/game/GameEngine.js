@@ -1083,9 +1083,9 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 22, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 5, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { this._ejectBurst3(EJECT_MASS_SM); this.lastEjectTime = now }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 55, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 14, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -1262,7 +1262,7 @@ export class GameEngine {
 
   _ejectBurst3(massAmount) {
     const EJECT_COLOR = '#ef4444'
-    const SPREAD = 0.18
+    const SPREAD = 0.03
     this.ejected = []
     for (let i = 0; i < 3; i++) {
       const cell = this.cells[i % this.cells.length]
@@ -1274,7 +1274,7 @@ export class GameEngine {
       const em = new EjectedMass(
         cell.x + Math.cos(angle) * (cell.radius + 6),
         cell.y + Math.sin(angle) * (cell.radius + 6),
-        Math.cos(angle) * 30, Math.sin(angle) * 30,
+        Math.cos(angle) * 5, Math.sin(angle) * 5,
         EJECT_COLOR, massAmount
       )
       this.ejected.push(em)
@@ -2053,7 +2053,7 @@ export class GameEngine {
   _updateEjected(dt) {
     for (const em of this.ejected) {
       em.x += em.vx * dt * 60; em.y += em.vy * dt * 60
-      em.vx *= 0.91; em.vy *= 0.91
+      em.vx *= 0.78; em.vy *= 0.78
       em.x = clamp(em.x, 0, WORLD_SIZE); em.y = clamp(em.y, 0, WORLD_SIZE)
       const spd = Math.sqrt(em.vx * em.vx + em.vy * em.vy)
       if (spd < 0.8) { em.settled = true; em.settledTimer = (em.settledTimer || 0) + dt }
