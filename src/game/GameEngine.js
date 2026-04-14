@@ -62,8 +62,8 @@ function safeColor(color) {
 }
 
 const VIRUS_TYPES = {
-  normal:   { color: '#22c55e', border: '#15803d', mass: 100, label: '🌿', glowColor: '34,197,94' },
-  super:    { color: '#16a34a', border: '#14532d', mass: 200, label: '💢', glowColor: '22,163,74' },
+  normal:   { color: '#ef4444', border: '#991b1b', mass: 100, label: '⚡', glowColor: '239,68,68' },
+  super:    { color: '#dc2626', border: '#7f1d1d', mass: 200, label: '💢', glowColor: '220,38,38' },
   poison:   { color: '#a855f7', border: '#7e22ce', mass: 100, label: '☠️', glowColor: '168,85,247' },
   freeze:   { color: '#38bdf8', border: '#0284c7', mass: 100, label: '❄️', glowColor: '56,189,248' }
 }
@@ -1566,7 +1566,7 @@ export class GameEngine {
     if (playerMass > 1000) interval *= 0.6
     if (playerMass > 5000) interval *= 0.4
     this.virusSpawnTimer = interval
-    if (this.viruses.filter(v=>!v.dead).length >= 55) return
+    if (this.viruses.filter(v=>!v.dead).length >= 10) return
     const types = ['normal','normal','normal','normal','super','poison','freeze']
     const t = types[Math.floor(Math.random()*types.length)]
     let vx, vy
