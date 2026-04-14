@@ -62,8 +62,8 @@ function safeColor(color) {
 }
 
 const VIRUS_TYPES = {
-  normal:   { color: '#ef4444', border: '#991b1b', mass: 100, label: '⚡', glowColor: '239,68,68' },
-  super:    { color: '#dc2626', border: '#7f1d1d', mass: 200, label: '💢', glowColor: '220,38,38' },
+  normal:   { color: '#22c55e', border: '#14532d', mass: 100, label: '⚡', glowColor: '34,197,94' },
+  super:    { color: '#16a34a', border: '#052e16', mass: 200, label: '💢', glowColor: '22,163,74' },
   poison:   { color: '#a855f7', border: '#7e22ce', mass: 100, label: '☠️', glowColor: '168,85,247' },
   freeze:   { color: '#38bdf8', border: '#0284c7', mass: 100, label: '❄️', glowColor: '56,189,248' }
 }
@@ -2024,12 +2024,18 @@ export class GameEngine {
           ejectedToRemove.add(em.id)
           this._spawnParticle(em.x, em.y, '#ef4444', 3)
           virus.feedCount = (virus.feedCount || 0) + 1
-          if (typeof em.dirAngle === 'number') virus._lastFeedAngle = em.dirAngle
-          if (virus.feedCount >= 7 && this.viruses.filter(v=>!v.dead).length < 12) {
-            const angle = virus._lastFeedAngle ?? (Math.random() * Math.PI * 2)
+          if (typeof em.dirAngle === 'number') {
+            virus._lastFeedAngle = em.dirAngle
+            virus.vx = (virus.vx || 0) + Math.cos(em.dirAngle) * 0.6
+            virus.vy = (virus.vy || 0) + Math.sin(em.dirAngle) * 0.6
+          }
+          if (virus.feedCount >= 7 && this.viruses.filter(v=>!v.dead).length < 50) {
+            const dx = this.mouse.x - virus.x, dy = this.mouse.y - virus.y
+            const mlen = Math.sqrt(dx*dx+dy*dy) || 1
+            const angle = Math.atan2(dy/mlen, dx/mlen)
             const newV = new Virus(virus.x, virus.y, virus.type)
-            newV.vx = Math.cos(angle) * 12
-            newV.vy = Math.sin(angle) * 12
+            newV.vx = Math.cos(angle) * 14
+            newV.vy = Math.sin(angle) * 14
             this.viruses.push(newV)
             virus.feedCount = 0
             const bonus = 300
@@ -2763,123 +2769,68 @@ export class GameEngine {
   }
 
   _drawViruses() {
-    const { ctx, camera, canvas } = this
-    const zoom = camera.zoom
+    const { ctx, camera } = this
     const VIEW_R = 800
-    const vl = camera.x - VIEW_R
-    const vr = camera.x + VIEW_R
-    const vt = camera.y - VIEW_R
-    const vb = camera.y + VIEW_R
+    const vl = camera.x - VIEW_R, vr = camera.x + VIEW_R
+    const vt = camera.y - VIEW_R, vb = camera.y + VIEW_R
     for (const v of this.viruses) {
       if (v.dead) continue
       if (v.x < vl || v.x > vr || v.y < vt || v.y > vb) continue
-      if (!v.pulse) v.pulse = 0
       const vInfo = VIRUS_TYPES[v.type] || VIRUS_TYPES.normal
       const fc = v.feedCount || 0
-      const feedPct = Math.min((fc % 5) / 5, 1)
-      const baseR = v.radius * (1 + feedPct * 0.3) * 1.55
-      const innerR = baseR * 0.55
-      const spikeSize = baseR * 0.88
-      const N = 64
-      const spikeMod = 4
-      const distMax = baseR * 0.06
-      const distHeight = 5, distWide = 3
-
-      if (!v._pts) {
-        v._pts = new Float32Array(N)
-        v._ptsV = new Float32Array(N)
-        for (let i = 0; i < N; i++) v._ptsV[i] = (Math.random() - 0.5) * distMax
-      }
-      const prevPts = v._pts.slice()
-      for (let i = 0; i < N; i++) {
-        v._ptsV[i] += (Math.random() - 0.5) * distMax
-        const cap = distMax * 2.5
-        if (v._ptsV[i] > cap) v._ptsV[i] = cap
-        else if (v._ptsV[i] < -cap) v._ptsV[i] = -cap
-        const pi = prevPts[(i - 1 + N) % N]
-        const ni = prevPts[(i + 1) % N]
-        v._pts[i] = (pi + ni + distWide * v._ptsV[i]) / (distHeight + 2)
-      }
-
+      const baseR = v.radius * 1.35
+      const SPIKES = 22
+      const SPIKE_H = baseR * 0.42
+      const SPIKE_IN = baseR * 0.05
       ctx.save()
-      ctx.shadowBlur = 20 + feedPct * 15
-      ctx.shadowColor = vInfo.color
 
       ctx.beginPath()
-      for (let i = 0; i < N; i++) {
-        const angle = (i / N) * Math.PI * 2
-        let r = baseR + v._pts[i]
-        if (i % spikeMod === 0) r += spikeSize
-        const px = v.x + Math.cos(angle) * r
-        const py = v.y + Math.sin(angle) * r
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      for (let i = 0; i < SPIKES * 2; i++) {
+        const angle = (i / (SPIKES * 2)) * Math.PI * 2 - Math.PI / 2
+        const r = i % 2 === 0 ? baseR + SPIKE_H : baseR - SPIKE_IN
+        if (i === 0) ctx.moveTo(v.x + Math.cos(angle) * r, v.y + Math.sin(angle) * r)
+        else ctx.lineTo(v.x + Math.cos(angle) * r, v.y + Math.sin(angle) * r)
       }
       ctx.closePath()
-
-      const outerR2 = baseR + spikeSize
-      const grad = ctx.createRadialGradient(v.x - outerR2 * 0.18, v.y - outerR2 * 0.22, outerR2 * 0.03, v.x, v.y, outerR2)
-      grad.addColorStop(0, lighten(vInfo.color, 55, 0.92))
-      grad.addColorStop(0.45, hexAlpha(vInfo.color, 0.82))
-      grad.addColorStop(1, darken(vInfo.color, 50, 0.70))
-      ctx.fillStyle = grad
+      ctx.fillStyle = vInfo.color
       ctx.fill()
-
-      ctx.shadowBlur = 0
-      ctx.beginPath()
-      for (let i = 0; i < N; i++) {
-        const angle = (i / N) * Math.PI * 2
-        let r = baseR + v._pts[i]
-        if (i % spikeMod === 0) r += spikeSize
-        const px = v.x + Math.cos(angle) * r
-        const py = v.y + Math.sin(angle) * r
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
-      }
-      ctx.closePath()
-      ctx.strokeStyle = hexAlpha(vInfo.border, 0.92)
-      ctx.lineWidth = 2.5 + feedPct * 2
+      ctx.strokeStyle = vInfo.border
+      ctx.lineWidth = 2.5
       ctx.lineJoin = 'miter'
       ctx.stroke()
 
-      const innerGrad = ctx.createRadialGradient(v.x, v.y, 0, v.x, v.y, innerR)
-      innerGrad.addColorStop(0, darken(vInfo.color, 70, 0.95))
-      innerGrad.addColorStop(1, darken(vInfo.color, 40, 0.88))
       ctx.beginPath()
-      ctx.arc(v.x, v.y, innerR, 0, Math.PI * 2)
-      ctx.fillStyle = innerGrad
+      ctx.arc(v.x, v.y, baseR * 0.62, 0, Math.PI * 2)
+      ctx.fillStyle = darken(vInfo.color, 35, 0.9)
       ctx.fill()
       ctx.strokeStyle = hexAlpha(vInfo.border, 0.5)
       ctx.lineWidth = 1
       ctx.stroke()
 
       ctx.beginPath()
-      ctx.arc(v.x - innerR * 0.3, v.y - innerR * 0.3, innerR * 0.22, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(255,255,255,0.15)'
+      ctx.arc(v.x - baseR * 0.22, v.y - baseR * 0.26, baseR * 0.17, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.32)'
       ctx.fill()
 
       if (fc > 0) {
-        const rem = fc % 5
-        const arcLen = (rem / 5) * Math.PI * 2
+        const rem = fc % 7
+        const arcLen = (rem / 7) * Math.PI * 2
         ctx.beginPath()
-        ctx.arc(v.x, v.y, baseR + 7, -Math.PI / 2, -Math.PI / 2 + arcLen)
+        ctx.arc(v.x, v.y, baseR + 5, -Math.PI / 2, -Math.PI / 2 + arcLen)
         ctx.strokeStyle = '#fbbf24'
-        ctx.lineWidth = 3.5
-        ctx.shadowBlur = 10; ctx.shadowColor = '#fbbf24'
+        ctx.lineWidth = 3
         ctx.stroke()
-        ctx.shadowBlur = 0
-
         ctx.fillStyle = '#fbbf24'
-        ctx.font = `bold ${Math.max(10, innerR * 0.55)}px sans-serif`
+        ctx.font = `bold ${Math.max(9, baseR * 0.38)}px sans-serif`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(`${rem}/5`, v.x, v.y)
+        ctx.fillText(`${rem}/7`, v.x, v.y)
       }
-
       if (v.type !== 'normal') {
         ctx.fillStyle = 'white'
-        ctx.font = `bold ${Math.max(11, innerR * 0.6)}px sans-serif`
+        ctx.font = `bold ${Math.max(10, baseR * 0.4)}px sans-serif`
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
         ctx.fillText(vInfo.label.split(' ')[0], v.x, v.y)
       }
-
       ctx.restore()
     }
   }
@@ -3788,7 +3739,7 @@ export class GameEngine {
         if (!isAlly) {
           const cellsToRemove = []
           for (const cell of this.cells) {
-            if (bot.mass > cell.mass * MIN_EAT_RATIO && dist(bot, cell) < bot.radius) {
+            if (bot.mass > cell.mass * MIN_EAT_RATIO && dist(bot, cell) < bot.radius + cell.radius * 0.4) {
               if (!this.skills.shield.active && !this._ghostActive) {
                 bot.mass += cell.mass
                 cellsToRemove.push(cell.id)
