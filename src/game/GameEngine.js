@@ -3684,9 +3684,10 @@ export class GameEngine {
       }
       const isSlowed = !!this.slowedEntities[bot.id]
       const speed = BASE_SPEED * Math.pow(Math.max(bot.mass, 1), -0.25) * 90 * (isSlowed ? 0.3 : 1)
-      const dx = bot.targetX - bot.x, dy = bot.targetY - bot.y
-      const d = Math.sqrt(dx*dx + dy*dy)
-      if (d > 5) { const s = Math.min(speed * dt, d); bot.x += (dx/d)*s; bot.y += (dy/d)*s }
+      let tdx = bot.targetX - bot.x, tdy = bot.targetY - bot.y
+      if (bot._micro) { tdx += (Math.random()-0.5)*18; tdy += (Math.random()-0.5)*18 }
+      const d = Math.sqrt(tdx*tdx + tdy*tdy)
+      if (d > 5) { const s = Math.min(speed * dt, d); bot.x += (tdx/d)*s; bot.y += (tdy/d)*s }
       bot.x = clamp(bot.x, 50, WORLD_SIZE - 50); bot.y = clamp(bot.y, 50, WORLD_SIZE - 50)
       bot.cells = [{ x: bot.x, y: bot.y, mass: bot.mass }]
       const eaten = []
@@ -3784,89 +3785,161 @@ export class GameEngine {
 
   _botThink(bot) {
     const myMass = bot.mass
-    let nearestFood = null, nearFoodDist = Infinity
-    for (const f of this.food) { const d = dist(bot, f); if (d < nearFoodDist) { nearFoodDist = d; nearestFood = f } }
+    const myR = massToRadius(myMass)
+
+    if (!bot._personality) {
+      bot._personality = Math.random() < 0.55 ? 'aggressive' : 'cautious'
+      bot._wanderAngle = Math.random() * Math.PI * 2
+      bot._wanderTimer = 0
+      bot._splitCD = 0
+      bot._ejectCD = 0
+      bot._micro = bot.difficulty === 'hard'
+    }
+    if (bot._splitCD > 0) bot._splitCD -= (bot.difficulty === 'hard' ? 0.25 : 0.6)
+    if (bot._ejectCD > 0) bot._ejectCD -= (bot.difficulty === 'hard' ? 0.25 : 0.6)
+
     const playerMass = this.cells.reduce((s,c)=>s+c.mass, 0)
     const pcx = this.cells.reduce((s,c)=>s+c.x, 0) / (this.cells.length||1)
     const pcy = this.cells.reduce((s,c)=>s+c.y, 0) / (this.cells.length||1)
     const dPlayer = dist({ x: pcx, y: pcy }, bot)
 
-    if (playerMass > myMass * 1.1) {
-      const fleeR = bot.difficulty === 'hard' ? 400 : 250
+    const fleeRatio = bot._personality === 'cautious' ? 1.05 : 1.15
+    if (playerMass > myMass * fleeRatio) {
+      const fleeR = bot.difficulty === 'hard' ? 500 : 380
       if (dPlayer < fleeR) {
         const dx = bot.x - pcx, dy = bot.y - pcy, d = Math.sqrt(dx*dx+dy*dy)||1
-        bot.targetX = clamp(bot.x + (dx/d)*600, 100, WORLD_SIZE-100)
-        bot.targetY = clamp(bot.y + (dy/d)*600, 100, WORLD_SIZE-100)
-        if (bot.difficulty === 'hard' && myMass >= 80 && myMass > 40 && !this._useSocket) {
-          if (Math.random() < 0.15) {
-            this._botEject(bot)
+        const perpX = -dy/d, perpY = dx/d
+        const side = Math.random() < 0.5 ? 1 : -1
+        const dodgeF = bot.difficulty === 'hard' ? 0.5 : 0.25
+        bot.targetX = clamp(bot.x + (dx/d + perpX*dodgeF*side)*750, 80, WORLD_SIZE-80)
+        bot.targetY = clamp(bot.y + (dy/d + perpY*dodgeF*side)*750, 80, WORLD_SIZE-80)
+        if (bot.difficulty === 'hard' && bot._ejectCD <= 0) {
+          for (const v of this.viruses) {
+            if (v.dead) continue
+            const vd = dist(bot, v)
+            if (vd < 350) {
+              this._botEjectToward(bot, v.x, v.y)
+              bot._ejectCD = 3
+              break
+            }
           }
         }
         return
       }
     }
 
-    if (myMass > playerMass * 1.2 && dPlayer < 800) {
-      bot.targetX = pcx; bot.targetY = pcy
-      if (myMass >= 80 && dPlayer < 300 && !this._useSocket) {
-        const splitChance = bot.difficulty === 'hard' ? 0.35 : 0.15
-        if (Math.random() < splitChance) this._botSplit(bot)
+    if (myMass > 180) {
+      for (const v of this.viruses) {
+        if (v.dead) continue
+        const vd = dist(bot, v)
+        if (vd < myR + v.radius + 40) {
+          const dx = bot.x - v.x, dy = bot.y - v.y, d = Math.sqrt(dx*dx+dy*dy)||1
+          bot.targetX = clamp(bot.x + (dx/d)*500, 80, WORLD_SIZE-80)
+          bot.targetY = clamp(bot.y + (dy/d)*500, 80, WORLD_SIZE-80)
+          return
+        }
+      }
+    }
+
+    const huntRatio = bot._personality === 'aggressive' ? 1.1 : 1.25
+    if (myMass > playerMass * huntRatio && dPlayer < 950) {
+      bot.targetX = pcx + (Math.random()-0.5)*25
+      bot.targetY = pcy + (Math.random()-0.5)*25
+      if (myMass >= 90 && dPlayer < 400 && bot._splitCD <= 0 && !this._useSocket) {
+        const splitC = bot.difficulty === 'hard' ? 0.55 : 0.28
+        if (Math.random() < splitC) {
+          this._botSplitToward(bot, pcx, pcy)
+          bot._splitCD = 3.5
+        }
       }
       return
     }
 
+    let bestTarget = null, bestScore = -Infinity
     for (const other of this.bots) {
       if (other === bot || other.dead) continue
       const d = dist(bot, other)
-      if (other.mass > myMass * 1.2 && d < 400) {
-        const dx = bot.x-other.x, dy = bot.y-other.y, len = Math.sqrt(dx*dx+dy*dy)||1
-        bot.targetX = clamp(bot.x+(dx/len)*500, 100, WORLD_SIZE-100)
-        bot.targetY = clamp(bot.y+(dy/len)*500, 100, WORLD_SIZE-100)
-        return
-      }
-      if (myMass > other.mass * 1.2 && d < 600) {
-        bot.targetX = other.x; bot.targetY = other.y
-        if (myMass >= 80 && d < 200 && !this._useSocket) {
-          const splitChance = bot.difficulty === 'hard' ? 0.4 : 0.2
-          if (Math.random() < splitChance) this._botSplit(bot)
+      if (d > 900) continue
+      if (other.mass > myMass * 1.15) {
+        if (d < 420) {
+          const dx = bot.x-other.x, dy = bot.y-other.y, len = Math.sqrt(dx*dx+dy*dy)||1
+          const perpX = -dy/len, perpY = dx/len
+          const side = Math.random() < 0.5 ? 1 : -1
+          bot.targetX = clamp(bot.x+(dx/len+perpX*0.35*side)*550, 80, WORLD_SIZE-80)
+          bot.targetY = clamp(bot.y+(dy/len+perpY*0.35*side)*550, 80, WORLD_SIZE-80)
+          return
         }
-        return
+        continue
       }
+      if (myMass > other.mass * 1.15) {
+        const score = (myMass/other.mass)*120 - d*0.08
+        if (score > bestScore) { bestScore = score; bestTarget = other }
+      }
+    }
+    if (bestTarget) {
+      const d = dist(bot, bestTarget)
+      bot.targetX = bestTarget.x + (Math.random()-0.5)*15
+      bot.targetY = bestTarget.y + (Math.random()-0.5)*15
+      if (myMass >= 90 && d < 280 && bot._splitCD <= 0 && !this._useSocket) {
+        const splitC = bot.difficulty === 'hard' ? 0.5 : 0.22
+        if (Math.random() < splitC) {
+          this._botSplitToward(bot, bestTarget.x, bestTarget.y)
+          bot._splitCD = 3.5
+        }
+      }
+      return
+    }
+
+    let nearestFood = null, nearFoodDist = Infinity
+    const scanR = bot.difficulty === 'hard' ? 700 : 500
+    for (const f of this.food) {
+      if (f.poison) continue
+      const d = dist(bot, f)
+      if (d < scanR && d < nearFoodDist) { nearFoodDist = d; nearestFood = f }
     }
 
     if (nearestFood) {
-      const jitter = bot.difficulty === 'medium' ? 80 : 30
+      const jitter = bot.difficulty === 'medium' ? 55 : 20
       bot.targetX = nearestFood.x + (Math.random()-0.5)*jitter
       bot.targetY = nearestFood.y + (Math.random()-0.5)*jitter
-      if (myMass >= 50 && Math.random() < 0.05 && !this._useSocket) {
+      if (myMass >= 60 && bot._ejectCD <= 0 && Math.random() < 0.04 && !this._useSocket) {
         this._botEject(bot)
+        bot._ejectCD = 4
       }
     } else {
-      bot.targetX = 400 + Math.random()*(WORLD_SIZE-800)
-      bot.targetY = 400 + Math.random()*(WORLD_SIZE-800)
+      bot._wanderTimer -= (bot.difficulty === 'hard' ? 0.25 : 0.6)
+      if (bot._wanderTimer <= 0) {
+        bot._wanderAngle += (Math.random()-0.5) * 1.2
+        const wdist = 250 + Math.random()*250
+        bot.targetX = clamp(bot.x + Math.cos(bot._wanderAngle)*wdist, 100, WORLD_SIZE-100)
+        bot.targetY = clamp(bot.y + Math.sin(bot._wanderAngle)*wdist, 100, WORLD_SIZE-100)
+        bot._wanderTimer = 1.2 + Math.random()*1.5
+      }
     }
   }
 
-  _botSplit(bot) {
-    if (bot.mass < 80) return
-    const newMass = bot.mass / 2
-    bot.mass = newMass
-    const angle = Math.random() * Math.PI * 2
-    const speed = 12
-    const splitBot = {
-      id: 'split_' + bot.id + '_' + Date.now(),
-      x: bot.x + Math.cos(angle) * 10,
-      y: bot.y + Math.sin(angle) * 10,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      mass: newMass,
-      color: bot.color,
-      name: bot.name,
-      splitTimer: 3.0,
-      parentId: bot.id
-    }
-    if (!bot._splitPieces) bot._splitPieces = []
-    bot._splitPieces.push(splitBot)
+  _botSplitToward(bot, tx, ty) {
+    if (bot.mass < 90) return
+    bot.mass = bot.mass / 2
+    const dx = tx - bot.x, dy = ty - bot.y, d = Math.sqrt(dx*dx+dy*dy)||1
+    bot.targetX = clamp(bot.x + (dx/d)*350, 80, WORLD_SIZE-80)
+    bot.targetY = clamp(bot.y + (dy/d)*350, 80, WORLD_SIZE-80)
+    bot._splitBoostTimer = 0.4
+    bot._splitBoostVx = (dx/d)*22
+    bot._splitBoostVy = (dy/d)*22
+  }
+
+  _botEjectToward(bot, tx, ty) {
+    if (bot.mass < 30) return
+    bot.mass = Math.max(20, bot.mass - 14)
+    const dx = tx - bot.x, dy = ty - bot.y, d = Math.sqrt(dx*dx+dy*dy)||1
+    const em = new EjectedMass(
+      bot.x + (dx/d)*(massToRadius(bot.mass)+6),
+      bot.y + (dy/d)*(massToRadius(bot.mass)+6),
+      (dx/d)*10, (dy/d)*10,
+      bot.color, 12
+    )
+    this.ejected.push(em)
   }
 
   _botEject(bot) {
@@ -3874,9 +3947,9 @@ export class GameEngine {
     bot.mass = Math.max(20, bot.mass - 14)
     const angle = Math.random() * Math.PI * 2
     const em = new EjectedMass(
-      bot.x + Math.cos(angle) * (massToRadius(bot.mass) + 6),
-      bot.y + Math.sin(angle) * (massToRadius(bot.mass) + 6),
-      Math.cos(angle) * 8, Math.sin(angle) * 8,
+      bot.x + Math.cos(angle)*(massToRadius(bot.mass)+6),
+      bot.y + Math.sin(angle)*(massToRadius(bot.mass)+6),
+      Math.cos(angle)*8, Math.sin(angle)*8,
       bot.color, 12
     )
     this.ejected.push(em)
