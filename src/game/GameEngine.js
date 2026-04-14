@@ -137,7 +137,7 @@ const SKILL_PACKAGES = ['free','trial','starter','player','pro','elite','champio
 function getSkillUses(pkg) {
   return Infinity
 }
-const BOT_NAMES = ['Zephyr','NeonBlob','CellKing','AgarPro','BlobZilla','MassHunter','VirusKing','StarEater','CyberCell','NightCrawler','ShadowCell','PhantomBlob','IronCore','ThunderMass','VoidEater','SilverFang','GoldenCell','DarkMatter','CrimsonBlob','AzureCell','VenomBlob','FrostKing','PlasmaCore','UltraCell','OmegaBlob','TitanMass','HyperBlob','MegaCell','SuperNova','InfiniteCell']
+const BOT_NAMES = ['Mert','Emre','Burak','Arda','Kerem','Serhat','Furkan','Berk','Yusuf','Caner','Oğuz','Tolga','Umut','Hakan','Kaan','Enes','Volkan','Selim','Tarik','Baran','Güneş','Alp','Deniz','Mehmet','Ahmet','Mustafa','Ömer','Fatih','Çağrı','Erdem']
 const BOT_COLORS = ['#6366f1','#ec4899','#f59e0b','#06b6d4','#10b981','#8b5cf6','#ef4444','#38bdf8','#a855f7','#22c55e','#f97316','#14b8a6','#e11d48','#7c3aed','#0ea5e9','#16a34a','#dc2626','#2563eb','#9333ea','#0d9488','#b45309','#7e22ce','#0284c7','#15803d','#991b1b','#1d4ed8','#6b21a8','#0e7490','#92400e','#3b0764']
 
 class EjectedMass {
@@ -1180,11 +1180,9 @@ export class GameEngine {
     }
     if (this.cells.length >= MAX_CELLS) return
     const newCells = []
-    const fd = this._frozenSplitDir
-    const gdx = fd ? fd.dx : (this.mouse.x - this.camera.x)
-    const gdy = fd ? fd.dy : (this.mouse.y - this.camera.y)
-    const glen = fd ? 1 : (Math.sqrt(gdx*gdx + gdy*gdy) || 1)
-    const ndx = gdx / glen, ndy = gdy / glen
+    const frozenPos = this._frozenMousePos
+    const mouseTargetX = frozenPos ? frozenPos.x : this.mouse.x
+    const mouseTargetY = frozenPos ? frozenPos.y : this.mouse.y
 
     for (const cell of [...this.cells]) {
       if (cell.mass < MIN_MASS_SPLIT) continue
@@ -1192,6 +1190,10 @@ export class GameEngine {
       const half = cell.mass / 2
       cell.mass = half
       const nr2 = cell.radius
+      const cdx = mouseTargetX - cell.x
+      const cdy = mouseTargetY - cell.y
+      const clen = Math.sqrt(cdx*cdx + cdy*cdy) || 1
+      const ndx = cdx / clen, ndy = cdy / clen
       const nc = new Cell(
         clamp(cell.x + ndx*(nr2+5), nr2, WORLD_SIZE-nr2),
         clamp(cell.y + ndy*(nr2+5), nr2, WORLD_SIZE-nr2),
@@ -1207,12 +1209,9 @@ export class GameEngine {
   }
 
   _freezeSplitDir() {
-    const dx = this.mouse.x - this.camera.x
-    const dy = this.mouse.y - this.camera.y
-    const len = Math.sqrt(dx*dx + dy*dy) || 1
-    this._frozenSplitDir = { dx: dx/len, dy: dy/len }
+    this._frozenMousePos = { x: this.mouse.x, y: this.mouse.y }
     clearTimeout(this._frozenSplitClear)
-    this._frozenSplitClear = setTimeout(() => { this._frozenSplitDir = null }, 600)
+    this._frozenSplitClear = setTimeout(() => { this._frozenMousePos = null }, 600)
   }
 
   _macroDoubleSplit() {
@@ -3643,7 +3642,7 @@ export class GameEngine {
     const BOT_COUNT = 20
     const teamColors = { red: '#ef4444', blue: '#3b82f6' }
     for (let i = 0; i < BOT_COUNT; i++) {
-      const diff = i < 8 ? 'easy' : i < 20 ? 'medium' : 'hard'
+      const diff = i < 10 ? 'medium' : 'hard'
       const bot = new Bot(
         400 + Math.random() * (WORLD_SIZE - 800),
         400 + Math.random() * (WORLD_SIZE - 800),
@@ -3791,18 +3790,31 @@ export class GameEngine {
     const pcx = this.cells.reduce((s,c)=>s+c.x, 0) / (this.cells.length||1)
     const pcy = this.cells.reduce((s,c)=>s+c.y, 0) / (this.cells.length||1)
     const dPlayer = dist({ x: pcx, y: pcy }, bot)
+
     if (playerMass > myMass * 1.1) {
-      const fleeR = bot.difficulty === 'hard' ? 400 : bot.difficulty === 'medium' ? 250 : 150
+      const fleeR = bot.difficulty === 'hard' ? 400 : 250
       if (dPlayer < fleeR) {
         const dx = bot.x - pcx, dy = bot.y - pcy, d = Math.sqrt(dx*dx+dy*dy)||1
         bot.targetX = clamp(bot.x + (dx/d)*600, 100, WORLD_SIZE-100)
         bot.targetY = clamp(bot.y + (dy/d)*600, 100, WORLD_SIZE-100)
+        if (bot.difficulty === 'hard' && myMass >= 80 && myMass > 40 && !this._useSocket) {
+          if (Math.random() < 0.15) {
+            this._botEject(bot)
+          }
+        }
         return
       }
     }
-    if (myMass > playerMass * 1.2 && dPlayer < 800 && bot.difficulty !== 'easy') {
-      bot.targetX = pcx; bot.targetY = pcy; return
+
+    if (myMass > playerMass * 1.2 && dPlayer < 800) {
+      bot.targetX = pcx; bot.targetY = pcy
+      if (myMass >= 80 && dPlayer < 300 && !this._useSocket) {
+        const splitChance = bot.difficulty === 'hard' ? 0.35 : 0.15
+        if (Math.random() < splitChance) this._botSplit(bot)
+      }
+      return
     }
+
     for (const other of this.bots) {
       if (other === bot || other.dead) continue
       const d = dist(bot, other)
@@ -3812,16 +3824,62 @@ export class GameEngine {
         bot.targetY = clamp(bot.y+(dy/len)*500, 100, WORLD_SIZE-100)
         return
       }
-      if (myMass > other.mass * 1.2 && d < 600 && bot.difficulty === 'hard') { bot.targetX = other.x; bot.targetY = other.y; return }
+      if (myMass > other.mass * 1.2 && d < 600) {
+        bot.targetX = other.x; bot.targetY = other.y
+        if (myMass >= 80 && d < 200 && !this._useSocket) {
+          const splitChance = bot.difficulty === 'hard' ? 0.4 : 0.2
+          if (Math.random() < splitChance) this._botSplit(bot)
+        }
+        return
+      }
     }
+
     if (nearestFood) {
-      const jitter = bot.difficulty === 'easy' ? 200 : 50
+      const jitter = bot.difficulty === 'medium' ? 80 : 30
       bot.targetX = nearestFood.x + (Math.random()-0.5)*jitter
       bot.targetY = nearestFood.y + (Math.random()-0.5)*jitter
+      if (myMass >= 50 && Math.random() < 0.05 && !this._useSocket) {
+        this._botEject(bot)
+      }
     } else {
       bot.targetX = 400 + Math.random()*(WORLD_SIZE-800)
       bot.targetY = 400 + Math.random()*(WORLD_SIZE-800)
     }
+  }
+
+  _botSplit(bot) {
+    if (bot.mass < 80) return
+    const newMass = bot.mass / 2
+    bot.mass = newMass
+    const angle = Math.random() * Math.PI * 2
+    const speed = 12
+    const splitBot = {
+      id: 'split_' + bot.id + '_' + Date.now(),
+      x: bot.x + Math.cos(angle) * 10,
+      y: bot.y + Math.sin(angle) * 10,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      mass: newMass,
+      color: bot.color,
+      name: bot.name,
+      splitTimer: 3.0,
+      parentId: bot.id
+    }
+    if (!bot._splitPieces) bot._splitPieces = []
+    bot._splitPieces.push(splitBot)
+  }
+
+  _botEject(bot) {
+    if (bot.mass < 30) return
+    bot.mass = Math.max(20, bot.mass - 14)
+    const angle = Math.random() * Math.PI * 2
+    const em = new EjectedMass(
+      bot.x + Math.cos(angle) * (massToRadius(bot.mass) + 6),
+      bot.y + Math.sin(angle) * (massToRadius(bot.mass) + 6),
+      Math.cos(angle) * 8, Math.sin(angle) * 8,
+      bot.color, 12
+    )
+    this.ejected.push(em)
   }
 
   _updateGameMode(dt) {
