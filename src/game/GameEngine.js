@@ -1700,6 +1700,7 @@ export class GameEngine {
       return
     }
     for (const cell of this.cells) {
+      if (!isFinite(cell.x) || !isFinite(cell.y)) { cell.x = WORLD_SIZE/2; cell.y = WORLD_SIZE/2 }
       const frozen = cell.frozen > 0
       const speedBoost = this.skills.speed.active ? 5.0 : 1
       const speedMult = frozen ? 0.3 : speedBoost
@@ -3108,9 +3109,11 @@ export class GameEngine {
 
   _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0, nameEffect=null, activeFrame=null, ownedPackage='free', overrideMass=null) {
     const { ctx } = this
-    if (radius < 0.5) return
+    if (!radius || !isFinite(radius) || radius < 0.5 || isNaN(radius)) return
+    if (!isFinite(x) || !isFinite(y) || isNaN(x) || isNaN(y)) return
 
-    const dr = radius
+    const dr = Math.max(0.5, radius)
+    if (!isFinite(dr) || isNaN(dr)) return
 
     ctx.save()
     ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
@@ -3123,7 +3126,9 @@ export class GameEngine {
       if (this._gradCache.size > 120) this._gradCache.clear()
       this._gradCache.set(sc, cs)
     }
-    const grad = ctx.createRadialGradient(x - dr*0.35, y - dr*0.35, dr*0.05, x, y, dr)
+    const gx1 = x - dr*0.35, gy1 = y - dr*0.35
+    if (!isFinite(gx1) || !isFinite(gy1)) { ctx.restore(); return }
+    const grad = ctx.createRadialGradient(gx1, gy1, Math.max(0.01, dr*0.05), x, y, Math.max(1, dr))
     grad.addColorStop(0, cs.l)
     grad.addColorStop(0.6, cs.m)
     grad.addColorStop(1, cs.d)
