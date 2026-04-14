@@ -1110,7 +1110,7 @@ export class GameEngine {
     if (this._teleportAiming) {
       this._teleportAiming = false
       this.canvas.style.cursor = ''
-      this._activateTeleportTo(wx, wy)
+      this._activateTeleportTo(this.mouse.x, this.mouse.y)
       return
     }
 
@@ -1313,13 +1313,14 @@ export class GameEngine {
     if (!sourceCell) return
     const dxM = this.mouse.x - sourceCell.x, dyM = this.mouse.y - sourceCell.y
     const angle = Math.atan2(dyM, dxM)
+    const perpAngle = angle + Math.PI / 2
     for (let i = 0; i < 3; i++) {
       if (sourceCell.mass < massAmount * 2) break
       sourceCell.mass -= massAmount + 2
-      const sc = 7
+      const perpOffset = (i - 1) * 35
       const em = new EjectedMass(
-        sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6) + (Math.random()-0.5)*sc,
-        sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6) + (Math.random()-0.5)*sc,
+        sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6) + Math.cos(perpAngle) * perpOffset,
+        sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6) + Math.sin(perpAngle) * perpOffset,
         Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
         EJECT_COLOR, massAmount
       )
@@ -1762,7 +1763,17 @@ export class GameEngine {
     for (let i = 0; i < this.cells.length; i++) {
       for (let j = i+1; j < this.cells.length; j++) {
         const a = this.cells[i]; const b = this.cells[j]
-        if (a.mergeTimer < now && b.mergeTimer < now) continue
+        if (a.mergeTimer < now && b.mergeTimer < now) {
+          const d = dist(a, b)
+          const pullRange = (a.radius + b.radius) * 1.8
+          if (d < pullRange && d > 0) {
+            const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
+            const pull = Math.min(4, 80 / (d + 1))
+            a.vx = (a.vx||0) + dx * pull; a.vy = (a.vy||0) + dy * pull
+            b.vx = (b.vx||0) - dx * pull; b.vy = (b.vy||0) - dy * pull
+          }
+          continue
+        }
         const d = dist(a, b)
         const minD = a.radius + b.radius
         if (d < minD && d > 0) {
@@ -2051,6 +2062,9 @@ export class GameEngine {
         if (dist(virus, em) < virus.radius + em.radius + 4) {
           ejectedToRemove.add(em.id)
           this._spawnParticle(em.x, em.y, '#ef4444', 3)
+          const now2 = Date.now()
+          if (now2 - (virus._lastFeedTime || 0) < 400) continue
+          virus._lastFeedTime = now2
           virus.feedCount = (virus.feedCount || 0) + 1
           if (typeof em.dirAngle === 'number') {
             virus._lastFeedAngle = em.dirAngle
