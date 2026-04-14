@@ -1981,8 +1981,8 @@ export class GameEngine {
       this.score += scoreGain
       this.onScoreChange(Math.floor(this.score))
       this.onXPGain(eaten * 15)
-      this._showFloat(`🌿 +${massGain} (${eaten} diken!)`, '#22c55e')
-      this._spawnExplosion(cx, cy, '#22c55e')
+      this._showFloat(`💥 +${massGain} (${eaten} virüs!)`, '#ef4444')
+      this._spawnExplosion(cx, cy, '#ef4444')
       soundSystem.virusEat && soundSystem.virusEat()
     }
   }
@@ -1999,42 +1999,13 @@ export class GameEngine {
         if (ejectedToRemove.has(em.id)) continue
         if (dist(virus, em) < virus.radius + em.radius + 4) {
           ejectedToRemove.add(em.id)
-          this._spawnParticle(em.x, em.y, em.color, 4)
-          virus.feedCount = (virus.feedCount || 0) + 1
-          virus.mass = Math.min(220, 100 + (virus.feedCount % 5) * 20)
-          if (typeof em.dirAngle === 'number') virus._lastFeedAngle = em.dirAngle
-          if (virus.feedCount % 5 === 0) {
-            const angle = virus._lastFeedAngle ?? (Math.random() * Math.PI * 2)
-            const MIN_VD = 300
-            let spawnDist = MIN_VD + Math.random() * 150
-            let nx = virus.x + Math.cos(angle) * spawnDist
-            let ny = virus.y + Math.sin(angle) * spawnDist
-            for (let attempt = 0; attempt < 12; attempt++) {
-              let ok = true
-              for (const ov of this.viruses) {
-                const dx = nx - ov.x, dy = ny - ov.y
-                if (Math.sqrt(dx*dx+dy*dy) < MIN_VD) { ok = false; break }
-              }
-              if (ok) break
-              const a2 = Math.random() * Math.PI * 2
-              spawnDist = MIN_VD + Math.random() * 150
-              nx = clamp(virus.x + Math.cos(a2) * spawnDist, 150, WORLD_SIZE - 150)
-              ny = clamp(virus.y + Math.sin(a2) * spawnDist, 150, WORLD_SIZE - 150)
-            }
-            const newV = new Virus(
-              clamp(nx, 150, WORLD_SIZE - 150),
-              clamp(ny, 150, WORLD_SIZE - 150),
-              virus.type
-            )
-            newV.vx = Math.cos(angle) * 3
-            newV.vy = Math.sin(angle) * 3
-            this.viruses.push(newV)
-            const splitBonus = 200 * (virus.feedCount / 5)
-            this.score += splitBonus
-            this.onScoreChange(Math.floor(this.score))
-            this._showFloat(`🌿 DİKEN AYRILDI! +${Math.floor(splitBonus)} 2X`, '#4ade80')
-            this._spawnExplosion(virus.x, virus.y, '#22c55e')
-          }
+          this._spawnParticle(em.x, em.y, '#ef4444', 6)
+          this._spawnExplosion(virus.x, virus.y, '#ef4444')
+          virus.dead = true
+          const bonus = 150
+          this.score += bonus
+          this.onScoreChange(Math.floor(this.score))
+          this._showFloat(`💥 +${bonus}`, '#fbbf24')
         }
       }
     }
