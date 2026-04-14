@@ -1936,12 +1936,17 @@ export class GameEngine {
       if (virus.dead) continue
       virus.age = (virus.age || 0) + dt
       if (!virus.spawnX) { virus.spawnX = virus.x; virus.spawnY = virus.y }
+      if (virus.vx || virus.vy) {
+        virus.x += virus.vx * dt * 60
+        virus.y += virus.vy * dt * 60
+        virus.vx *= 0.88; virus.vy *= 0.88
+        virus.x = clamp(virus.x, 80, WORLD_SIZE - 80)
+        virus.y = clamp(virus.y, 80, WORLD_SIZE - 80)
+        if (Math.abs(virus.vx) < 0.1 && Math.abs(virus.vy) < 0.1) { virus.vx = 0; virus.vy = 0 }
+      }
       if ((virus.hitCooldown || 0) > 0) {
         virus.hitCooldown -= dt
-        if (virus.hitCooldown <= 0) {
-          virus.hitCooldown = 0
-          virus.hitReady = true
-        }
+        if (virus.hitCooldown <= 0) { virus.hitCooldown = 0; virus.hitReady = true }
       }
     }
     this.viruses = this.viruses.filter(v => !v.dead)
@@ -1999,13 +2004,22 @@ export class GameEngine {
         if (ejectedToRemove.has(em.id)) continue
         if (dist(virus, em) < virus.radius + em.radius + 4) {
           ejectedToRemove.add(em.id)
-          this._spawnParticle(em.x, em.y, '#ef4444', 6)
-          this._spawnExplosion(virus.x, virus.y, '#ef4444')
-          virus.dead = true
-          const bonus = 150
-          this.score += bonus
-          this.onScoreChange(Math.floor(this.score))
-          this._showFloat(`💥 +${bonus}`, '#fbbf24')
+          this._spawnParticle(em.x, em.y, '#ef4444', 3)
+          virus.feedCount = (virus.feedCount || 0) + 1
+          if (typeof em.dirAngle === 'number') virus._lastFeedAngle = em.dirAngle
+          if (virus.feedCount >= 7 && this.viruses.filter(v=>!v.dead).length < 12) {
+            const angle = virus._lastFeedAngle ?? (Math.random() * Math.PI * 2)
+            const newV = new Virus(virus.x, virus.y, virus.type)
+            newV.vx = Math.cos(angle) * 12
+            newV.vy = Math.sin(angle) * 12
+            this.viruses.push(newV)
+            virus.feedCount = 0
+            const bonus = 300
+            this.score += bonus
+            this.onScoreChange(Math.floor(this.score))
+            this._showFloat(`💥 DİKEN AYRILDI! +${bonus}`, '#fbbf24')
+            this._spawnExplosion(virus.x, virus.y, '#ef4444')
+          }
         }
       }
     }
