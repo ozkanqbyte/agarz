@@ -274,7 +274,7 @@ const io = new Server(httpServer, {
 
 const WORLD_SIZE = 6000
 const BOT_COUNT = 20
-const BOT_NAMES = ['Agarz','Shadow','Ghost','Blaze','Storm','Viper','Nova','Titan','Apex','Fury','Zeta','Orion','Hawk','Rex','Bolt','Fang','Ace','Ryze','Echo','Neon']
+const BOT_NAMES = ['Mert','Emre','Burak','Arda','Kerem','Serhat','Furkan','Berk','Yusuf','Caner','Oguz','Tolga','Umut','Hakan','Kaan','Enes','Volkan','Selim','Tarik','Baran']
 const BOT_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#10b981','#6366f1','#84cc16','#e879f9','#38bdf8','#fb923c','#a3e635','#f472b6','#34d399','#c084fc']
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
