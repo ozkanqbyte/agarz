@@ -574,7 +574,6 @@ export class GameEngine {
             eaterCell = this.cells.reduce((a, b) => a.mass > b.mass ? a : b)
           }
           eaterCell.mass += gain
-          eaterCell.eatPulse = 1.8
           this.lastEatTime = Date.now()
           this.onMassChange(Math.floor(this.cells.reduce((s,c)=>s+c.mass,0)))
           this.onXPGain(50)
@@ -590,7 +589,7 @@ export class GameEngine {
       .on('virus:mass_gain', (d) => {
         const gain = d.amount || 0
         if (gain > 0 && this.cells.length > 0) {
-          this.cells.reduce((a, b) => a.mass > b.mass ? a : b).eatPulse = 1.3
+          this.cells.reduce((a, b) => a.mass > b.mass ? a : b).mass += 0
         }
       })
       .on('cell:eaten', (d) => {
@@ -1099,7 +1098,7 @@ export class GameEngine {
     if (e.code === 'KeyH') { this._activateShield(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('shield') }
     if (e.code === 'KeyI') { this._activateMagnet(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('magnet') }
     if (e.code === 'KeyJ') { this._activateGhost(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('ghost') }
-    if (e.code === 'KeyK') { this._activateTeleport(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('teleport') }
+    if (e.code === 'KeyK') { this._startTeleportAim(); soundSystem.skill() }
     if (e.code === 'KeyN') { soundSystem._enabled = !soundSystem._enabled; this._showFloat(soundSystem._enabled ? '🔊 Ses Açık' : '🔇 Ses Kapalı', '#6366f1') }
   }
 
@@ -1107,6 +1106,13 @@ export class GameEngine {
     const rect = this.canvas.getBoundingClientRect()
     const wx = (e.clientX - rect.left - this.canvas.width/2) / this.camera.zoom + this.camera.x
     const wy = (e.clientY - rect.top - this.canvas.height/2) / this.camera.zoom + this.camera.y
+
+    if (this._teleportAiming) {
+      this._teleportAiming = false
+      this.canvas.style.cursor = ''
+      this._activateTeleportTo(wx, wy)
+      return
+    }
 
     if (this.skills.slow.cooldown <= 0 || this.skills.slow.active) {
       this.clickTarget = { x: wx, y: wy }
@@ -1179,33 +1185,36 @@ export class GameEngine {
       return
     }
     if (this.cells.length >= MAX_CELLS) return
-    const newCells = []
     const frozenPos = this._frozenMousePos
     const mouseTargetX = frozenPos ? frozenPos.x : this.mouse.x
     const mouseTargetY = frozenPos ? frozenPos.y : this.mouse.y
 
-    for (const cell of [...this.cells]) {
+    let splitCell = null
+    let closestDist = Infinity
+    for (const cell of this.cells) {
       if (cell.mass < MIN_MASS_SPLIT) continue
-      if (this.cells.length + newCells.length >= MAX_CELLS) break
-      const half = cell.mass / 2
-      cell.mass = half
-      const nr2 = cell.radius
-      const cdx = mouseTargetX - cell.x
-      const cdy = mouseTargetY - cell.y
-      const clen = Math.sqrt(cdx*cdx + cdy*cdy) || 1
-      const ndx = cdx / clen, ndy = cdy / clen
-      const nc = new Cell(
-        clamp(cell.x + ndx*(nr2+5), nr2, WORLD_SIZE-nr2),
-        clamp(cell.y + ndy*(nr2+5), nr2, WORLD_SIZE-nr2),
-        half, cell.color
-      )
-      nc.vx = ndx * SPLIT_SPEED
-      nc.vy = ndy * SPLIT_SPEED
-      nc.mergeTimer = Date.now() + MERGE_TIME
-      cell.mergeTimer = Date.now() + MERGE_TIME
-      newCells.push(nc)
+      const d = Math.sqrt((mouseTargetX-cell.x)**2 + (mouseTargetY-cell.y)**2)
+      if (d < closestDist) { closestDist = d; splitCell = cell }
     }
-    if (newCells.length > 0) this.cells.push(...newCells)
+    if (!splitCell) return
+
+    const half = splitCell.mass / 2
+    splitCell.mass = half
+    const nr2 = splitCell.radius
+    const cdx = mouseTargetX - splitCell.x
+    const cdy = mouseTargetY - splitCell.y
+    const clen = Math.sqrt(cdx*cdx + cdy*cdy) || 1
+    const ndx = cdx / clen, ndy = cdy / clen
+    const nc = new Cell(
+      clamp(splitCell.x + ndx*(nr2+5), nr2, WORLD_SIZE-nr2),
+      clamp(splitCell.y + ndy*(nr2+5), nr2, WORLD_SIZE-nr2),
+      half, splitCell.color
+    )
+    nc.vx = ndx * SPLIT_SPEED
+    nc.vy = ndy * SPLIT_SPEED
+    nc.mergeTimer = Date.now() + MERGE_TIME
+    splitCell.mergeTimer = Date.now() + MERGE_TIME
+    this.cells.push(nc)
   }
 
   _freezeSplitDir() {
@@ -1231,49 +1240,59 @@ export class GameEngine {
     doSplit()
   }
 
-  _eject(massAmount, angleOffset = 0, speed = 22, maxCount = 1) {
+  _eject(massAmount, angleOffset = 0, speed = 14, maxCount = 1) {
     const EJECT_COLOR = '#ef4444'
     let fired = 0
-    for (let ci = 0; ci < this.cells.length; ci++) {
-      if (fired >= maxCount) break
-      const cell = this.cells[ci]
+    let sourceCell = null
+    let closestDist = Infinity
+    for (const cell of this.cells) {
       if (cell.mass < massAmount * 2) continue
-      if (this._useSocket) { cell.mass -= massAmount + 2; continue }
-      if (this.ejected.length >= 3) {
-        const settled = this.ejected.find(e => e.settled)
-        if (settled) this.ejected = this.ejected.filter(e => e.id !== settled.id)
-        else continue
-      }
-      cell.mass -= massAmount + 2
-      const dx = this.mouse.x - cell.x
-      const dy = this.mouse.y - cell.y
-      const angle = Math.atan2(dy, dx) + angleOffset
-      const em = new EjectedMass(
-        cell.x + Math.cos(angle) * (cell.radius + 6),
-        cell.y + Math.sin(angle) * (cell.radius + 6),
-        Math.cos(angle) * speed, Math.sin(angle) * speed,
-        EJECT_COLOR, massAmount
-      )
-      this.ejected.push(em)
-      fired++
+      const d = Math.sqrt((this.mouse.x-cell.x)**2 + (this.mouse.y-cell.y)**2)
+      if (d < closestDist) { closestDist = d; sourceCell = cell }
     }
+    if (!sourceCell) return
+    if (this._useSocket) { sourceCell.mass -= massAmount + 2; return }
+    if (this.ejected.length >= 8) {
+      const settled = this.ejected.find(e => e.settled)
+      if (settled) this.ejected = this.ejected.filter(e => e.id !== settled.id)
+      else this.ejected.shift()
+    }
+    sourceCell.mass -= massAmount + 2
+    const dx = this.mouse.x - sourceCell.x
+    const dy = this.mouse.y - sourceCell.y
+    const angle = Math.atan2(dy, dx) + angleOffset
+    const em = new EjectedMass(
+      sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6),
+      sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6),
+      Math.cos(angle) * speed, Math.sin(angle) * speed,
+      EJECT_COLOR, massAmount
+    )
+    this.ejected.push(em)
+    fired++
   }
 
   _ejectBurst3(massAmount) {
     const EJECT_COLOR = '#ef4444'
-    const SPREAD = 0.03
-    this.ejected = []
+    const SPREAD = 0.04
+    const SPEED = 13
+    let sourceCell = null
+    let closestDist = Infinity
+    for (const cell of this.cells) {
+      if (cell.mass < massAmount * 2) continue
+      const d = Math.sqrt((this.mouse.x-cell.x)**2 + (this.mouse.y-cell.y)**2)
+      if (d < closestDist) { closestDist = d; sourceCell = cell }
+    }
+    if (!sourceCell) return
     for (let i = 0; i < 3; i++) {
-      const cell = this.cells[i % this.cells.length]
-      if (!cell || cell.mass < massAmount * 2) continue
-      if (this._useSocket) { cell.mass -= massAmount + 2; socketClient.sendEject(); continue }
-      cell.mass -= massAmount + 2
-      const dx = this.mouse.x - cell.x, dy = this.mouse.y - cell.y
+      if (this._useSocket) { sourceCell.mass -= massAmount + 2; socketClient.sendEject(); continue }
+      if (sourceCell.mass < massAmount * 2) break
+      sourceCell.mass -= massAmount + 2
+      const dx = this.mouse.x - sourceCell.x, dy = this.mouse.y - sourceCell.y
       const angle = Math.atan2(dy, dx) + (i - 1) * SPREAD
       const em = new EjectedMass(
-        cell.x + Math.cos(angle) * (cell.radius + 6),
-        cell.y + Math.sin(angle) * (cell.radius + 6),
-        Math.cos(angle) * 5, Math.sin(angle) * 5,
+        sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6),
+        sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6),
+        Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
         EJECT_COLOR, massAmount
       )
       this.ejected.push(em)
@@ -1682,7 +1701,7 @@ export class GameEngine {
     }
     for (const cell of this.cells) {
       const frozen = cell.frozen > 0
-      const speedBoost = this.skills.speed.active ? 2.2 : 1
+      const speedBoost = this.skills.speed.active ? 5.0 : 1
       const speedMult = frozen ? 0.3 : speedBoost
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
@@ -1699,7 +1718,7 @@ export class GameEngine {
       if (splitVelMag > 0.01) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.82; cell.vy *= 0.82
+        cell.vx *= 0.91; cell.vy *= 0.91
         if (Math.abs(cell.vx) < 0.01) { cell.vx = 0; cell.vy = 0 }
       }
 
@@ -1980,7 +1999,6 @@ export class GameEngine {
       const targetCell = this.cells[0]
       if (targetCell) {
         targetCell.mass += massGain
-        targetCell.eatPulse = 1.3
       }
       this.score += scoreGain
       this.onScoreChange(Math.floor(this.score))
@@ -2179,6 +2197,7 @@ export class GameEngine {
     this._drawPremiumEffects()
     this._drawFloatingTexts()
     this._drawSlowTargetIndicator()
+    if (this._teleportAiming) this._drawTeleportAimCursor()
 
     if (this._virusFlashes?.length) {
       ctx.save()
@@ -2705,6 +2724,22 @@ export class GameEngine {
     }
   }
 
+  _drawTeleportAimCursor() {
+    const { ctx, camera } = this
+    const mx = this.mouse.x, my = this.mouse.y
+    const t = Date.now() / 300
+    const pulse = 30 + 6 * Math.sin(t)
+    ctx.save()
+    ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2.5
+    ctx.shadowBlur = 18; ctx.shadowColor = '#38bdf8'
+    ctx.beginPath(); ctx.arc(mx, my, pulse, 0, Math.PI * 2); ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(mx - pulse - 10, my); ctx.lineTo(mx + pulse + 10, my)
+    ctx.moveTo(mx, my - pulse - 10); ctx.lineTo(mx, my + pulse + 10)
+    ctx.stroke()
+    ctx.shadowBlur = 0; ctx.restore()
+  }
+
   _drawSlowTargetIndicator() {
     const { ctx } = this
     if (this.clickTarget) {
@@ -3075,8 +3110,7 @@ export class GameEngine {
     const { ctx } = this
     if (radius < 0.5) return
 
-    const pulseScale = 1 + eatPulse * 0.18
-    const dr = radius * pulseScale
+    const dr = radius
 
     ctx.save()
     ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
@@ -3283,7 +3317,7 @@ export class GameEngine {
       const hasClan = clan && dr > 18
       const hasMass = dr > 10
       const lineCount = 1 + (hasClan ? 1 : 0) + (hasMass ? 1 : 0)
-      const fs = clamp(dr * 0.38, 10, 32)
+      const fs = clamp(dr * 0.44, 14, 48)
       const lineH = fs * 1.0
       const totalH = lineCount * lineH
       const startY = y - totalH / 2 + lineH / 2
@@ -3492,6 +3526,11 @@ export class GameEngine {
       const d = Math.sqrt((p.x - cell.x) ** 2 + (p.y - cell.y) ** 2)
       if (d < nearDist) { nearDist = d; nearestId = id }
     }
+    for (const bot of this.bots) {
+      if (bot.dead) continue
+      const d = Math.sqrt((bot.x - cell.x) ** 2 + (bot.y - cell.y) ** 2)
+      if (d < nearDist) { nearDist = d; nearestId = bot.id }
+    }
     if (!nearestId) { this._showFloat('🌀 Hedef bulunamadı!', '#8b5cf6'); return }
     this._useSkill('slow')
     const sk = this.skills.slow
@@ -3536,20 +3575,29 @@ export class GameEngine {
     this.onSkillChange({ ...this.skills })
   }
 
-  _activateTeleport() {
+  _startTeleportAim() {
     if (!this._checkSkillAccess('teleport', '⚡', '#38bdf8')) return
-    const cell = this.cells[0]
-    if (!cell) return
-    const tx = clamp(this.mouse.x, 100, WORLD_SIZE - 100)
-    const ty = clamp(this.mouse.y, 100, WORLD_SIZE - 100)
+    this._teleportAiming = true
+    this.canvas.style.cursor = 'crosshair'
+    this._showFloat('⚡ IŞINLANMA: Nereye ışınlanacağını seç!', '#38bdf8')
+  }
+
+  _activateTeleportTo(tx, ty) {
+    tx = clamp(tx, 100, WORLD_SIZE - 100)
+    ty = clamp(ty, 100, WORLD_SIZE - 100)
     this._useSkill('teleport')
     const sk = this.skills.teleport
     sk.cooldown = SKILL_TELEPORT_COOLDOWN
-    for (const c of this.cells) { c.x = tx + (Math.random()-0.5)*40; c.y = ty + (Math.random()-0.5)*40 }
+    for (const c of this.cells) { c.x = tx + (Math.random()-0.5)*30; c.y = ty + (Math.random()-0.5)*30 }
     this.camera.x = tx; this.camera.y = ty
     this._showFloat('⚡ IŞINLANDI!', '#38bdf8')
     this._spawnExplosion(tx, ty, '#38bdf8')
+    if (this._useSocket) socketClient.sendSkill('teleport')
     this.onSkillChange({ ...this.skills })
+  }
+
+  _activateTeleport() {
+    this._startTeleportAim()
   }
 
   _activateFoodTrap() {
@@ -3590,14 +3638,23 @@ export class GameEngine {
     }
     if (this.skills.magnet.active && this.cells.length > 0) {
       const cell = this.cells[0]
-      const magnetRadius = massToRadius(cell.mass) * 8
-      const magnetForce = 180 * dt
+      const magnetRadius = Math.max(350, massToRadius(cell.mass) * 10)
+      const magnetForce = 220 * dt
       for (const f of this.food) {
         const dx = cell.x - f.x, dy = cell.y - f.y
         const d = Math.sqrt(dx*dx + dy*dy)
         if (d < magnetRadius && d > 1) {
           f.x += (dx / d) * magnetForce
           f.y += (dy / d) * magnetForce
+        }
+      }
+      for (const bot of this.bots) {
+        if (bot.dead || bot.mass >= cell.mass * 0.9) continue
+        const dx = cell.x - bot.x, dy = cell.y - bot.y
+        const d = Math.sqrt(dx*dx + dy*dy)
+        if (d < magnetRadius * 0.6 && d > 1) {
+          bot.x += (dx / d) * magnetForce * 0.7
+          bot.y += (dy / d) * magnetForce * 0.7
         }
       }
     }
@@ -3711,7 +3768,7 @@ export class GameEngine {
           this._showFloat(`+${Math.floor(bot.mass)} 🤖`, '#4ade80')
           const killedMass = bot.mass
           cell.mass += killedMass
-          cell.eatPulse = 1
+          cell.eatPulse = 0
           this.lastEatTime = Date.now()
           bot.dead = true; bot.respawnTimer = 5 + Math.random() * 5; bot.mass = 20; botKilled = true
           this.onKill(killedMass)
@@ -3727,7 +3784,7 @@ export class GameEngine {
           const cellsToRemove = []
           for (const cell of this.cells) {
             if (bot.mass > cell.mass * MIN_EAT_RATIO && dist(bot, cell) < bot.radius) {
-              if (!this.skills.shield.active) {
+              if (!this.skills.shield.active && !this._ghostActive) {
                 bot.mass += cell.mass
                 cellsToRemove.push(cell.id)
                 this._spawnExplosion(cell.x, cell.y, cell.color)
