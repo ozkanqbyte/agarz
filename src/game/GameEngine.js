@@ -1704,17 +1704,36 @@ export class GameEngine {
   _moveCells(dt) {
     if (this._useSocket) {
       for (const cell of this.cells) {
+        if (!isFinite(cell.x) || !isFinite(cell.y)) { cell.x = WORLD_SIZE/2; cell.y = WORLD_SIZE/2 }
+        const frozen = cell.frozen > 0
+        const speedBoost = this.skills.speed.active ? 5.0 : 1
+        const speedMult = frozen ? 0.3 : speedBoost
+
+        const nowMs2 = Date.now()
+        let sf = 1
+        if (cell.mergeTimer && cell.mergeTimer > nowMs2) {
+          const age = MERGE_TIME - (cell.mergeTimer - nowMs2)
+          sf = Math.min(1, age / 3500)
+        }
+        const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
+        const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
+        if (d2 > cell.radius / 3) {
+          const spd = Math.max(1.5, 6.5 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+          const s2 = Math.min(spd * dt * sf, d2)
+          if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
+        }
+
         if (cell._tx !== undefined) {
           const ex = cell._tx - cell.x, ey = cell._ty - cell.y
           const e2 = ex * ex + ey * ey
-          if (e2 > 1200 * 1200) {
+          if (e2 > 800 * 800) {
             cell.x = cell._tx; cell.y = cell._ty
-          } else if (e2 > 1) {
-            const lerpSpeed = Math.min(1, dt * 18)
-            cell.x += ex * lerpSpeed
-            cell.y += ey * lerpSpeed
+          } else if (e2 > 4) {
+            cell.x += ex * Math.min(1, dt * 8)
+            cell.y += ey * Math.min(1, dt * 8)
           }
         }
+
         if (cell._targetMass !== undefined) cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 8))
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
