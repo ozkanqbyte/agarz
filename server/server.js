@@ -628,7 +628,8 @@ class GameRoom {
           const ad = Math.sqrt(adx * adx + ady * ady) || 1
           const minD = massToRadius(ca.mass) + massToRadius(cb.mass)
           if (ad < minD) {
-            const push = (minD - ad) / (2 * ad)
+            const overlap = minD - ad
+            const push = (overlap / (2 * ad)) * 1.6
             const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
             ca.x = clamp(ca.x + adx * push, ra, WORLD_SIZE - ra)
             ca.y = clamp(ca.y + ady * push, ra, WORLD_SIZE - ra)
