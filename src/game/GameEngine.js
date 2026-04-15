@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 18
+const SPLIT_SPEED = 22
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -1211,8 +1211,9 @@ export class GameEngine {
       clamp(splitCell.y + ndy*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
       half, splitCell.color
     )
-    nc.vx = ndx * SPLIT_SPEED
-    nc.vy = ndy * SPLIT_SPEED
+    const dynSpeed = Math.max(SPLIT_SPEED, Math.sqrt(half) * 0.9)
+    nc.vx = ndx * dynSpeed
+    nc.vy = ndy * dynSpeed
     nc.mergeTimer = Date.now() + MERGE_TIME
     splitCell.mergeTimer = Date.now() + MERGE_TIME
     this.cells.push(nc)
