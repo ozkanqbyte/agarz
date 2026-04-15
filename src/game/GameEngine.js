@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 48
+const SPLIT_SPEED = 28
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -2078,7 +2078,7 @@ export class GameEngine {
             virus.vx = (virus.vx || 0) + Math.cos(em.dirAngle) * 0.6
             virus.vy = (virus.vy || 0) + Math.sin(em.dirAngle) * 0.6
           }
-          if (virus.feedCount >= 7 && this.viruses.filter(v=>!v.dead).length < 50) {
+          if (virus.feedCount >= 12 && this.viruses.filter(v=>!v.dead).length < 30) {
             const dx = this.mouse.x - virus.x, dy = this.mouse.y - virus.y
             const mlen = Math.sqrt(dx*dx+dy*dy) || 1
             const angle = Math.atan2(dy/mlen, dx/mlen)
@@ -3349,33 +3349,6 @@ export class GameEngine {
 
       if (name && dr > 10) {
         ctx.font = `bold ${fs}px "Exo 2", Arial, sans-serif`
-        const nameW = Math.max(ctx.measureText(name).width + fs * 1.0, fs * 2.2)
-        const pillH = fs * 1.35
-        const pillX = x - nameW / 2
-        const pillY = nameY - pillH / 2
-        const pillR = pillH / 2
-        ctx.save()
-        const pillGrad = ctx.createLinearGradient(pillX, pillY, pillX, pillY + pillH)
-        if (isMe) {
-          pillGrad.addColorStop(0, 'rgba(30,10,80,0.82)')
-          pillGrad.addColorStop(1, 'rgba(10,5,40,0.88)')
-        } else {
-          pillGrad.addColorStop(0, 'rgba(10,10,30,0.80)')
-          pillGrad.addColorStop(1, 'rgba(5,5,20,0.88)')
-        }
-        ctx.fillStyle = pillGrad
-        if (ctx.roundRect) {
-          ctx.beginPath(); ctx.roundRect(pillX, pillY, nameW, pillH, pillR); ctx.fill()
-        } else {
-          ctx.fillRect(pillX, pillY, nameW, pillH)
-        }
-        ctx.strokeStyle = isMe ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.18)'
-        ctx.lineWidth = 1.2
-        if (ctx.roundRect) {
-          ctx.beginPath(); ctx.roundRect(pillX, pillY, nameW, pillH, pillR); ctx.stroke()
-        }
-        ctx.globalAlpha = 1
-        ctx.restore()
       }
       const PREMIUM_TIERS = ['trial','starter','player','pro','elite','champion','master','legend','apex','immortal']
       const isPremiumPlayer = PREMIUM_TIERS.includes(ownedPackage) && ownedPackage !== 'free'
@@ -3470,10 +3443,11 @@ export class GameEngine {
           ]
         }
       }
-      ctx.font = `bold ${fs}px "Exo 2", sans-serif`
+      ctx.font = `bold ${fs}px "Exo 2", Arial, sans-serif`
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.lineWidth = 3.5
-      ctx.strokeStyle = 'rgba(0,0,0,0.75)'
+      ctx.lineWidth = Math.max(4, fs * 0.18)
+      ctx.strokeStyle = 'rgba(0,0,0,0.92)'
+      ctx.lineJoin = 'round'
       ctx.strokeText(displayName, x, nameY)
       for (const pass of extraPasses) {
         ctx.shadowBlur = pass.blur; ctx.shadowColor = pass.color
