@@ -594,26 +594,20 @@ class GameRoom {
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        cell.splitVx *= 0.88
-        cell.splitVy *= 0.88
+        cell.splitVx *= 0.85
+        cell.splitVy *= 0.85
         if (Math.abs(cell.splitVx) < 0.05) { cell.splitVx = 0; cell.splitVy = 0 }
       }
       if (!frozen) {
-        let splitFactor = 1
-        if (player.cells.length > 1 && cell.mergeTimer !== undefined && cell.mergeTimer < MERGE_TIME) {
-          splitFactor = Math.min(1, cell.mergeTimer / 3500)
-        }
-        if (splitFactor > 0) {
-          const baseSpeed = speedForMass(cell.mass) * speedMult * 60 * splitFactor
-          const dx = (player.inputX || 0) - cell.x
-          const dy = (player.inputY || 0) - cell.y
-          const d = Math.sqrt(dx * dx + dy * dy)
-          if (d >= 1) {
-            const nx = dx / d, ny = dy / d
-            const move = Math.min(baseSpeed * dt, d)
-            cell.x = clamp(cell.x + nx * move, r, WORLD_SIZE - r)
-            cell.y = clamp(cell.y + ny * move, r, WORLD_SIZE - r)
-          }
+        const baseSpeed = speedForMass(cell.mass) * speedMult * 60
+        const dx = (player.inputX || 0) - cell.x
+        const dy = (player.inputY || 0) - cell.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d >= 1) {
+          const nx = dx / d, ny = dy / d
+          const move = Math.min(baseSpeed * dt, d)
+          cell.x = clamp(cell.x + nx * move, r, WORLD_SIZE - r)
+          cell.y = clamp(cell.y + ny * move, r, WORLD_SIZE - r)
         }
       }
       cell.x = clamp(cell.x, r, WORLD_SIZE - r)
@@ -957,8 +951,8 @@ class GameRoom {
         y: clamp(cell.y + ny * (nr * 2 + 6), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
-        splitVx: nx * Math.min(55, Math.max(30, Math.sqrt(cell.mass) * 0.9)),
-        splitVy: ny * Math.min(55, Math.max(30, Math.sqrt(cell.mass) * 0.9))
+        splitVx: nx * Math.min(28, Math.max(16, Math.sqrt(cell.mass) * 0.4)),
+        splitVy: ny * Math.min(28, Math.max(16, Math.sqrt(cell.mass) * 0.4))
       })
     }
     player.cells.push(...newCells)
