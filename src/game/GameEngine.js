@@ -149,7 +149,7 @@ class EjectedMass {
     this.settledTimer = 0
     this.dirAngle = Math.atan2(vy, vx)
   }
-  get radius() { return 5 }
+  get radius() { return 10 }
 }
 
 class SpatialGrid {
@@ -1082,9 +1082,9 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 5, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 18, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { this._ejectBurst3(EJECT_MASS_SM); this.lastEjectTime = now }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 14, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 18, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -1273,7 +1273,7 @@ export class GameEngine {
 
   _ejectBurst3(massAmount) {
     const EJECT_COLOR = '#ef4444'
-    const SPEED = 13
+    const SPEED = 18
     if (this._useSocket) { socketClient.sendEject(); return }
 
     let targetCell = null
@@ -2134,7 +2134,7 @@ export class GameEngine {
   _updateEjected(dt) {
     for (const em of this.ejected) {
       em.x += em.vx * dt * 60; em.y += em.vy * dt * 60
-      em.vx *= 0.78; em.vy *= 0.78
+      em.vx *= 0.90; em.vy *= 0.90
       em.x = clamp(em.x, 0, WORLD_SIZE); em.y = clamp(em.y, 0, WORLD_SIZE)
       const spd = Math.sqrt(em.vx * em.vx + em.vy * em.vy)
       if (spd < 0.8) { em.settled = true; em.settledTimer = (em.settledTimer || 0) + dt }
@@ -2898,11 +2898,21 @@ export class GameEngine {
       arr.push(em)
     }
     for (const [col, items] of byColor) {
-      ctx.fillStyle = col
       for (const em of items) {
+        const r = 10
+        if (this.qualityLevel !== 'low') {
+          ctx.save()
+          ctx.shadowBlur = 12
+          ctx.shadowColor = col
+        }
         ctx.beginPath()
-        ctx.ellipse(em.x, em.y, 8, 5, em.dirAngle, 0, TWO_PI)
+        ctx.arc(em.x, em.y, r, 0, TWO_PI)
+        ctx.fillStyle = col
         ctx.fill()
+        ctx.lineWidth = 2
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+        ctx.stroke()
+        if (this.qualityLevel !== 'low') ctx.restore()
       }
     }
   }
@@ -3321,7 +3331,7 @@ export class GameEngine {
       const hasClan = clan && dr > 18
       const hasMass = dr > 10
       const lineCount = 1 + (hasClan ? 1 : 0) + (hasMass ? 1 : 0)
-      const fs = clamp(dr * 0.44, 14, 48)
+      const fs = clamp(dr * 0.55, 18, 60)
       const lineH = fs * 1.0
       const totalH = lineCount * lineH
       const startY = y - totalH / 2 + lineH / 2
@@ -3485,7 +3495,7 @@ export class GameEngine {
         lineIdx++
       }
       if (hasMass) {
-        const ms = clamp(dr * 0.28, 8, 18)
+        const ms = clamp(dr * 0.38, 11, 24)
         ctx.font = `bold ${ms}px "Exo 2", Arial, sans-serif`
         ctx.fillStyle = isMe ? 'rgba(255,255,100,0.95)' : 'rgba(255,255,255,0.75)'
         ctx.shadowBlur = isMe ? 10 : 0
