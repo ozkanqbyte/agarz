@@ -1082,9 +1082,9 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 18, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 25, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { this._ejectBurst3(EJECT_MASS_SM); this.lastEjectTime = now }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 18, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 25, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -1273,7 +1273,7 @@ export class GameEngine {
 
   _ejectBurst3(massAmount) {
     const EJECT_COLOR = '#ef4444'
-    const SPEED = 18
+    const SPEED = 25
     if (this._useSocket) { socketClient.sendEject(); return }
 
     let targetCell = null
@@ -1317,7 +1317,7 @@ export class GameEngine {
     for (let i = 0; i < 3; i++) {
       if (sourceCell.mass < massAmount * 2) break
       sourceCell.mass -= massAmount + 2
-      const perpOffset = (i - 1) * 35
+      const perpOffset = (i - 1) * 55
       const em = new EjectedMass(
         sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6) + Math.cos(perpAngle) * perpOffset,
         sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6) + Math.sin(perpAngle) * perpOffset,
@@ -2134,7 +2134,7 @@ export class GameEngine {
   _updateEjected(dt) {
     for (const em of this.ejected) {
       em.x += em.vx * dt * 60; em.y += em.vy * dt * 60
-      em.vx *= 0.90; em.vy *= 0.90
+      em.vx *= 0.95; em.vy *= 0.95
       em.x = clamp(em.x, 0, WORLD_SIZE); em.y = clamp(em.y, 0, WORLD_SIZE)
       const spd = Math.sqrt(em.vx * em.vx + em.vy * em.vy)
       if (spd < 0.8) { em.settled = true; em.settledTimer = (em.settledTimer || 0) + dt }
