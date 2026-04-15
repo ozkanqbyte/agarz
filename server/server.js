@@ -594,8 +594,8 @@ class GameRoom {
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        cell.splitVx *= 0.93
-        cell.splitVy *= 0.93
+        cell.splitVx *= 0.88
+        cell.splitVy *= 0.88
         if (Math.abs(cell.splitVx) < 0.05) { cell.splitVx = 0; cell.splitVy = 0 }
       }
       if (!frozen) {
@@ -629,7 +629,7 @@ class GameRoom {
           const minD = massToRadius(ca.mass) + massToRadius(cb.mass)
           if (ad < minD) {
             const overlap = minD - ad
-            const push = (overlap / (2 * ad)) * 1.6
+            const push = (overlap / (2 * ad)) * 1.0
             const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
             ca.x = clamp(ca.x + adx * push, ra, WORLD_SIZE - ra)
             ca.y = clamp(ca.y + ady * push, ra, WORLD_SIZE - ra)
@@ -957,8 +957,8 @@ class GameRoom {
         y: clamp(cell.y + ny * (nr * 2 + 6), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
-        splitVx: nx * Math.max(SPLIT_SPEED * 2, Math.sqrt(cell.mass) * 1.8),
-        splitVy: ny * Math.max(SPLIT_SPEED * 2, Math.sqrt(cell.mass) * 1.8)
+        splitVx: nx * Math.min(55, Math.max(30, Math.sqrt(cell.mass) * 0.9)),
+        splitVy: ny * Math.min(55, Math.max(30, Math.sqrt(cell.mass) * 0.9))
       })
     }
     player.cells.push(...newCells)

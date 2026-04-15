@@ -1704,27 +1704,16 @@ export class GameEngine {
   _moveCells(dt) {
     if (this._useSocket) {
       for (const cell of this.cells) {
-        const svx = cell.vx || 0, svy = cell.vy || 0
-        const svMag = Math.sqrt(svx * svx + svy * svy)
-        const splitFactor = svMag > 1 ? Math.max(0.25, 1 - svMag / SPLIT_SPEED) : 1
-        const dx = this.mouse.x - cell.x
-        const dy = this.mouse.y - cell.y
-        const d = Math.sqrt(dx * dx + dy * dy)
-        if (d > cell.radius / 3) {
-          const speed = Math.max(1.5, 9 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60
-          const s = Math.min(speed * dt * splitFactor, d)
-          cell.x += (dx / d) * s
-          cell.y += (dy / d) * s
-        }
-        if (svMag > 0.05) {
-          cell.x += svx * dt * 60; cell.y += svy * dt * 60
-          cell.vx *= 0.82; cell.vy *= 0.82
-          if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
-        }
         if (cell._tx !== undefined) {
           const ex = cell._tx - cell.x, ey = cell._ty - cell.y
           const e2 = ex * ex + ey * ey
-          if (e2 > 380 * 380) { cell.x = cell._tx; cell.y = cell._ty }
+          if (e2 > 1200 * 1200) {
+            cell.x = cell._tx; cell.y = cell._ty
+          } else if (e2 > 1) {
+            const lerpSpeed = Math.min(1, dt * 18)
+            cell.x += ex * lerpSpeed
+            cell.y += ey * lerpSpeed
+          }
         }
         if (cell._targetMass !== undefined) cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 8))
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
@@ -1744,7 +1733,12 @@ export class GameEngine {
       const speed = Math.max(1.5, 6.5 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
-      const splitFactor = splitVelMag > 1 ? Math.max(0.25, 1 - splitVelMag / SPLIT_SPEED) : 1
+      const nowMs = Date.now()
+      let splitFactor = 1
+      if (cell.mergeTimer > nowMs) {
+        const splitAge = MERGE_TIME - (cell.mergeTimer - nowMs)
+        splitFactor = Math.min(1, splitAge / 3500)
+      }
       if (d > cell.radius / 3) {
         const s = Math.min(speed * dt * splitFactor, d)
         if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
@@ -1753,7 +1747,7 @@ export class GameEngine {
       if (splitVelMag > 0.01) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.92; cell.vy *= 0.92
+        cell.vx *= 0.94; cell.vy *= 0.94
         if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
       }
 
