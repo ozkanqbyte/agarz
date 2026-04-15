@@ -1749,8 +1749,8 @@ export class GameEngine {
       if (splitVelMag > 0.01) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.91; cell.vy *= 0.91
-        if (Math.abs(cell.vx) < 0.01) { cell.vx = 0; cell.vy = 0 }
+        cell.vx *= 0.87; cell.vy *= 0.87
+        if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
       }
 
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
@@ -1769,7 +1769,7 @@ export class GameEngine {
           const pullRange = (a.radius + b.radius) * 1.8
           if (d < pullRange && d > 0) {
             const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
-            const pull = Math.min(4, 80 / (d + 1))
+            const pull = Math.min(3, 60 / (d + 1))
             a.vx = (a.vx||0) + dx * pull; a.vy = (a.vy||0) + dy * pull
             b.vx = (b.vx||0) - dx * pull; b.vy = (b.vy||0) - dy * pull
           }
@@ -1779,9 +1779,12 @@ export class GameEngine {
         const minD = a.radius + b.radius
         if (d < minD && d > 0) {
           const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
-          const ov = (minD-d)/2
-          a.x -= dx*ov*0.5; a.y -= dy*ov*0.5
-          b.x += dx*ov*0.5; b.y += dy*ov*0.5
+          const ov = minD - d
+          const impulse = ov * 0.12
+          a.vx = (a.vx||0) - dx * impulse; a.vy = (a.vy||0) - dy * impulse
+          b.vx = (b.vx||0) + dx * impulse; b.vy = (b.vy||0) + dy * impulse
+          a.x -= dx * ov * 0.08; a.y -= dy * ov * 0.08
+          b.x += dx * ov * 0.08; b.y += dy * ov * 0.08
         }
       }
     }
