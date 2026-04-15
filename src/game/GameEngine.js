@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 28
+const SPLIT_SPEED = 18
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -1767,27 +1767,15 @@ export class GameEngine {
     for (let i = 0; i < this.cells.length; i++) {
       for (let j = i+1; j < this.cells.length; j++) {
         const a = this.cells[i]; const b = this.cells[j]
-        if (a.mergeTimer < now && b.mergeTimer < now) {
-          const d = dist(a, b)
-          const pullRange = (a.radius + b.radius) * 1.8
-          if (d < pullRange && d > 0) {
-            const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
-            const pull = Math.min(3, 60 / (d + 1))
-            a.vx = (a.vx||0) + dx * pull; a.vy = (a.vy||0) + dy * pull
-            b.vx = (b.vx||0) - dx * pull; b.vy = (b.vy||0) - dy * pull
-          }
-          continue
-        }
+        const bothExpired = a.mergeTimer < now && b.mergeTimer < now
+        if (!bothExpired) continue
         const d = dist(a, b)
-        const minD = a.radius + b.radius
-        if (d < minD && d > 0) {
+        const pullRange = (a.radius + b.radius) * 1.4
+        if (d < pullRange && d > 0) {
           const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
-          const ov = minD - d
-          const impulse = ov * 0.12
-          a.vx = (a.vx||0) - dx * impulse; a.vy = (a.vy||0) - dy * impulse
-          b.vx = (b.vx||0) + dx * impulse; b.vy = (b.vy||0) + dy * impulse
-          a.x -= dx * ov * 0.08; a.y -= dy * ov * 0.08
-          b.x += dx * ov * 0.08; b.y += dy * ov * 0.08
+          const pull = Math.min(2, 40 / (d + 1))
+          a.vx = (a.vx||0) + dx * pull; a.vy = (a.vy||0) + dy * pull
+          b.vx = (b.vx||0) - dx * pull; b.vy = (b.vy||0) - dy * pull
         }
       }
     }
@@ -1878,8 +1866,9 @@ export class GameEngine {
   _checkVirusCollisions() {
     for (const virus of this.viruses) {
       if (virus.dead) continue
+      const virusR = Math.sqrt(virus.mass || 100) * 4.5
       for (const cell of this.cells) {
-        if (dist(cell, virus) >= cell.radius * 0.85) continue
+        if (dist(cell, virus) >= cell.radius + virusR * 0.5) continue
         if (cell.mass < 300) continue
         const vInfo = VIRUS_TYPES[virus.type] || VIRUS_TYPES.normal
 
@@ -1893,11 +1882,11 @@ export class GameEngine {
           break
         }
 
-        this._virusEatCount++
-        const shouldSplit = this._virusEatCount % 6 === 1
+        const nowMs = Date.now()
+        const timeSinceLastPop = nowMs - (this._lastVirusPopTime || 0)
+        const shouldPop = timeSinceLastPop > 7000
         const preMass = cell.mass
-        cell.mass = preMass * 1.25
-        this.lastEatTime = Date.now()
+        this.lastEatTime = nowMs
         soundSystem.virusEat()
 
         const scoreGain = Math.floor(preMass * 0.25)
@@ -1905,11 +1894,13 @@ export class GameEngine {
         this.onScoreChange(Math.floor(this.score))
         this.onXPGain(20)
 
-        if (shouldSplit) {
+        if (shouldPop) {
+          this._lastVirusPopTime = nowMs
           this._explodeCellMouse(cell, Math.min(8, Math.max(2, Math.floor(preMass / 100))))
-          this._showFloat(`PATLAMA +${scoreGain}`, '#fbbf24')
+          this._showFloat(`💥 PATLAMA +${scoreGain}`, '#fbbf24')
         } else {
-          this._showFloat(`x2 DIKEN +${scoreGain}`, '#4ade80')
+          cell.mass = preMass * 1.25
+          this._showFloat(`+25% DİKEN YENDİN +${scoreGain}`, '#4ade80')
         }
 
         if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('ZEHIR', '#a855f7') }
