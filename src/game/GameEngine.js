@@ -1211,7 +1211,7 @@ export class GameEngine {
       clamp(splitCell.y + ndy*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
       half, splitCell.color
     )
-    const dynSpeed = Math.max(SPLIT_SPEED, Math.sqrt(half) * 0.9)
+    const dynSpeed = Math.max(SPLIT_SPEED * 2, Math.sqrt(half) * 1.8)
     nc.vx = ndx * dynSpeed
     nc.vy = ndy * dynSpeed
     nc.mergeTimer = Date.now() + MERGE_TIME
@@ -1753,7 +1753,7 @@ export class GameEngine {
       if (splitVelMag > 0.01) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.87; cell.vy *= 0.87
+        cell.vx *= 0.92; cell.vy *= 0.92
         if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
       }
 
