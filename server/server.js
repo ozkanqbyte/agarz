@@ -600,7 +600,7 @@ class GameRoom {
       }
       if (!frozen) {
         let splitFactor = 1
-        if (cell.mergeTimer !== undefined && cell.mergeTimer < MERGE_TIME) {
+        if (player.cells.length > 1 && cell.mergeTimer !== undefined && cell.mergeTimer < MERGE_TIME) {
           splitFactor = Math.min(1, cell.mergeTimer / 3500)
         }
         if (splitFactor > 0) {
