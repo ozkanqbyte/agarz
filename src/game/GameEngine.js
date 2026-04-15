@@ -141,15 +141,16 @@ const BOT_NAMES = ['Mert','Emre','Burak','Arda','Kerem','Serhat','Furkan','Berk'
 const BOT_COLORS = ['#6366f1','#ec4899','#f59e0b','#06b6d4','#10b981','#8b5cf6','#ef4444','#38bdf8','#a855f7','#22c55e','#f97316','#14b8a6','#e11d48','#7c3aed','#0ea5e9','#16a34a','#dc2626','#2563eb','#9333ea','#0d9488','#b45309','#7e22ce','#0284c7','#15803d','#991b1b','#1d4ed8','#6b21a8','#0e7490','#92400e','#3b0764']
 
 class EjectedMass {
-  constructor(x, y, vx, vy, color, mass = EJECT_MASS_SM) {
+  constructor(x, y, vx, vy, color, mass = EJECT_MASS_SM, r = 10) {
     this.x = x; this.y = y; this.vx = vx; this.vy = vy
     this.color = color; this.mass = mass
     this.id = uuidv4(); this.life = 1.0
     this.settled = false
     this.settledTimer = 0
     this.dirAngle = Math.atan2(vy, vx)
+    this._radius = r
   }
-  get radius() { return 10 }
+  get radius() { return this._radius }
 }
 
 class SpatialGrid {
@@ -1206,8 +1207,8 @@ export class GameEngine {
     const clen = Math.sqrt(cdx*cdx + cdy*cdy) || 1
     const ndx = cdx / clen, ndy = cdy / clen
     const nc = new Cell(
-      clamp(splitCell.x + ndx*(nr2+5), nr2, WORLD_SIZE-nr2),
-      clamp(splitCell.y + ndy*(nr2+5), nr2, WORLD_SIZE-nr2),
+      clamp(splitCell.x + ndx*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
+      clamp(splitCell.y + ndy*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
       half, splitCell.color
     )
     nc.vx = ndx * SPLIT_SPEED
@@ -1261,11 +1262,12 @@ export class GameEngine {
     const dx = this.mouse.x - sourceCell.x
     const dy = this.mouse.y - sourceCell.y
     const angle = Math.atan2(dy, dx) + angleOffset
+    const ejR = Math.max(10, Math.min(sourceCell.radius * 0.12, 28))
     const em = new EjectedMass(
-      sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6),
-      sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6),
+      sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR + 2),
+      sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR + 2),
       Math.cos(angle) * speed, Math.sin(angle) * speed,
-      EJECT_COLOR, massAmount
+      EJECT_COLOR, massAmount, ejR
     )
     this.ejected.push(em)
     fired++
@@ -1317,12 +1319,13 @@ export class GameEngine {
     for (let i = 0; i < 3; i++) {
       if (sourceCell.mass < massAmount * 2) break
       sourceCell.mass -= massAmount + 2
-      const perpOffset = (i - 1) * 55
+      const ejR2 = Math.max(10, Math.min(sourceCell.radius * 0.12, 28))
+      const perpOffset = (i - 1) * Math.max(ejR2 * 2.5, 40)
       const em = new EjectedMass(
-        sourceCell.x + Math.cos(angle) * (sourceCell.radius + 6) + Math.cos(perpAngle) * perpOffset,
-        sourceCell.y + Math.sin(angle) * (sourceCell.radius + 6) + Math.sin(perpAngle) * perpOffset,
+        sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR2 + 2) + Math.cos(perpAngle) * perpOffset,
+        sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR2 + 2) + Math.sin(perpAngle) * perpOffset,
         Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
-        EJECT_COLOR, massAmount
+        EJECT_COLOR, massAmount, ejR2
       )
       this.ejected.push(em)
     }
@@ -3346,17 +3349,30 @@ export class GameEngine {
 
       if (name && dr > 10) {
         ctx.font = `bold ${fs}px "Exo 2", Arial, sans-serif`
-        const nameW = Math.max(ctx.measureText(name).width + fs * 0.8, fs * 2)
-        const pillH = fs * 1.25
+        const nameW = Math.max(ctx.measureText(name).width + fs * 1.0, fs * 2.2)
+        const pillH = fs * 1.35
         const pillX = x - nameW / 2
         const pillY = nameY - pillH / 2
+        const pillR = pillH / 2
         ctx.save()
-        ctx.globalAlpha = 0.72
-        ctx.fillStyle = isMe ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.5)'
+        const pillGrad = ctx.createLinearGradient(pillX, pillY, pillX, pillY + pillH)
+        if (isMe) {
+          pillGrad.addColorStop(0, 'rgba(30,10,80,0.82)')
+          pillGrad.addColorStop(1, 'rgba(10,5,40,0.88)')
+        } else {
+          pillGrad.addColorStop(0, 'rgba(10,10,30,0.80)')
+          pillGrad.addColorStop(1, 'rgba(5,5,20,0.88)')
+        }
+        ctx.fillStyle = pillGrad
         if (ctx.roundRect) {
-          ctx.beginPath(); ctx.roundRect(pillX, pillY, nameW, pillH, pillH / 2); ctx.fill()
+          ctx.beginPath(); ctx.roundRect(pillX, pillY, nameW, pillH, pillR); ctx.fill()
         } else {
           ctx.fillRect(pillX, pillY, nameW, pillH)
+        }
+        ctx.strokeStyle = isMe ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.18)'
+        ctx.lineWidth = 1.2
+        if (ctx.roundRect) {
+          ctx.beginPath(); ctx.roundRect(pillX, pillY, nameW, pillH, pillR); ctx.stroke()
         }
         ctx.globalAlpha = 1
         ctx.restore()
