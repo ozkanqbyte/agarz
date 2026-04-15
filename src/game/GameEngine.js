@@ -1419,6 +1419,7 @@ export class GameEngine {
   _loop(ts) {
     if (!this.running) return
     this.frameId = requestAnimationFrame(this._loop.bind(this))
+    if (document.hidden) { this.lastTime = ts; return }
     try {
       const dt = Math.min((ts - this.lastTime) / 1000, 0.05)
       this.lastTime = ts
@@ -2185,15 +2186,18 @@ export class GameEngine {
   }
 
   _spawnParticle(x, y, color, count = 4) {
-    for (let i = 0; i < count; i++) {
+    if (this.qualityLevel === 'low') return
+    const cap = this.qualityLevel === 'high' ? 3 : 2
+    for (let i = 0; i < Math.min(count, cap); i++) {
       this.particles.push({ x, y, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, color, life: 1, size: 2+Math.random()*3 })
     }
   }
 
   _spawnExplosion(x, y, color) {
-    for (let i = 0; i < 24; i++) {
-      const angle = Math.random()*Math.PI*2, speed = 2+Math.random()*6
-      this.particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed, color, life: 1, size: 3+Math.random()*6 })
+    const cnt = this.qualityLevel === 'high' ? 10 : this.qualityLevel === 'medium' ? 6 : 0
+    for (let i = 0; i < cnt; i++) {
+      const angle = Math.random()*Math.PI*2, speed = 2+Math.random()*5
+      this.particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed, color, life: 1, size: 3+Math.random()*5 })
     }
   }
 
@@ -2203,7 +2207,7 @@ export class GameEngine {
       p.vx *= 0.94; p.vy *= 0.94; p.life -= dt*1.8
     }
     this.particles = this.particles.filter(p => p.life > 0)
-    const maxP = this.qualityLevel === 'high' ? 200 : this.qualityLevel === 'medium' ? 100 : 40
+    const maxP = this.qualityLevel === 'high' ? 80 : this.qualityLevel === 'medium' ? 40 : 0
     if (this.particles.length > maxP) this.particles.splice(0, this.particles.length - maxP)
   }
 
@@ -3038,7 +3042,7 @@ export class GameEngine {
         this._trailTimer = now
         const mainCell = this.cells[0]
         this.trailHistory.push({ x: mainCell.x, y: mainCell.y, r: mainCell.radius, t: now })
-        if (this.trailHistory.length > 18) this.trailHistory.shift()
+        if (this.trailHistory.length > 10) this.trailHistory.shift()
       }
       this._drawTrail(trailEffect)
     } else {
@@ -3148,9 +3152,9 @@ export class GameEngine {
     const shieldActive = isMe && this.skills?.shield?.active
 
     ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
-    const needGlow = isMe || isGod || frozen || poisoned || speedActive || shieldActive || dr > 40
+    const needGlow = (isMe || isGod || frozen || poisoned || speedActive || shieldActive || dr > 40) && this.qualityLevel !== 'low'
     if (needGlow) {
-      ctx.shadowBlur = speedActive ? 40 : shieldActive ? 40 : isMe ? 25 : (isGod ? 35 : 10)
+      ctx.shadowBlur = speedActive ? 30 : shieldActive ? 30 : isMe ? 18 : (isGod ? 25 : 8)
       ctx.shadowColor = shieldActive ? '#06b6d4' : speedActive ? '#fbbf24' : frozen ? '#38bdf8' : poisoned ? '#a855f7' : isGod ? '#fbbf24' : color
     }
 

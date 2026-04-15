@@ -273,15 +273,15 @@ const io = new Server(httpServer, {
 })
 
 const WORLD_SIZE = 6000
-const BOT_COUNT = 20
+const BOT_COUNT = 15
 const BOT_NAMES = ['Mert','Emre','Burak','Arda','Kerem','Serhat','Furkan','Berk','Yusuf','Caner','Oguz','Tolga','Umut','Hakan','Kaan','Enes','Volkan','Selim','Tarik','Baran']
 const BOT_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#10b981','#6366f1','#84cc16','#e879f9','#38bdf8','#fb923c','#a3e635','#f472b6','#34d399','#c084fc']
-const FOOD_COUNT = 1000
+const FOOD_COUNT = 700
 const VIRUS_COUNT = 50
 const VIRUS_MIN_MASS = 300
 const TICK_RATE = 30
 const TICK_MS = 1000 / TICK_RATE
-const BROADCAST_EVERY = 1
+const BROADCAST_EVERY = 2
 const BASE_SPEED = 9
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 14
@@ -1267,10 +1267,11 @@ class GameRoom {
   }
 
   _broadcast() {
-    const players = []
+    const VIEW_RANGE = 2200
+    const allPlayers = []
     for (const [, p] of this.players) {
       if (p.dead) continue
-      players.push({
+      allPlayers.push({
         id: p.id,
         x: p.x, y: p.y,
         m: p.mass,
@@ -1299,7 +1300,16 @@ class GameRoom {
     if (this.mode === 'infection') {
       modeData.zombies = Array.from(this.zombies)
     }
-    io.to(this.id).emit('world:state', { players, tick: this._tick, mode: this.mode, modeData })
+    for (const [, viewer] of this.players) {
+      if (!viewer.socketId || viewer.dead) continue
+      const vx = viewer.x, vy = viewer.y
+      const nearPlayers = allPlayers.filter(p => {
+        if (p.id === viewer.id) return true
+        const dx = p.x - vx, dy = p.y - vy
+        return dx * dx + dy * dy < VIEW_RANGE * VIEW_RANGE
+      })
+      io.to(viewer.socketId).emit('world:state', { players: nearPlayers, tick: this._tick, mode: this.mode, modeData })
+    }
   }
 
   addPlayer(player) {
