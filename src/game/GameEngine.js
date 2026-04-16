@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 40
+const SPLIT_SPEED = 100
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -1717,16 +1717,17 @@ export class GameEngine {
         if (velMag > 0.05) {
           cell.x += cell.vx * dt * 60
           cell.y += cell.vy * dt * 60
-          cell.vx *= 0.85; cell.vy *= 0.85
+          const decay = Math.pow(0.85, dt * 30)
+          cell.vx *= decay; cell.vy *= decay
           if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
         }
-        if (!cell._predicted && cell._tx !== undefined && velMag < 1.0) {
+        if (!cell._predicted && cell._tx !== undefined && velMag < 0.5) {
           const ex = cell._tx - cell.x, ey = cell._ty - cell.y
           const e2 = ex * ex + ey * ey
           if (e2 > 700 * 700) {
             cell.x = cell._tx; cell.y = cell._ty
           } else if (e2 > 300 * 300) {
-            const t = Math.min(0.2, dt * 5)
+            const t = Math.min(0.15, dt * 4)
             cell.x += ex * t; cell.y += ey * t
           }
         }
@@ -1734,7 +1735,6 @@ export class GameEngine {
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
       }
-      this._separateCells()
       return
     }
     for (const cell of this.cells) {
