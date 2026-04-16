@@ -947,8 +947,8 @@ class GameRoom {
       const nx = dx / d, ny = dy / d
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x + nx * (nr * 3 + 6), nr, WORLD_SIZE - nr),
-        y: clamp(cell.y + ny * (nr * 3 + 6), nr, WORLD_SIZE - nr),
+        x: clamp(cell.x + nx * (nr * 2 + 8), nr, WORLD_SIZE - nr),
+        y: clamp(cell.y + ny * (nr * 2 + 8), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
         splitVx: nx * SPLIT_SPEED,

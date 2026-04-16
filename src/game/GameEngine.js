@@ -622,26 +622,7 @@ export class GameEngine {
             if (p.cs && Array.isArray(p.cs) && p.cs.length > 0) {
               const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10), vx: c.vx || 0, vy: c.vy || 0 }))
               const serverIdSet = new Set(serverCells.map(c => c.id))
-              const clientIdSet = new Set(this.cells.map(c => c.id))
-              const newServerCells = serverCells.filter(sc => !clientIdSet.has(sc.id))
-              const predictedCells = this.cells.filter(c => c._predicted)
-              const usedPreds = new Set()
-              for (const sc of newServerCells) {
-                let best = null, bestDist = Infinity
-                for (const pred of predictedCells) {
-                  if (usedPreds.has(pred.id)) continue
-                  const d2 = (pred.x - sc.x)**2 + (pred.y - sc.y)**2
-                  if (d2 < bestDist) { bestDist = d2; best = pred }
-                }
-                if (best && bestDist < 600 * 600) {
-                  usedPreds.add(best.id)
-                  best.id = sc.id
-                  best._predicted = false
-                  best._splitTime = best._splitTime || Date.now()
-                  serverIdSet.add(sc.id)
-                }
-              }
-              const removedCells = this.cells.filter(c => !serverIdSet.has(c.id) && !c._predicted)
+              const removedCells = this.cells.filter(c => !serverIdSet.has(c.id))
               for (const rc of removedCells) {
                 let tx = rc.x, ty = rc.y
                 let bestD = Infinity
@@ -1199,7 +1180,6 @@ export class GameEngine {
 
   _split() {
     if (this._useSocket) {
-      this._doPredictedSplit()
       socketClient.sendSplit()
       return
     }
@@ -1234,40 +1214,6 @@ export class GameEngine {
     nc.vy = ndy * dynSpeed
     nc.mergeTimer = Date.now() + MERGE_TIME
     splitCell.mergeTimer = Date.now() + MERGE_TIME
-    this.cells.push(nc)
-  }
-
-  _doPredictedSplit() {
-    if (this.cells.length >= MAX_CELLS) return
-    const frozenPos = this._frozenMousePos
-    const mouseTargetX = frozenPos ? frozenPos.x : this.mouse.x
-    const mouseTargetY = frozenPos ? frozenPos.y : this.mouse.y
-    let splitCell = null, closestDist = Infinity
-    for (const cell of this.cells) {
-      if (cell.mass < MIN_MASS_SPLIT || cell._predicted) continue
-      const d = Math.sqrt((mouseTargetX-cell.x)**2 + (mouseTargetY-cell.y)**2)
-      if (d < closestDist) { closestDist = d; splitCell = cell }
-    }
-    if (!splitCell) return
-    const half = splitCell.mass / 2
-    splitCell.mass = half
-    const nr2 = splitCell.radius
-    const cdx = mouseTargetX - splitCell.x, cdy = mouseTargetY - splitCell.y
-    const clen = Math.sqrt(cdx*cdx + cdy*cdy) || 1
-    const ndx = cdx/clen, ndy = cdy/clen
-    const nc = new Cell(
-      clamp(splitCell.x + ndx*(nr2*3+6), nr2, WORLD_SIZE-nr2),
-      clamp(splitCell.y + ndy*(nr2*3+6), nr2, WORLD_SIZE-nr2),
-      half, splitCell.color
-    )
-    const dynSpeed = SPLIT_SPEED
-    nc.vx = ndx * dynSpeed
-    nc.vy = ndy * dynSpeed
-    nc.mergeTimer = Date.now() + MERGE_TIME
-    splitCell.mergeTimer = Date.now() + MERGE_TIME
-    nc.id = '__pred__' + Date.now() + Math.random().toString(36).slice(2)
-    nc._predicted = true
-    nc._splitTime = Date.now()
     this.cells.push(nc)
   }
 
