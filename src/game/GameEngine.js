@@ -1720,6 +1720,9 @@ export class GameEngine {
           const e2 = ex * ex + ey * ey
           if (e2 > 700 * 700) {
             cell.x = cell._tx; cell.y = cell._ty
+          } else if (cell._splitTime && (Date.now() - cell._splitTime < 800) && e2 > 4) {
+            const t = Math.min(0.5, dt * 12)
+            cell.x += ex * t; cell.y += ey * t
           } else if (e2 > 300 * 300) {
             const t = Math.min(0.2, dt * 5)
             cell.x += ex * t; cell.y += ey * t
