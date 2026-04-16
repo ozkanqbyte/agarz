@@ -1711,7 +1711,7 @@ export class GameEngine {
         const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
         const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
         if (d2 > cell.radius / 3) {
-          const spd = Math.max(1.5, 6.5 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+          const spd = Math.max(1.5, 9.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
           const s2 = Math.min(spd * dt, d2)
           if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
         }
@@ -1721,7 +1721,7 @@ export class GameEngine {
           if (e2 > 700 * 700) {
             cell.x = cell._tx; cell.y = cell._ty
           } else if (e2 > 4) {
-            const t = Math.min(0.3, dt * 6)
+            const t = Math.min(0.4, dt * 10)
             cell.x += ex * t; cell.y += ey * t
           }
         }

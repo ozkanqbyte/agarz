@@ -951,8 +951,8 @@ class GameRoom {
         y: clamp(cell.y + ny * (nr * 2 + 6), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
-        splitVx: nx * Math.min(28, Math.max(16, Math.sqrt(cell.mass) * 0.4)),
-        splitVy: ny * Math.min(28, Math.max(16, Math.sqrt(cell.mass) * 0.4))
+        splitVx: nx * Math.min(12, Math.max(6, Math.sqrt(cell.mass) * 0.2)),
+        splitVy: ny * Math.min(12, Math.max(6, Math.sqrt(cell.mass) * 0.2))
       })
     }
     player.cells.push(...newCells)
