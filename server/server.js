@@ -619,16 +619,22 @@ class GameRoom {
           const ca = player.cells[i], cb = player.cells[j]
           if (ca.mergeTimer >= MERGE_TIME && cb.mergeTimer >= MERGE_TIME) continue
           const adx = ca.x - cb.x, ady = ca.y - cb.y
-          const ad = Math.sqrt(adx * adx + ady * ady) || 1
+          const ad = Math.sqrt(adx * adx + ady * ady)
           const minD = massToRadius(ca.mass) + massToRadius(cb.mass)
           if (ad < minD) {
-            const overlap = minD - ad
-            const push = (overlap / (2 * ad)) * 1.0
+            const overlap = (minD - ad) / 2
             const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
-            ca.x = clamp(ca.x + adx * push, ra, WORLD_SIZE - ra)
-            ca.y = clamp(ca.y + ady * push, ra, WORLD_SIZE - ra)
-            cb.x = clamp(cb.x - adx * push, rb, WORLD_SIZE - rb)
-            cb.y = clamp(cb.y - ady * push, rb, WORLD_SIZE - rb)
+            let nx, ny
+            if (ad < 0.01) {
+              const angle = (i * 2.399) + j
+              nx = Math.cos(angle); ny = Math.sin(angle)
+            } else {
+              nx = adx / ad; ny = ady / ad
+            }
+            ca.x = clamp(ca.x + nx * overlap, ra, WORLD_SIZE - ra)
+            ca.y = clamp(ca.y + ny * overlap, ra, WORLD_SIZE - ra)
+            cb.x = clamp(cb.x - nx * overlap, rb, WORLD_SIZE - rb)
+            cb.y = clamp(cb.y - ny * overlap, rb, WORLD_SIZE - rb)
           }
         }
       }
@@ -940,11 +946,17 @@ class GameRoom {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       const dx = (player.inputX || 0) - cell.x
       const dy = (player.inputY || 0) - cell.y
-      const d = Math.sqrt(dx * dx + dy * dy) || 1
+      const d = Math.sqrt(dx * dx + dy * dy)
       cell.mass /= 2
       cell.mergeTimer = 0
       const nr = massToRadius(cell.mass)
-      const nx = dx / d, ny = dy / d
+      let nx, ny
+      if (d < 1) {
+        const angle = Math.random() * Math.PI * 2
+        nx = Math.cos(angle); ny = Math.sin(angle)
+      } else {
+        nx = dx / d; ny = dy / d
+      }
       newCells.push({
         id: rndId(),
         x: clamp(cell.x + nx * (nr * 3 + 8), nr, WORLD_SIZE - nr),
