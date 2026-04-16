@@ -288,7 +288,7 @@ const EJECT_COST = 14
 const EJECT_MASS = 12
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 100
+const SPLIT_SPEED = 30
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -959,8 +959,8 @@ class GameRoom {
       }
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x + nx * (nr * 3 + 8), nr, WORLD_SIZE - nr),
-        y: clamp(cell.y + ny * (nr * 3 + 8), nr, WORLD_SIZE - nr),
+        x: clamp(cell.x + nx * (nr * 2 + 4), nr, WORLD_SIZE - nr),
+        y: clamp(cell.y + ny * (nr * 2 + 4), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
         splitVx: nx * SPLIT_SPEED,
