@@ -1686,7 +1686,11 @@ app.get('/health', (req, res) => {
     rooms: rooms.size,
     totalPlayers: Array.from(rooms.values()).reduce((s, r) => s + r.players.size, 0),
     uptime: Math.floor(process.uptime()),
-    serverAuth: true
+    serverAuth: true,
+    v: 3,
+    MERGE_TIME,
+    MERGE_FADE,
+    SPLIT_SPEED
   })
 })
 
