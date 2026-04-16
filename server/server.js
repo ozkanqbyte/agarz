@@ -286,7 +286,8 @@ const BASE_SPEED = 9
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 14
 const EJECT_MASS = 12
-const MERGE_TIME = 20000
+const MERGE_TIME = 15000
+const MERGE_FADE = 8000
 const MAX_CELLS = 16
 const SPLIT_SPEED = 30
 const MIN_EAT_RATIO = 1.05
@@ -621,10 +622,16 @@ class GameRoom {
           const ad = Math.sqrt(adx * adx + ady * ady)
           const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
           const minD = ra + rb
-          const bothExpired = ca.mergeTimer >= MERGE_TIME && cb.mergeTimer >= MERGE_TIME
-          const effectiveMinD = bothExpired ? minD * 0.5 : minD
-          if (ad >= effectiveMinD) continue
-          const overlap = (effectiveMinD - ad) / 2
+          const timerMin = Math.min(ca.mergeTimer, cb.mergeTimer)
+          let pushFactor
+          if (timerMin < MERGE_TIME) {
+            pushFactor = 1.0
+          } else {
+            const fade = Math.min(1, (timerMin - MERGE_TIME) / MERGE_FADE)
+            pushFactor = 1.0 - fade
+          }
+          if (pushFactor <= 0 || ad >= minD) continue
+          const overlap = (minD - ad) / 2 * pushFactor
           let nx, ny
           if (ad < 0.01) {
             const angle = (i * 2.399) + j
@@ -665,9 +672,8 @@ class GameRoom {
     for (let i = 0; i < player.cells.length; i++) {
       for (let j = i + 1; j < player.cells.length; j++) {
         const a = player.cells[i], b = player.cells[j]
-        if (a.mergeTimer < MERGE_TIME || b.mergeTimer < MERGE_TIME) continue
-        const ra = massToRadius(a.mass), rb = massToRadius(b.mass)
-        if (dist(a, b) < Math.min(ra, rb) * 0.8) {
+        if (a.mergeTimer < MERGE_TIME + MERGE_FADE || b.mergeTimer < MERGE_TIME + MERGE_FADE) continue
+        if (dist(a, b) < massToRadius(a.mass) + massToRadius(b.mass) - 2) {
           toMerge.push([i, j])
         }
       }
