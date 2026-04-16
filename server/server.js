@@ -286,7 +286,7 @@ const BASE_SPEED = 9
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 14
 const EJECT_MASS = 12
-const MERGE_TIME = 10000
+const MERGE_TIME = 20000
 const MAX_CELLS = 16
 const SPLIT_SPEED = 30
 const MIN_EAT_RATIO = 1.05
@@ -617,25 +617,25 @@ class GameRoom {
       for (let i = 0; i < player.cells.length; i++) {
         for (let j = i + 1; j < player.cells.length; j++) {
           const ca = player.cells[i], cb = player.cells[j]
-          if (ca.mergeTimer >= MERGE_TIME && cb.mergeTimer >= MERGE_TIME) continue
           const adx = ca.x - cb.x, ady = ca.y - cb.y
           const ad = Math.sqrt(adx * adx + ady * ady)
-          const minD = massToRadius(ca.mass) + massToRadius(cb.mass)
-          if (ad < minD) {
-            const overlap = (minD - ad) / 2
-            const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
-            let nx, ny
-            if (ad < 0.01) {
-              const angle = (i * 2.399) + j
-              nx = Math.cos(angle); ny = Math.sin(angle)
-            } else {
-              nx = adx / ad; ny = ady / ad
-            }
-            ca.x = clamp(ca.x + nx * overlap, ra, WORLD_SIZE - ra)
-            ca.y = clamp(ca.y + ny * overlap, ra, WORLD_SIZE - ra)
-            cb.x = clamp(cb.x - nx * overlap, rb, WORLD_SIZE - rb)
-            cb.y = clamp(cb.y - ny * overlap, rb, WORLD_SIZE - rb)
+          const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
+          const minD = ra + rb
+          const bothExpired = ca.mergeTimer >= MERGE_TIME && cb.mergeTimer >= MERGE_TIME
+          const effectiveMinD = bothExpired ? minD * 0.5 : minD
+          if (ad >= effectiveMinD) continue
+          const overlap = (effectiveMinD - ad) / 2
+          let nx, ny
+          if (ad < 0.01) {
+            const angle = (i * 2.399) + j
+            nx = Math.cos(angle); ny = Math.sin(angle)
+          } else {
+            nx = adx / ad; ny = ady / ad
           }
+          ca.x = clamp(ca.x + nx * overlap, ra, WORLD_SIZE - ra)
+          ca.y = clamp(ca.y + ny * overlap, ra, WORLD_SIZE - ra)
+          cb.x = clamp(cb.x - nx * overlap, rb, WORLD_SIZE - rb)
+          cb.y = clamp(cb.y - ny * overlap, rb, WORLD_SIZE - rb)
         }
       }
     }
@@ -666,7 +666,8 @@ class GameRoom {
       for (let j = i + 1; j < player.cells.length; j++) {
         const a = player.cells[i], b = player.cells[j]
         if (a.mergeTimer < MERGE_TIME || b.mergeTimer < MERGE_TIME) continue
-        if (dist(a, b) < massToRadius(a.mass) + massToRadius(b.mass) - 2) {
+        const ra = massToRadius(a.mass), rb = massToRadius(b.mass)
+        if (dist(a, b) < Math.min(ra, rb) * 0.8) {
           toMerge.push([i, j])
         }
       }
