@@ -925,7 +925,7 @@ export class GameEngine {
       const clientMass = Math.floor(this.cells.reduce((s,c) => s+c.mass, 0))
       const cellPositions = this.cells.map(c => ({ x: Math.round(c.x), y: Math.round(c.y) }))
       socketClient.sendInput(mx | 0, my | 0, clientMass, cellPositions)
-    }, 33)
+    }, 16)
   }
 
   async _initFirebase() {
@@ -1720,8 +1720,8 @@ export class GameEngine {
           const e2 = ex * ex + ey * ey
           if (e2 > 700 * 700) {
             cell.x = cell._tx; cell.y = cell._ty
-          } else if (e2 > 4) {
-            const t = Math.min(0.4, dt * 10)
+          } else if (e2 > 300 * 300) {
+            const t = Math.min(0.2, dt * 5)
             cell.x += ex * t; cell.y += ey * t
           }
         }
