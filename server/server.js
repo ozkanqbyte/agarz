@@ -615,34 +615,36 @@ class GameRoom {
       cell.y = clamp(cell.y, r, WORLD_SIZE - r)
     }
     if (player.cells.length > 1) {
-      for (let i = 0; i < player.cells.length; i++) {
-        for (let j = i + 1; j < player.cells.length; j++) {
-          const ca = player.cells[i], cb = player.cells[j]
-          const adx = ca.x - cb.x, ady = ca.y - cb.y
-          const ad = Math.sqrt(adx * adx + ady * ady)
-          const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
-          const minD = ra + rb
-          const timerMin = Math.min(ca.mergeTimer, cb.mergeTimer)
-          let pushFactor
-          if (timerMin < MERGE_TIME) {
-            pushFactor = 1.0
-          } else {
-            const fade = Math.min(1, (timerMin - MERGE_TIME) / MERGE_FADE)
-            pushFactor = 1.0 - fade
+      for (let iter = 0; iter < 4; iter++) {
+        for (let i = 0; i < player.cells.length; i++) {
+          for (let j = i + 1; j < player.cells.length; j++) {
+            const ca = player.cells[i], cb = player.cells[j]
+            const adx = ca.x - cb.x, ady = ca.y - cb.y
+            const ad = Math.sqrt(adx * adx + ady * ady)
+            const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
+            const minD = ra + rb
+            const timerMin = Math.min(ca.mergeTimer, cb.mergeTimer)
+            let pushFactor
+            if (timerMin < MERGE_TIME) {
+              pushFactor = 1.0
+            } else {
+              const fade = Math.min(1, (timerMin - MERGE_TIME) / MERGE_FADE)
+              pushFactor = 1.0 - fade
+            }
+            if (pushFactor <= 0 || ad >= minD) continue
+            const overlap = (minD - ad) / 2 * pushFactor
+            let nx, ny
+            if (ad < 0.01) {
+              const angle = (i * 2.399) + j
+              nx = Math.cos(angle); ny = Math.sin(angle)
+            } else {
+              nx = adx / ad; ny = ady / ad
+            }
+            ca.x = clamp(ca.x + nx * overlap, ra, WORLD_SIZE - ra)
+            ca.y = clamp(ca.y + ny * overlap, ra, WORLD_SIZE - ra)
+            cb.x = clamp(cb.x - nx * overlap, rb, WORLD_SIZE - rb)
+            cb.y = clamp(cb.y - ny * overlap, rb, WORLD_SIZE - rb)
           }
-          if (pushFactor <= 0 || ad >= minD) continue
-          const overlap = (minD - ad) / 2 * pushFactor
-          let nx, ny
-          if (ad < 0.01) {
-            const angle = (i * 2.399) + j
-            nx = Math.cos(angle); ny = Math.sin(angle)
-          } else {
-            nx = adx / ad; ny = ady / ad
-          }
-          ca.x = clamp(ca.x + nx * overlap, ra, WORLD_SIZE - ra)
-          ca.y = clamp(ca.y + ny * overlap, ra, WORLD_SIZE - ra)
-          cb.x = clamp(cb.x - nx * overlap, rb, WORLD_SIZE - rb)
-          cb.y = clamp(cb.y - ny * overlap, rb, WORLD_SIZE - rb)
         }
       }
     }
@@ -1703,6 +1705,5 @@ app.get('/rooms', (req, res) => {
 
 const PORT = process.env.PORT || 3001
 httpServer.listen(PORT, () => {
-  console.log(`🎮 AGARZ Server-Authoritative running on port ${PORT}`)
-  console.log(`   Health: http://localhost:${PORT}/health`)
+  console.log(`AGARZ v4 port=${PORT} MERGE_TIME=${MERGE_TIME} MERGE_FADE=${MERGE_FADE} SPLIT_SPEED=${SPLIT_SPEED}`)
 })

@@ -1735,6 +1735,27 @@ export class GameEngine {
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
       }
+      if (this.cells.length > 1) {
+        for (let iter = 0; iter < 3; iter++) {
+          for (let i = 0; i < this.cells.length; i++) {
+            for (let j = i + 1; j < this.cells.length; j++) {
+              const ca = this.cells[i], cb = this.cells[j]
+              const adx = ca.x - cb.x, ady = ca.y - cb.y
+              const ad = Math.sqrt(adx * adx + ady * ady)
+              const minD = ca.radius + cb.radius
+              if (ad >= minD || ad < 0.01) continue
+              const overlap = (minD - ad) / 2
+              const nx = adx / ad, ny = ady / ad
+              ca.x += nx * overlap; ca.y += ny * overlap
+              cb.x -= nx * overlap; cb.y -= ny * overlap
+              ca.x = clamp(ca.x, ca.radius, WORLD_SIZE - ca.radius)
+              ca.y = clamp(ca.y, ca.radius, WORLD_SIZE - ca.radius)
+              cb.x = clamp(cb.x, cb.radius, WORLD_SIZE - cb.radius)
+              cb.y = clamp(cb.y, cb.radius, WORLD_SIZE - cb.radius)
+            }
+          }
+        }
+      }
       return
     }
     for (const cell of this.cells) {
