@@ -282,14 +282,14 @@ const VIRUS_MIN_MASS = 300
 const TICK_RATE = 30
 const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 1
-const BASE_SPEED = 12
+const BASE_SPEED = 15
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 14
 const EJECT_MASS = 12
 const MERGE_TIME = 15000
 const MERGE_FADE = 8000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 30
+const SPLIT_SPEED = 15
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 8
@@ -695,20 +695,7 @@ class GameRoom {
   }
 
   _checkFoodCollisions() {
-    for (const [, player] of this.players) {
-      if (player.dead || player.skillMagnetTimer <= 0) continue
-      for (const cell of player.cells) {
-        for (const food of this.food) {
-          const d = dist(cell, food)
-          if (d < 250) {
-            const fx = (cell.x - food.x) / d
-            const fy = (cell.y - food.y) / d
-            food.x += fx * 5
-            food.y += fy * 5
-          }
-        }
-      }
-    }
+
     const toEat = []
     for (const [, player] of this.players) {
       if (player.dead) continue
