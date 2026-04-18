@@ -1642,6 +1642,18 @@ io.on('connection', (socket) => {
     socket.emit('skill:activated', { skill, cooldown: cooldownMs })
   })
 
+  
+  socket.on('player:name', (data) => {
+    if (!room || !playerId) return
+    const player = room.players.get(playerId)
+    if (!player || !data.name) return
+    player.name = data.name.trim().substring(0, 30)
+    io.to(room.id).emit('player:update', {
+      playerId: player.id,
+      name: player.name
+    })
+  })
+
   socket.on('player:move', (data) => {
     if (!room || !playerId) return
     const player = room.players.get(playerId)

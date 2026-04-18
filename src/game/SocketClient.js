@@ -88,6 +88,12 @@ class SocketClient {
     this._socket.emit('chat:send', { text, emoji })
   }
 
+
+  sendPlayerName(name) {
+    if (!this._socket?.connected) return
+    this._socket.emit('player:name', { name })
+  }
+
   die(data) {
     if (!this._socket?.connected) return
     this._socket.emit('player:die', data || {})

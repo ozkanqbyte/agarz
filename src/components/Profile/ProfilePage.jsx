@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { ref as dbRef, set as dbSet } from 'firebase/database'
 import { storage, db } from '../../firebase/config'
+import { socketClient } from '../../game/SocketClient'
 import useAuthStore from '../../store/useAuthStore'
 import useProgressStore, { BADGES } from '../../store/useProgressStore'
 import usePremiumStore from '../../store/usePremiumStore'
@@ -192,6 +193,7 @@ export default function ProfilePage() {
     if (!newName.trim() || newName.length < 2) { toast.error('En az 2 karakter!'); return }
     setSavingName(true)
     await updateProfile({ name: newName.trim() })
+    socketClient.sendPlayerName(newName.trim())
     setEditingName(false)
     setSavingName(false)
     toast.success('İsim güncellendi!')
