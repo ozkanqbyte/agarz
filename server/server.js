@@ -282,7 +282,7 @@ const VIRUS_MIN_MASS = 300
 const TICK_RATE = 30
 const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 1
-const BASE_SPEED = 15
+const BASE_SPEED = 20
 const MIN_MASS_SPLIT = 35
 const EJECT_COST = 14
 const EJECT_MASS = 12
@@ -984,7 +984,7 @@ class GameRoom {
         x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
         y: clamp(cell.y + ny * offsetDist, nr, WORLD_SIZE - nr),
         mass: cell.mass,
-        mergeTimer: 0,
+        mergeTimer: 1000,
         splitVx: nx * SPLIT_SPEED,
         splitVy: ny * SPLIT_SPEED
       })
