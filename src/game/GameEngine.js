@@ -1072,8 +1072,16 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { this._eject(EJECT_MASS_SM, 0, 25, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
-    if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { this._ejectBurst3(EJECT_MASS_SM); this.lastEjectTime = now }
+    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { 
+      if (this._useSocket) { socketClient.sendEject(1) } 
+      else { this._eject(EJECT_MASS_SM, 0, 25, 1) } 
+      this.lastEjectTime = now 
+    }
+    if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { 
+      if (this._useSocket) { socketClient.sendEject(2) } 
+      else { this._ejectBurst3(EJECT_MASS_SM) } 
+      this.lastEjectTime = now 
+    }
     if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 25, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }

@@ -68,9 +68,9 @@ class SocketClient {
     this._socket.emit('input:split', dx !== undefined ? { dx, dy } : {})
   }
 
-  sendEject() {
+  sendEject(count = 1) {
     if (!this._socket?.connected) return
-    this._socket.emit('input:eject')
+    this._socket.emit('input:eject', { count })
   }
 
   sendSkill(skill, extra = {}) {
