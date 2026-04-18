@@ -537,6 +537,8 @@ class GameRoom {
       if (player.skillShieldTimer > 0) player.skillShieldTimer -= dt
       if (player.skillMagnetTimer > 0) {
         player.skillMagnetTimer -= dt
+      }
+      if (false && player.skillMagnetTimer > 0) {
         const MAGNET_RANGE = 700, MAGNET_RANGE2 = 700*700, MAGNET_SPEED = 5
         for (const food of room.food) {
           const dx = player.x - food.x, dy = player.y - food.y
@@ -702,7 +704,7 @@ class GameRoom {
       for (const cell of player.cells) {
         const r = massToRadius(cell.mass)
         for (const food of this.food) {
-          if (dist(cell, food) < r) {
+          if (dist(cell, food) < r * 1.3) {
             cell.mass += food.value
             toEat.push(food.id)
           }
