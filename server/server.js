@@ -289,7 +289,7 @@ const EJECT_MASS = 12
 const MERGE_TIME = 15000
 const MERGE_FADE = 8000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 15
+const SPLIT_SPEED = 22
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 8
@@ -605,7 +605,8 @@ class GameRoom {
       }
       if (!frozen && !hasSplitVel) {
         const slowMult = player.skillSlowTimer > 0 ? 0.25 : 1
-        const baseSpeed = speedForMass(cell.mass) * speedMult * slowMult * 60
+        const magnetMult = player.skillMagnetTimer > 0 ? 1.0 : 1
+        const baseSpeed = speedForMass(cell.mass) * speedMult * slowMult * magnetMult * 60
         const dx = (player.inputX || 0) - cell.x
         const dy = (player.inputY || 0) - cell.y
         const d = Math.sqrt(dx * dx + dy * dy)
@@ -975,10 +976,11 @@ class GameRoom {
         const angle = Math.random() * Math.PI * 2
         nx = Math.cos(angle); ny = Math.sin(angle)
       }
+      const offsetDist = nr * 1.2 + 5;
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x + nx * (nr + 1), nr, WORLD_SIZE - nr),
-        y: clamp(cell.y + ny * (nr + 1), nr, WORLD_SIZE - nr),
+        x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
+        y: clamp(cell.y + ny * offsetDist, nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
         splitVx: nx * SPLIT_SPEED,
