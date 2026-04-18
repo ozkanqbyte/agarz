@@ -288,11 +288,12 @@ const EJECT_COST = 14
 const EJECT_MASS = 12
 const MERGE_TIME = 15000
 const MERGE_FADE = 8000
+const MERGE_TIME_MIN = 10000
 const MAX_CELLS = 16
 const SPLIT_SPEED = 18
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
-const VIRUS_FEED_SPLIT = 8
+const VIRUS_FEED_SPLIT = 5
 
 const FOOD_COLORS = [
   '#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b',
@@ -307,7 +308,10 @@ function rndId() { return Math.random().toString(36).slice(2, 12) }
 function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2) }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 function massToRadius(mass) { return Math.sqrt(mass) * 4.5 }
-function speedForMass(mass) { return Math.max(1.5, BASE_SPEED / Math.pow(Math.max(20, mass), 0.3)) }
+function speedForMass(mass, isBot = false) { 
+  const base = Math.max(1.5, BASE_SPEED / Math.pow(Math.max(20, mass), 0.3))
+  return isBot ? base * 0.85 : base
+}
 
 class GameRoom {
   constructor(id, mode) {
@@ -979,12 +983,13 @@ class GameRoom {
       cell.mergeTimer = 0
       const nr = massToRadius(cell.mass)
       const offsetDist = nr * 1.0 + 3;
+const mergeDelay = cell.mass < 60 ? MERGE_TIME_MIN : MERGE_TIME
       newCells.push({
         id: rndId(),
         x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
         y: clamp(cell.y + ny * offsetDist, nr, WORLD_SIZE - nr),
         mass: cell.mass,
-        mergeTimer: 1000,
+        mergeTimer: mergeDelay,
         splitVx: nx * SPLIT_SPEED,
         splitVy: ny * SPLIT_SPEED
       })
