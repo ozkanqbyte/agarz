@@ -9,7 +9,7 @@ const WORLD_SIZE = 6000
 const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
-const SPLIT_SPEED = 30
+const SPLIT_SPEED = 20
 const MERGE_TIME = 23000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
@@ -620,42 +620,34 @@ export class GameEngine {
           if (p.id === this.playerId) {
             this._serverMass = p.m || 0
             if (p.cs && Array.isArray(p.cs) && p.cs.length > 0) {
-              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10), vx: c.vx || 0, vy: c.vy || 0 }))
+              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10), vx: c.vx || 0, vy: c.vy || 0, mt: c.mt || 0 }))
               const serverIdSet = new Set(serverCells.map(c => c.id))
+              const confirmedCells = this.cells.filter(c => serverIdSet.has(c.id))
               const removedCells = this.cells.filter(c => !serverIdSet.has(c.id))
               for (const rc of removedCells) {
                 let tx = rc.x, ty = rc.y
                 let bestD = Infinity
-                for (const c of this.cells) {
-                  if (!serverIdSet.has(c.id)) continue
+                for (const c of confirmedCells) {
                   const d2 = (c.x - rc.x)**2 + (c.y - rc.y)**2
                   if (d2 < bestD) { bestD = d2; tx = c.x; ty = c.y }
                 }
                 this.dyingCells.push({ x: rc.x, y: rc.y, tx, ty, r: rc.radius * 0.85, color: rc.color || this.color, life: 1, _merge: true })
               }
-              this.cells = this.cells.filter(c => serverIdSet.has(c.id))
+              this.cells = confirmedCells
               const updatedById = new Map(this.cells.map(c => [c.id, c]))
               for (const sc of serverCells) {
                 if (updatedById.has(sc.id)) {
                   const cell = updatedById.get(sc.id)
                   cell._tx = sc.x; cell._ty = sc.y
                   cell._targetMass = sc.mass
+                  cell.vx = sc.vx; cell.vy = sc.vy
+                  cell._mergeTimer = sc.mt
                 } else {
-                  let parentCell = null
-                  let bestD = Infinity
-                  for (const existing of this.cells) {
-                    const d2 = (existing.x - sc.x)**2 + (existing.y - sc.y)**2
-                    if (d2 < bestD) { bestD = d2; parentCell = existing }
-                  }
-                  const mergeAt = Date.now() + MERGE_TIME
                   const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
                   nc.id = sc.id
-                  nc._splitTime = Date.now()
-                  nc.mergeTimer = mergeAt
                   nc._tx = sc.x; nc._ty = sc.y; nc._targetMass = sc.mass
-                  nc.vx = sc.vx || 0
-                  nc.vy = sc.vy || 0
-                  if (parentCell) parentCell.mergeTimer = mergeAt
+                  nc.vx = sc.vx; nc.vy = sc.vy
+                  nc._mergeTimer = sc.mt
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -722,12 +714,11 @@ export class GameEngine {
         }
       })
       .on('skill:activated', (d) => {
-        const skillMap = { speed: this.skills.speed, shield: this.skills.shield, slow: this.skills.slow }
-        const sk = skillMap[d.skill]
+        const sk = this.skills[d.skill]
         if (sk) sk.cooldown = (d.cooldown || 20000) / 1000
       })
       .on('skill:denied', (d) => {
-        const labels = { speed: '⚡', shield: '🛡️', slow: '🌀' }
+        const labels = { speed: '⚡', shield: '🛡️', slow: '🌀', magnet: '🧲', ghost: '👻', teleport: '✨' }
         this._showFloat(`${labels[d.skill] || '⛔'} Bekleme: ${d.remaining}s`, '#ef4444')
       })
       .on('zone:update', (d) => {
@@ -959,7 +950,7 @@ export class GameEngine {
 
   async _generateViruses() {
     const vData = {}
-    const types = ['normal','normal','normal','super','poison','freeze']
+    const types = ['normal']
     for (let i = 0; i < VIRUS_COUNT; i++) {
       const id = uuidv4().slice(0, 8)
       const t = types[Math.floor(Math.random()*types.length)]
@@ -1092,24 +1083,24 @@ export class GameEngine {
     if (e.code === 'KeyQ') { this.spectating = !this.spectating; this.onStatusChange({ spectating: this.spectating }) }
     if (e.code === 'Digit1') this._spectateChange(-1)
     if (e.code === 'Digit2') this._spectateChange(1)
-    if (e.code === 'KeyF') { this._activateSpeed(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('speed') }
-    if (e.code === 'KeyG') { this._activateSlow(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('slow') }
-    if (e.code === 'KeyH') { this._activateShield(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('shield') }
-    if (e.code === 'KeyI') { this._activateMagnet(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('magnet') }
-    if (e.code === 'KeyJ') { this._activateGhost(); soundSystem.skill(); if (this._useSocket) socketClient.sendSkill('ghost') }
+    if (e.code === 'KeyF') { this._activateSpeed(); soundSystem.skill() }
+    if (e.code === 'KeyG') { this._activateSlow(); soundSystem.skill() }
+    if (e.code === 'KeyH') { this._activateShield(); soundSystem.skill() }
+    if (e.code === 'KeyI') { this._activateMagnet(); soundSystem.skill() }
+    if (e.code === 'KeyJ') { this._activateGhost(); soundSystem.skill() }
     if (e.code === 'KeyK') { this._startTeleportAim(); soundSystem.skill() }
     if (e.code === 'KeyN') { soundSystem._enabled = !soundSystem._enabled; this._showFloat(soundSystem._enabled ? '🔊 Ses Açık' : '🔇 Ses Kapalı', '#6366f1') }
   }
 
   _onClick(e) {
     const rect = this.canvas.getBoundingClientRect()
-    const wx = (e.clientX - rect.left - this.canvas.width/2) / this.camera.zoom + this.camera.x
-    const wy = (e.clientY - rect.top - this.canvas.height/2) / this.camera.zoom + this.camera.y
+    const wx = (e.clientX - rect.left - rect.width/2) / this.camera.zoom + this.camera.x
+    const wy = (e.clientY - rect.top - rect.height/2) / this.camera.zoom + this.camera.y
 
     if (this._teleportAiming) {
       this._teleportAiming = false
       this.canvas.style.cursor = ''
-      this._activateTeleportTo(this.mouse.x, this.mouse.y)
+      this._activateTeleportTo(wx, wy)
       return
     }
 
@@ -1165,8 +1156,8 @@ export class GameEngine {
 
   _onMouseMove(e) {
     const rect = this.canvas.getBoundingClientRect()
-    const px = (e.clientX - rect.left - this.canvas.width/2) / this.camera.zoom + this.camera.x
-    const py = (e.clientY - rect.top - this.canvas.height/2) / this.camera.zoom + this.camera.y
+    const px = (e.clientX - rect.left - rect.width/2) / this.camera.zoom + this.camera.x
+    const py = (e.clientY - rect.top - rect.height/2) / this.camera.zoom + this.camera.y
     const dx = px - this._lastMoveX, dy = py - this._lastMoveY
     this._isMoving = (dx*dx + dy*dy) > 1
     this._lastMoveX = px; this._lastMoveY = py
@@ -1174,15 +1165,12 @@ export class GameEngine {
   }
 
   _onResize() {
-    this.canvas.width = window.innerWidth
-    this.canvas.height = window.innerHeight
+    const rect = this.canvas.getBoundingClientRect()
+    this.canvas.width = rect.width || window.innerWidth
+    this.canvas.height = rect.height || window.innerHeight
   }
 
   _split() {
-    if (this._useSocket) {
-      socketClient.sendSplit()
-      return
-    }
     if (this.cells.length >= MAX_CELLS) return
     const frozenPos = this._frozenMousePos
     const mouseTargetX = frozenPos ? frozenPos.x : this.mouse.x
@@ -1197,21 +1185,43 @@ export class GameEngine {
     }
     if (!splitCell) return
 
+    if (this._useSocket) {
+      const sdx = mouseTargetX - splitCell.x
+      const sdy = mouseTargetY - splitCell.y
+      const slen = Math.sqrt(sdx*sdx + sdy*sdy)
+      let dirX, dirY
+      if (slen < 1) {
+        const angle = Math.random() * Math.PI * 2
+        dirX = Math.cos(angle); dirY = Math.sin(angle)
+      } else {
+        dirX = sdx / slen; dirY = sdy / slen
+      }
+      socketClient.sendSplit(dirX, dirY)
+      this._lastSplitTime = Date.now()
+      return
+    }
+
     const half = splitCell.mass / 2
     splitCell.mass = half
     const nr2 = splitCell.radius
     const cdx = mouseTargetX - splitCell.x
     const cdy = mouseTargetY - splitCell.y
-    const clen = Math.sqrt(cdx*cdx + cdy*cdy) || 1
-    const ndx = cdx / clen, ndy = cdy / clen
+    const clen = Math.sqrt(cdx*cdx + cdy*cdy)
+    let ndx, ndy
+    if (clen < 1) {
+      const angle = Math.random() * Math.PI * 2
+      ndx = Math.cos(angle); ndy = Math.sin(angle)
+    } else {
+      ndx = cdx / clen; ndy = cdy / clen
+    }
     const nc = new Cell(
       clamp(splitCell.x + ndx*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
       clamp(splitCell.y + ndy*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
       half, splitCell.color
     )
-    const dynSpeed = Math.max(SPLIT_SPEED * 2, Math.sqrt(half) * 1.8)
-    nc.vx = ndx * dynSpeed
-    nc.vy = ndy * dynSpeed
+    const EFFECTIVE_SPLIT_SPEED = Math.max(SPLIT_SPEED * 2, Math.sqrt(half) * 1.8)
+    nc.vx = ndx * EFFECTIVE_SPLIT_SPEED
+    nc.vy = ndy * EFFECTIVE_SPLIT_SPEED
     nc.mergeTimer = Date.now() + MERGE_TIME
     splitCell.mergeTimer = Date.now() + MERGE_TIME
     this.cells.push(nc)
@@ -1617,7 +1627,7 @@ export class GameEngine {
     if (playerMass > 5000) interval *= 0.4
     this.virusSpawnTimer = interval
     if (this.viruses.filter(v=>!v.dead).length >= 10) return
-    const types = ['normal','normal','normal','normal','super','poison','freeze']
+    const types = ['normal']
     const t = types[Math.floor(Math.random()*types.length)]
     let vx, vy
     if (Math.random() < 0.6 && this.cells.length > 0) {
@@ -1706,29 +1716,26 @@ export class GameEngine {
         const frozen = cell.frozen > 0
         const speedBoost = this.skills.speed.active ? 5.0 : 1
         const speedMult = frozen ? 0.3 : speedBoost
-        const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
-        const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
-        if (d2 > cell.radius / 3) {
-          const spd = Math.max(1.5, 9.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
-          const s2 = Math.min(spd * dt, d2)
-          if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
+        const hasSplitVel = Math.abs(cell.vx || 0) > 0.5 || Math.abs(cell.vy || 0) > 0.5
+        if (hasSplitVel) {
+          cell.x += (cell.vx || 0) * dt * 60
+          cell.y += (cell.vy || 0) * dt * 60
         }
-        const velMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
-        if (velMag > 0.05) {
-          cell.x += cell.vx * dt * 60
-          cell.y += cell.vy * dt * 60
-          const decay = Math.pow(0.85, dt * 30)
-          cell.vx *= decay; cell.vy *= decay
-          if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
+        if (!frozen && !hasSplitVel) {
+          const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
+          const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
+          if (d2 > cell.radius / 3) {
+            const spd = Math.max(1.5, 9.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+            const s2 = Math.min(spd * dt, d2)
+            if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
+          }
         }
-        if (!cell._predicted && cell._tx !== undefined && velMag < 0.5) {
+        if (!hasSplitVel && cell._tx !== undefined) {
           const ex = cell._tx - cell.x, ey = cell._ty - cell.y
           const e2 = ex * ex + ey * ey
-          if (e2 > 700 * 700) {
-            cell.x = cell._tx; cell.y = cell._ty
-          } else if (e2 > 300 * 300) {
-            const t = Math.min(0.15, dt * 4)
-            cell.x += ex * t; cell.y += ey * t
+          if (e2 > 4) {
+            const lerpT = e2 > 600 * 600 ? 1.0 : Math.min(0.15, dt * 5)
+            cell.x += ex * lerpT; cell.y += ey * lerpT
           }
         }
         if (cell._targetMass !== undefined) cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 8))
@@ -1736,18 +1743,35 @@ export class GameEngine {
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
       }
       if (this.cells.length > 1) {
-        for (let iter = 0; iter < 3; iter++) {
+        const now = Date.now()
+        for (let iter = 0; iter < 12; iter++) {
           for (let i = 0; i < this.cells.length; i++) {
             for (let j = i + 1; j < this.cells.length; j++) {
               const ca = this.cells[i], cb = this.cells[j]
               const adx = ca.x - cb.x, ady = ca.y - cb.y
               const ad = Math.sqrt(adx * adx + ady * ady)
               const minD = ca.radius + cb.radius
-              if (ad >= minD || ad < 0.01) continue
-              const overlap = (minD - ad) / 2
-              const nx = adx / ad, ny = ady / ad
-              ca.x += nx * overlap; ca.y += ny * overlap
-              cb.x -= nx * overlap; cb.y -= ny * overlap
+              if (ad >= minD) continue
+              const timerA = ca._mergeTimer || 0, timerB = cb._mergeTimer || 0
+              const timerMin = Math.min(timerA, timerB)
+              let pushFactor
+              if (timerMin < 15000) {
+                pushFactor = 1.0
+              } else {
+                const fade = Math.min(1, (timerMin - 15000) / 8000)
+                pushFactor = 1.0 - fade
+              }
+              if (pushFactor <= 0) continue
+              let nx, ny
+              if (ad < 0.01) {
+                const angle = (i * 2.399) + j
+                nx = Math.cos(angle); ny = Math.sin(angle)
+              } else {
+                nx = adx / ad; ny = ady / ad
+              }
+              const push = (minD - ad) * 1.2 * pushFactor
+              ca.x += nx * push; ca.y += ny * push
+              cb.x -= nx * push; cb.y -= ny * push
               ca.x = clamp(ca.x, ca.radius, WORLD_SIZE - ca.radius)
               ca.y = clamp(ca.y, ca.radius, WORLD_SIZE - ca.radius)
               cb.x = clamp(cb.x, cb.radius, WORLD_SIZE - cb.radius)
@@ -3543,6 +3567,7 @@ export class GameEngine {
     sk.active = true; sk.timer = SKILL_SPEED_DURATION; sk.cooldown = SKILL_SPEED_COOLDOWN
     this._showFloat('⚡ HIZLANMA AKTİF!', '#fbbf24')
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#fbbf24')
+    if (this._useSocket) socketClient.sendSkill('speed')
     this.onSkillChange({ ...this.skills })
   }
 
@@ -3570,6 +3595,7 @@ export class GameEngine {
     this.clickTarget = target ? { x: target.x, y: target.y } : null
     this._showFloat('🌀 EN YAKIN YAVAŞLATILDI!', '#8b5cf6')
     this._spawnExplosion(cell.x, cell.y, '#8b5cf6')
+    if (this._useSocket) socketClient.sendSkill('slow', { targetId: nearestId })
     this.onSkillChange({ ...this.skills })
   }
 
@@ -3580,6 +3606,7 @@ export class GameEngine {
     sk.active = true; sk.timer = SKILL_SHIELD_DURATION; sk.cooldown = SKILL_SHIELD_COOLDOWN
     this._showFloat('🛡️ KALKAN AKTİF!', '#06b6d4')
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#06b6d4')
+    if (this._useSocket) socketClient.sendSkill('shield')
     this.onSkillChange({ ...this.skills })
   }
 
@@ -3590,6 +3617,7 @@ export class GameEngine {
     sk.active = true; sk.timer = SKILL_MAGNET_DURATION; sk.cooldown = SKILL_MAGNET_COOLDOWN
     this._showFloat('🧲 MANYETIK AKTİF!', '#ec4899')
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#ec4899')
+    if (this._useSocket) socketClient.sendSkill('magnet')
     this.onSkillChange({ ...this.skills })
   }
 
@@ -3601,6 +3629,7 @@ export class GameEngine {
     this._ghostActive = true
     this._showFloat('👻 HAYALET MODU!', '#a78bfa')
     this._spawnExplosion(this.cells[0]?.x||0, this.cells[0]?.y||0, '#a78bfa')
+    if (this._useSocket) socketClient.sendSkill('ghost')
     this.onSkillChange({ ...this.skills })
   }
 
@@ -3624,7 +3653,7 @@ export class GameEngine {
     this.camera.x = tx; this.camera.y = ty
     this._showFloat('⚡ IŞINLANDI!', '#38bdf8')
     this._spawnExplosion(tx, ty, '#38bdf8')
-    if (this._useSocket) socketClient.sendSkill('teleport')
+    if (this._useSocket) socketClient.sendSkill('teleport', { tx, ty })
     this.onSkillChange({ ...this.skills })
   }
 

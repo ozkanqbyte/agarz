@@ -289,7 +289,7 @@ const EJECT_MASS = 12
 const MERGE_TIME = 15000
 const MERGE_FADE = 8000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 30
+const SPLIT_SPEED = 50
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -537,20 +537,23 @@ class GameRoom {
       if (player.skillShieldTimer > 0) player.skillShieldTimer -= dt
       if (player.skillMagnetTimer > 0) {
         player.skillMagnetTimer -= dt
-        const MAGNET_RANGE = 700, MAGNET_SPEED = 5
+        const MAGNET_RANGE = 700, MAGNET_RANGE2 = 700*700, MAGNET_SPEED = 5
         for (const food of room.food) {
           const dx = player.x - food.x, dy = player.y - food.y
-          const d = Math.sqrt(dx*dx+dy*dy)
-          if (d < MAGNET_RANGE && d > 1) { food.x += (dx/d)*MAGNET_SPEED; food.y += (dy/d)*MAGNET_SPEED }
+          const d2 = dx*dx + dy*dy
+          if (d2 >= MAGNET_RANGE2 || d2 < 1) continue
+          const d = Math.sqrt(d2)
+          food.x += (dx/d)*MAGNET_SPEED; food.y += (dy/d)*MAGNET_SPEED
         }
         for (const [, enemy] of room.players) {
           if (enemy.id === player.id || enemy.dead) continue
-          if (enemy.mass > 80) continue
           for (const ec of enemy.cells) {
-            if (ec.mass > 80) continue
+            if (ec.mass >= player.mass) continue
             const dx = player.x - ec.x, dy = player.y - ec.y
-            const d = Math.sqrt(dx*dx+dy*dy)
-            if (d < MAGNET_RANGE && d > 1) { ec.x += (dx/d)*3; ec.y += (dy/d)*3 }
+            const d2 = dx*dx + dy*dy
+            if (d2 >= MAGNET_RANGE2 || d2 < 1) continue
+            const d = Math.sqrt(d2)
+            ec.x += (dx/d)*4; ec.y += (dy/d)*4
           }
         }
       }
@@ -592,15 +595,17 @@ class GameRoom {
     const speedMult = player.skillSpeedTimer > 0 ? 5 : 1
     for (const cell of player.cells) {
       const r = massToRadius(cell.mass)
+      const hasSplitVel = cell.splitVx && Math.abs(cell.splitVx) > 0.5
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        cell.splitVx *= 0.85
-        cell.splitVy *= 0.85
+        cell.splitVx *= 0.93
+        cell.splitVy *= 0.93
         if (Math.abs(cell.splitVx) < 0.05) { cell.splitVx = 0; cell.splitVy = 0 }
       }
-      if (!frozen) {
-        const baseSpeed = speedForMass(cell.mass) * speedMult * 60
+      if (!frozen && !hasSplitVel) {
+        const slowMult = player.skillSlowTimer > 0 ? 0.25 : 1
+        const baseSpeed = speedForMass(cell.mass) * speedMult * slowMult * 60
         const dx = (player.inputX || 0) - cell.x
         const dy = (player.inputY || 0) - cell.y
         const d = Math.sqrt(dx * dx + dy * dy)
@@ -615,7 +620,7 @@ class GameRoom {
       cell.y = clamp(cell.y, r, WORLD_SIZE - r)
     }
     if (player.cells.length > 1) {
-      for (let iter = 0; iter < 4; iter++) {
+      for (let iter = 0; iter < 12; iter++) {
         for (let i = 0; i < player.cells.length; i++) {
           for (let j = i + 1; j < player.cells.length; j++) {
             const ca = player.cells[i], cb = player.cells[j]
@@ -632,7 +637,7 @@ class GameRoom {
               pushFactor = 1.0 - fade
             }
             if (pushFactor <= 0 || ad >= minD) continue
-            const overlap = (minD - ad) / 2 * pushFactor
+            const overlap = (minD - ad) * 0.6 * pushFactor
             let nx, ny
             if (ad < 0.01) {
               const angle = (i * 2.399) + j
@@ -656,11 +661,11 @@ class GameRoom {
 
   _massDecay(player, dt) {
     for (const cell of player.cells) {
-      if (cell.mass <= 200) continue
+      if (cell.mass <= 100) continue
       let rate
-      if (cell.mass < 1000) rate = cell.mass * 0.00004
-      else if (cell.mass < 5000) rate = cell.mass * 0.00008
-      else rate = cell.mass * 0.00015
+      if (cell.mass < 1000) rate = cell.mass * 0.0008
+      else if (cell.mass < 5000) rate = cell.mass * 0.0016
+      else rate = cell.mass * 0.003
       cell.mass = Math.max(20, cell.mass - rate * dt)
     }
   }
@@ -738,6 +743,7 @@ class GameRoom {
     for (const { eater, eaterCell, eaten, eatenCell } of eatQueue) {
       if (eater.dead || eaten.dead) continue
       if (deadCells.has(eatenCell.id)) continue
+      if (eaten.skillShieldTimer > 0) continue
       if (this.mode === 'infection' && this.zombies.has(eater.id) && this.zombies.has(eaten.id)) continue
       const gained = eatenCell.mass
       eaterCell.mass += gained
@@ -769,7 +775,7 @@ class GameRoom {
         for (const virus of this.viruses) {
           if (toRemove.has(virus.id)) continue
           const virusR = massToRadius(virus.mass)
-          if (dist(cell, virus) >= r - virusR * 0.3) continue
+          if (dist(cell, virus) >= r + virusR * 0.8) continue
 
           const shield = player.skillShieldTimer > 0
           const gainMass = virus.mass
@@ -948,28 +954,30 @@ class GameRoom {
     }
   }
 
-  _handleSplit(player) {
+  _handleSplit(player, splitDir) {
     if (player.frozen > 0 || player.cells.length >= MAX_CELLS) return
     const newCells = []
     for (const cell of player.cells) {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
-      const dx = (player.inputX || 0) - cell.x
-      const dy = (player.inputY || 0) - cell.y
-      const d = Math.sqrt(dx * dx + dy * dy)
       cell.mass /= 2
       cell.mergeTimer = 0
       const nr = massToRadius(cell.mass)
       let nx, ny
-      if (d < 1) {
+      const pdx = (player.inputX || 0) - cell.x
+      const pdy = (player.inputY || 0) - cell.y
+      const pd = Math.sqrt(pdx * pdx + pdy * pdy)
+      if (splitDir && pd < 1) {
+        nx = splitDir.dx; ny = splitDir.dy
+      } else if (pd >= 1) {
+        nx = pdx / pd; ny = pdy / pd
+      } else {
         const angle = Math.random() * Math.PI * 2
         nx = Math.cos(angle); ny = Math.sin(angle)
-      } else {
-        nx = dx / d; ny = dy / d
       }
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x + nx * (nr * 2 + 4), nr, WORLD_SIZE - nr),
-        y: clamp(cell.y + ny * (nr * 2 + 4), nr, WORLD_SIZE - nr),
+        x: clamp(cell.x + nx * (nr * 2 + 2), nr, WORLD_SIZE - nr),
+        y: clamp(cell.y + ny * (nr * 2 + 2), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
         splitVx: nx * SPLIT_SPEED,
@@ -1298,7 +1306,7 @@ class GameRoom {
         id: p.id,
         x: p.x, y: p.y,
         m: p.mass,
-        cs: p.cells.map(c => ({ i: c.id, x: Math.round(c.x), y: Math.round(c.y), m: Math.round(c.mass), vx: c.splitVx ? Math.round(c.splitVx*10)/10 : 0, vy: c.splitVy ? Math.round(c.splitVy*10)/10 : 0 })),
+        cs: p.cells.map(c => ({ i: c.id, x: Math.round(c.x), y: Math.round(c.y), m: Math.round(c.mass), vx: c.splitVx ? Math.round(c.splitVx*10)/10 : 0, vy: c.splitVy ? Math.round(c.splitVy*10)/10 : 0, mt: c.mergeTimer || 0 })),
         c: p.color,
         n: p.name,
         g: p.isGod ? 1 : 0,
@@ -1500,7 +1508,7 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('input:split', () => {
+  socket.on('input:split', (data) => {
     if (!room || !playerId) return
     const player = room.players.get(playerId)
     if (!player || player.dead) return
@@ -1516,7 +1524,8 @@ io.on('connection', (socket) => {
     }
     if (now - player._lastSplit < 80) return
     player._lastSplit = now
-    room._handleSplit(player)
+    const splitDir = data && typeof data.dx === 'number' && typeof data.dy === 'number' ? { dx: data.dx, dy: data.dy } : null
+    room._handleSplit(player, splitDir)
   })
 
   socket.on('input:eject', () => {
@@ -1584,21 +1593,22 @@ io.on('connection', (socket) => {
     } else if (skill === 'shield') {
       player.skillShieldTimer = player.isPremium ? 8 : 5
     } else if (skill === 'slow') {
-      const nearest = _findNearestEnemy(room, player)
-      if (nearest) nearest.skillSlowTimer = player.isPremium ? 5 : 3
+      let nearest = null
+      if (data.targetId) {
+        const t = room.players.get(data.targetId)
+        if (t && !t.dead && t.id !== player.id) nearest = t
+      }
+      if (!nearest) nearest = _findNearestEnemy(room, player)
+      if (nearest) nearest.skillSlowTimer = player.isPremium ? 6 : 4
     } else if (skill === 'magnet') {
       player.skillMagnetTimer = player.isPremium ? 12 : 8
     } else if (skill === 'ghost') {
       player.skillGhostTimer = 10
     } else if (skill === 'teleport') {
-      const nearestTp = _findNearestEnemy(room, player)
       let tpX, tpY
-      if (nearestTp) {
-        const dx = nearestTp.x - player.x, dy = nearestTp.y - player.y
-        const d = Math.sqrt(dx*dx+dy*dy)
-        const behindDist = massToRadius(nearestTp.mass || 20) + 50
-        tpX = nearestTp.x + (dx/d)*behindDist
-        tpY = nearestTp.y + (dy/d)*behindDist
+      if (typeof data.tx === 'number' && typeof data.ty === 'number') {
+        tpX = data.tx
+        tpY = data.ty
       } else {
         const angle = Math.random() * Math.PI * 2
         tpX = player.x + Math.cos(angle) * 800
@@ -1606,10 +1616,10 @@ io.on('connection', (socket) => {
       }
       tpX = clamp(tpX, 200, WORLD_SIZE - 200)
       tpY = clamp(tpY, 200, WORLD_SIZE - 200)
-      const offsetX = tpX - player.x, offsetY = tpY - player.y
-      for (const cell of player.cells) {
-        cell.x = clamp(cell.x + offsetX, 200, WORLD_SIZE - 200)
-        cell.y = clamp(cell.y + offsetY, 200, WORLD_SIZE - 200)
+      for (let i = 0; i < player.cells.length; i++) {
+        player.cells[i].x = clamp(tpX + i * 8, 200, WORLD_SIZE - 200)
+        player.cells[i].y = clamp(tpY + (i % 2 === 0 ? 0 : 8), 200, WORLD_SIZE - 200)
+        player.cells[i].splitVx = 0; player.cells[i].splitVy = 0
       }
       player.x = tpX; player.y = tpY
       player.inputX = tpX; player.inputY = tpY

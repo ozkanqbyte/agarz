@@ -63,9 +63,9 @@ class SocketClient {
     this._socket.volatile.emit('input:update', { x, y, clientMass, cells })
   }
 
-  sendSplit() {
+  sendSplit(dx, dy) {
     if (!this._socket?.connected) return
-    this._socket.emit('input:split')
+    this._socket.emit('input:split', dx !== undefined ? { dx, dy } : {})
   }
 
   sendEject() {
@@ -73,9 +73,9 @@ class SocketClient {
     this._socket.emit('input:eject')
   }
 
-  sendSkill(skill) {
+  sendSkill(skill, extra = {}) {
     if (!this._socket?.connected) return
-    this._socket.emit('input:skill', { skill })
+    this._socket.emit('input:skill', { skill, ...extra })
   }
 
   eatFood(ids) {
