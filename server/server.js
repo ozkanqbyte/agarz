@@ -871,8 +871,8 @@ class GameRoom {
         ownerId: player.id,
         x: cell.x + Math.cos(angle) * (massToRadius(cell.mass) + 10),
         y: cell.y + Math.sin(angle) * (massToRadius(cell.mass) + 10),
-        vx: Math.cos(angle) * 22,
-        vy: Math.sin(angle) * 22,
+        vx: Math.cos(angle) * 16,
+        vy: Math.sin(angle) * 16,
         color: player.color,
         mass: EJECT_MASS,
         age: 0
