@@ -289,10 +289,10 @@ const EJECT_MASS = 12
 const MERGE_TIME = 15000
 const MERGE_FADE = 8000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 35
+const SPLIT_SPEED = 15
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
-const VIRUS_FEED_SPLIT = 5
+const VIRUS_FEED_SPLIT = 8
 
 const FOOD_COLORS = [
   '#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b',
@@ -976,8 +976,8 @@ class GameRoom {
       }
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x + nx * (nr * 2 + 2), nr, WORLD_SIZE - nr),
-        y: clamp(cell.y + ny * (nr * 2 + 2), nr, WORLD_SIZE - nr),
+        x: clamp(cell.x + nx * (nr + 1), nr, WORLD_SIZE - nr),
+        y: clamp(cell.y + ny * (nr + 1), nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: 0,
         splitVx: nx * SPLIT_SPEED,
