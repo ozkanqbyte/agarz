@@ -979,11 +979,11 @@ class GameRoom {
     const newCells = []
     for (const cell of player.cells) {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
+      const mergeDelay = cell.mass < 120 ? MERGE_TIME_MIN : MERGE_TIME
       cell.mass /= 2
-      cell.mergeTimer = 0
+      cell.mergeTimer = mergeDelay
       const nr = massToRadius(cell.mass)
-      const offsetDist = nr * 1.0 + 3;
-const mergeDelay = cell.mass < 60 ? MERGE_TIME_MIN : MERGE_TIME
+      const offsetDist = nr * 1.5 + 5;
       newCells.push({
         id: rndId(),
         x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
