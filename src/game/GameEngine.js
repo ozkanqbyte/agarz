@@ -1769,7 +1769,7 @@ export class GameEngine {
               } else {
                 nx = adx / ad; ny = ady / ad
               }
-              const push = (minD - ad) * 1.2 * pushFactor
+              const push = (minD - ad) * 0.8 * pushFactor
               ca.x += nx * push; ca.y += ny * push
               cb.x -= nx * push; cb.y -= ny * push
               ca.x = clamp(ca.x, ca.radius, WORLD_SIZE - ca.radius)
