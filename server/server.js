@@ -289,7 +289,7 @@ const EJECT_MASS = 12
 const MERGE_TIME = 15000
 const MERGE_FADE = 8000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 22
+const SPLIT_SPEED = 35
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 8
@@ -958,25 +958,26 @@ class GameRoom {
 
   _handleSplit(player, splitDir) {
     if (player.frozen > 0 || player.cells.length >= MAX_CELLS) return
+    
+    let nx = 1, ny = 0
+    if (splitDir && (splitDir.dx !== undefined && splitDir.dy !== undefined)) {
+      nx = splitDir.dx; ny = splitDir.dy
+    } else {
+      const pdx = (player.inputX || 0) - player.x
+      const pdy = (player.inputY || 0) - player.y
+      const pd = Math.sqrt(pdx * pdx + pdy * pdy)
+      if (pd >= 1) {
+        nx = pdx / pd; ny = pdy / pd
+      }
+    }
+    
     const newCells = []
     for (const cell of player.cells) {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       cell.mass /= 2
       cell.mergeTimer = 0
       const nr = massToRadius(cell.mass)
-      let nx, ny
-      const pdx = (player.inputX || 0) - cell.x
-      const pdy = (player.inputY || 0) - cell.y
-      const pd = Math.sqrt(pdx * pdx + pdy * pdy)
-      if (splitDir && pd < 1) {
-        nx = splitDir.dx; ny = splitDir.dy
-      } else if (pd >= 1) {
-        nx = pdx / pd; ny = pdy / pd
-      } else {
-        const angle = Math.random() * Math.PI * 2
-        nx = Math.cos(angle); ny = Math.sin(angle)
-      }
-      const offsetDist = nr * 1.2 + 5;
+      const offsetDist = nr * 1.5 + 8;
       newCells.push({
         id: rndId(),
         x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
