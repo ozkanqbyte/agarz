@@ -10,7 +10,7 @@ const FOOD_COUNT = 1000
 const VIRUS_COUNT = 50
 const BASE_SPEED = 6.5
 const SPLIT_SPEED = 20
-const MERGE_TIME = 23000
+const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
 const EJECT_MASS_SM = 12
@@ -1262,7 +1262,6 @@ export class GameEngine {
   }
 
   _eject(massAmount, angleOffset = 0, speed = 14, maxCount = 1) {
-    const EJECT_COLOR = '#ef4444'
     let fired = 0
     let sourceCell = null
     let closestDist = Infinity
@@ -1282,20 +1281,19 @@ export class GameEngine {
     const dx = this.mouse.x - sourceCell.x
     const dy = this.mouse.y - sourceCell.y
     const angle = Math.atan2(dy, dx) + angleOffset
-    const ejR = Math.max(10, Math.min(sourceCell.radius * 0.12, 28))
+    const ejR = 14
     const em = new EjectedMass(
       sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR + 2),
       sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR + 2),
       Math.cos(angle) * speed, Math.sin(angle) * speed,
-      EJECT_COLOR, massAmount, ejR
+      sourceCell.color || this.playerColor, massAmount, ejR
     )
     this.ejected.push(em)
     fired++
   }
 
   _ejectBurst3(massAmount) {
-    const EJECT_COLOR = '#ef4444'
-    const SPEED = 25
+    const SPEED = 28
     if (this._useSocket) { socketClient.sendEject(3); return }
 
     let targetCell = null
@@ -1339,13 +1337,13 @@ export class GameEngine {
     for (let i = 0; i < 3; i++) {
       if (sourceCell.mass < massAmount * 2) break
       sourceCell.mass -= massAmount + 2
-      const ejR2 = Math.max(10, Math.min(sourceCell.radius * 0.12, 28))
+      const ejR2 = 14
       const angle = baseAngle + fanOffsets[i]
       const em = new EjectedMass(
         sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR2 + 2),
         sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR2 + 2),
         Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
-        EJECT_COLOR, massAmount, ejR2
+        sourceCell.color || this.playerColor, massAmount, ejR2
       )
       this.ejected.push(em)
     }
@@ -1737,7 +1735,7 @@ export class GameEngine {
           const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
           const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
           if (d2 > cell.radius / 3) {
-            const spd = Math.max(1.5, 11.5 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+            const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
             const s2 = Math.min(spd * dt, d2)
             if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
           }
@@ -1802,7 +1800,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = Math.max(1.5, 11.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+      const speed = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
       const nowMs = Date.now()
@@ -2963,20 +2961,21 @@ export class GameEngine {
     }
     for (const [col, items] of byColor) {
       for (const em of items) {
-        const r = 10
+        const r = 14
+        const moving = Math.sqrt((em.vx||0)**2 + (em.vy||0)**2) > 1.5
+        ctx.save()
         if (this.qualityLevel !== 'low') {
-          ctx.save()
-          ctx.shadowBlur = 12
+          ctx.shadowBlur = moving ? 20 : 10
           ctx.shadowColor = col
         }
         ctx.beginPath()
         ctx.arc(em.x, em.y, r, 0, TWO_PI)
         ctx.fillStyle = col
         ctx.fill()
-        ctx.lineWidth = 2
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)'
+        ctx.lineWidth = moving ? 3 : 2
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)'
         ctx.stroke()
-        if (this.qualityLevel !== 'low') ctx.restore()
+        ctx.restore()
       }
     }
   }
