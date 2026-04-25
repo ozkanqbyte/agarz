@@ -1232,7 +1232,7 @@ export class GameEngine {
       splitCell.mass = half
       const nr2 = splitCell.radius
       const mergeDelay = Math.max(MERGE_TIME, Math.sqrt(half) * 600)
-      const spd = Math.max(10, 2.34 * Math.sqrt(splitCell.mass))
+      const spd = Math.max(5, 1.17 * Math.sqrt(splitCell.mass))
       const nc = new Cell(
         clamp(splitCell.x + globalDirX*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
         clamp(splitCell.y + globalDirY*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
