@@ -1232,7 +1232,7 @@ export class GameEngine {
       splitCell.mass = half
       const nr2 = splitCell.radius
       const mergeDelay = Math.max(MERGE_TIME, Math.sqrt(half) * 600)
-      const spd = Math.max(30, Math.sqrt(splitCell.mass) * 0.7)
+      const spd = Math.max(10, 2.34 * Math.sqrt(splitCell.mass))
       const nc = new Cell(
         clamp(splitCell.x + globalDirX*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
         clamp(splitCell.y + globalDirY*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
@@ -1699,7 +1699,7 @@ export class GameEngine {
           const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
           const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
           if (d2 > 1) {
-            const spd = Math.max(1.5, 9.5 / Math.pow(Math.max(20, cell.mass), 0.35)) * 55 * speedMult
+            const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
             const s2 = Math.min(spd * dt, d2)
             if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
           }
@@ -1764,7 +1764,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = Math.max(1.5, 9.5 / Math.pow(Math.max(20, cell.mass), 0.35)) * 55 * speedMult
+      const speed = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
       if (splitVelMag > 0.5) {
