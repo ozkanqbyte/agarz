@@ -290,7 +290,7 @@ const MERGE_TIME = 10000
 const MERGE_FADE = 4000
 const MERGE_TIME_MIN = 7000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 38
+const SPLIT_SPEED = 22
 const MIN_EAT_RATIO = 1.05
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
@@ -605,8 +605,8 @@ class GameRoom {
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        cell.splitVx *= 0.94
-        cell.splitVy *= 0.94
+        cell.splitVx *= 0.85
+        cell.splitVy *= 0.85
         if (Math.abs(cell.splitVx) < 0.08) { cell.splitVx = 0; cell.splitVy = 0 }
       }
       if (!frozen && !hasSplitVel) {

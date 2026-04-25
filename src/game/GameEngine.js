@@ -1228,7 +1228,7 @@ export class GameEngine {
       clamp(splitCell.y + ndy*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
       half, splitCell.color
     )
-    const EFFECTIVE_SPLIT_SPEED = Math.max(SPLIT_SPEED * 1.4, Math.sqrt(half) * 0.9)
+    const EFFECTIVE_SPLIT_SPEED = 35
     nc.vx = ndx * EFFECTIVE_SPLIT_SPEED
     nc.vy = ndy * EFFECTIVE_SPLIT_SPEED
     nc.mergeTimer = Date.now() + MERGE_TIME
@@ -1801,22 +1801,16 @@ export class GameEngine {
       const speed = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
-      const nowMs = Date.now()
-      let splitFactor = 1
-      if (cell.mergeTimer > nowMs) {
-        const splitAge = MERGE_TIME - (cell.mergeTimer - nowMs)
-        splitFactor = Math.min(1, splitAge / 600)
-      }
-      if (d > cell.radius / 3) {
-        const s = Math.min(speed * dt * splitFactor, d)
-        if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
-      }
-
-      if (splitVelMag > 0.01) {
+      if (splitVelMag > 0.5) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
         cell.vx *= 0.87; cell.vy *= 0.87
-        if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
+      } else {
+        if (cell.vx) { cell.vx = 0; cell.vy = 0 }
+        if (d > cell.radius / 3) {
+          const s = Math.min(speed * dt, d)
+          if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
+        }
       }
 
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
