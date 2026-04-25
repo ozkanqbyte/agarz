@@ -1238,8 +1238,8 @@ export class GameEngine {
       splitCell.y = clamp(oy - globalDirY * nr2 * 0.5, nr2, WORLD_SIZE - nr2)
       const sx = clamp(ox + globalDirX * nr2, nr2, WORLD_SIZE - nr2)
       const sy = clamp(oy + globalDirY * nr2, nr2, WORLD_SIZE - nr2)
-      const ex = clamp(ox + globalDirX * nr2 * 2.5, nr2, WORLD_SIZE - nr2)
-      const ey = clamp(oy + globalDirY * nr2 * 2.5, nr2, WORLD_SIZE - nr2)
+      const ex = clamp(ox + globalDirX * nr2 * 2, nr2, WORLD_SIZE - nr2)
+      const ey = clamp(oy + globalDirY * nr2 * 2, nr2, WORLD_SIZE - nr2)
       const nc = new Cell(sx, sy, half, splitCell.color)
       nc._splitAnim = { sx, sy, ex, ey, t: now, dur: SPLIT_DUR }
       nc.mergeTimer = now + mergeDelay
