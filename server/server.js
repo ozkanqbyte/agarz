@@ -857,26 +857,24 @@ class GameRoom {
   _handleEject(player, count = 1) {
     if (player.frozen > 0) return
     const ejected = []
-    let ejectsDone = 0
     for (const cell of player.cells) {
       if (cell.mass <= EJECT_COST + 20) continue
       const dx = (player.inputX || 0) - cell.x
       const dy = (player.inputY || 0) - cell.y
-      const d = Math.sqrt(dx * dx + dy * dy) || 1
       const baseAngle = Math.atan2(dy, dx)
       const fanAngles = count === 3
         ? [baseAngle - 0.38, baseAngle, baseAngle + 0.38]
-        : Array.from({ length: count }, () => baseAngle + (Math.random() - 0.5) * 0.35)
+        : [baseAngle]
       for (const angle of fanAngles) {
-        if (ejectsDone >= count || cell.mass <= EJECT_COST + 20) break
+        if (cell.mass <= EJECT_COST + 20) break
         cell.mass -= EJECT_COST
         const em = {
           id: rndId(),
           ownerId: player.id,
           x: cell.x + Math.cos(angle) * (massToRadius(cell.mass) + 10),
           y: cell.y + Math.sin(angle) * (massToRadius(cell.mass) + 10),
-          vx: Math.cos(angle) * 18,
-          vy: Math.sin(angle) * 18,
+          vx: Math.cos(angle) * 28,
+          vy: Math.sin(angle) * 28,
           color: player.color,
           mass: EJECT_MASS,
           age: 0
@@ -884,9 +882,7 @@ class GameRoom {
         ejected.push(em)
         this.ejectedMasses.push(em)
         this._checkEjectedVirus(em)
-        ejectsDone++
       }
-      if (ejectsDone >= count) break
     }
     if (ejected.length) io.to(this.id).emit('ejected:spawn', ejected)
   }

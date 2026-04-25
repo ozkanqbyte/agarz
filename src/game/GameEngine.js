@@ -1259,91 +1259,46 @@ export class GameEngine {
     doSplit()
   }
 
-  _eject(massAmount, angleOffset = 0, speed = 14, maxCount = 1) {
-    let fired = 0
-    let sourceCell = null
-    let closestDist = Infinity
+  _eject(massAmount, angleOffset = 0, speed = 40, maxCount = 999) {
+    if (this._useSocket) return
+    const ejR = 14
     for (const cell of this.cells) {
       if (cell.mass < massAmount * 2) continue
-      const d = Math.sqrt((this.mouse.x-cell.x)**2 + (this.mouse.y-cell.y)**2)
-      if (d < closestDist) { closestDist = d; sourceCell = cell }
+      cell.mass -= massAmount + 2
+      const dx = this.mouse.x - cell.x
+      const dy = this.mouse.y - cell.y
+      const angle = Math.atan2(dy, dx) + angleOffset
+      const em = new EjectedMass(
+        cell.x + Math.cos(angle) * (cell.radius + ejR + 2),
+        cell.y + Math.sin(angle) * (cell.radius + ejR + 2),
+        Math.cos(angle) * speed, Math.sin(angle) * speed,
+        cell.color || this.playerColor, massAmount, ejR
+      )
+      this.ejected.push(em)
     }
-    if (!sourceCell) return
-    if (this._useSocket) { sourceCell.mass -= massAmount + 2; return }
-    if (this.ejected.length >= 8) {
-      const settled = this.ejected.find(e => e.settled)
-      if (settled) this.ejected = this.ejected.filter(e => e.id !== settled.id)
-      else this.ejected.shift()
-    }
-    sourceCell.mass -= massAmount + 2
-    const dx = this.mouse.x - sourceCell.x
-    const dy = this.mouse.y - sourceCell.y
-    const angle = Math.atan2(dy, dx) + angleOffset
-    const ejR = 14
-    const em = new EjectedMass(
-      sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR + 2),
-      sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR + 2),
-      Math.cos(angle) * speed, Math.sin(angle) * speed,
-      sourceCell.color || this.playerColor, massAmount, ejR
-    )
-    this.ejected.push(em)
-    fired++
   }
 
   _ejectBurst3(massAmount) {
-    const SPEED = 28
+    const SPEED = 40
     if (this._useSocket) { socketClient.sendEject(3); return }
-
-    let targetCell = null
+    const ejR = 14
+    const fanOffsets = [-0.38, 0, 0.38]
     for (const cell of this.cells) {
-      const d = Math.sqrt((this.mouse.x - cell.x)**2 + (this.mouse.y - cell.y)**2)
-      if (d < cell.radius * 2.2) { targetCell = cell; break }
-    }
-
-    if (targetCell && this.cells.length > 1) {
-      let fed = 0
-      for (const cell of this.cells) {
-        if (cell === targetCell || fed >= 3) break
-        if (cell.mass < massAmount * 2) continue
+      if (cell.mass < massAmount * 6) continue
+      const dxM = this.mouse.x - cell.x, dyM = this.mouse.y - cell.y
+      const baseAngle = Math.atan2(dyM, dxM)
+      for (let i = 0; i < 3; i++) {
+        if (cell.mass < massAmount * 2) break
         cell.mass -= massAmount + 2
-        const dx = targetCell.x - cell.x, dy = targetCell.y - cell.y
-        const angle = Math.atan2(dy, dx)
-        const scatter = 6
+        const angle = baseAngle + fanOffsets[i]
         const em = new EjectedMass(
-          cell.x + Math.cos(angle) * (cell.radius + 6) + (Math.random()-0.5)*scatter,
-          cell.y + Math.sin(angle) * (cell.radius + 6) + (Math.random()-0.5)*scatter,
+          cell.x + Math.cos(angle) * (cell.radius + ejR + 2),
+          cell.y + Math.sin(angle) * (cell.radius + ejR + 2),
           Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
-          cell.color, massAmount
+          cell.color || this.playerColor, massAmount, ejR
         )
         this.ejected.push(em)
-        fed++
       }
-      return
-    }
-
-    let sourceCell = null
-    let closestDist = Infinity
-    for (const cell of this.cells) {
-      if (cell.mass < massAmount * 2) continue
-      const d = Math.sqrt((this.mouse.x-cell.x)**2 + (this.mouse.y-cell.y)**2)
-      if (d < closestDist) { closestDist = d; sourceCell = cell }
-    }
-    if (!sourceCell) return
-    const dxM = this.mouse.x - sourceCell.x, dyM = this.mouse.y - sourceCell.y
-    const baseAngle = Math.atan2(dyM, dxM)
-    const fanOffsets = [-0.38, 0, 0.38]
-    for (let i = 0; i < 3; i++) {
-      if (sourceCell.mass < massAmount * 2) break
-      sourceCell.mass -= massAmount + 2
-      const ejR2 = 14
-      const angle = baseAngle + fanOffsets[i]
-      const em = new EjectedMass(
-        sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR2 + 2),
-        sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR2 + 2),
-        Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
-        sourceCell.color || this.playerColor, massAmount, ejR2
-      )
-      this.ejected.push(em)
     }
   }
 
@@ -2126,7 +2081,7 @@ export class GameEngine {
             virus.vx = (virus.vx || 0) + Math.cos(em.dirAngle) * 0.6
             virus.vy = (virus.vy || 0) + Math.sin(em.dirAngle) * 0.6
           }
-          if (virus.feedCount >= 12 && this.viruses.filter(v=>!v.dead).length < 30) {
+          if (virus.feedCount >= 7 && this.viruses.filter(v=>!v.dead).length < 30) {
             const dx = this.mouse.x - virus.x, dy = this.mouse.y - virus.y
             const mlen = Math.sqrt(dx*dx+dy*dy) || 1
             const angle = Math.atan2(dy/mlen, dx/mlen)
@@ -2953,19 +2908,34 @@ export class GameEngine {
     }
     for (const [col, items] of byColor) {
       for (const em of items) {
-        const r = 14
-        const moving = Math.sqrt((em.vx||0)**2 + (em.vy||0)**2) > 1.5
+        const r = 16
+        const spd = Math.sqrt((em.vx||0)**2 + (em.vy||0)**2)
+        const moving = spd > 1.5
         ctx.save()
         if (this.qualityLevel !== 'low') {
-          ctx.shadowBlur = moving ? 20 : 10
+          ctx.shadowBlur = moving ? 30 : 14
           ctx.shadowColor = col
+        }
+        if (moving && this.qualityLevel !== 'low') {
+          const trailLen = Math.min(spd * 1.8, 36)
+          const angle = Math.atan2(em.vy||0, em.vx||0) + Math.PI
+          const grad = ctx.createLinearGradient(
+            em.x, em.y,
+            em.x + Math.cos(angle) * trailLen, em.y + Math.sin(angle) * trailLen
+          )
+          grad.addColorStop(0, col)
+          grad.addColorStop(1, 'rgba(0,0,0,0)')
+          ctx.beginPath()
+          ctx.ellipse(em.x + Math.cos(angle) * trailLen/2, em.y + Math.sin(angle) * trailLen/2, trailLen/2, r * 0.45, Math.atan2(em.vy||0, em.vx||0) + Math.PI/2, 0, TWO_PI)
+          ctx.fillStyle = grad
+          ctx.fill()
         }
         ctx.beginPath()
         ctx.arc(em.x, em.y, r, 0, TWO_PI)
         ctx.fillStyle = col
         ctx.fill()
-        ctx.lineWidth = moving ? 3 : 2
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)'
+        ctx.lineWidth = moving ? 3.5 : 2
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)'
         ctx.stroke()
         ctx.restore()
       }
@@ -3381,12 +3351,13 @@ export class GameEngine {
       ctx.restore()
     }
 
-    if (dr > 10) {
+    if (dr > 5) {
       const mass = overrideMass !== null ? overrideMass : Math.floor((radius / 4.5) ** 2)
-      const hasClan = clan && dr > 18
-      const hasMass = dr > 10
+      const hasClan = clan && dr > 12
+      const hasMass = dr > 5
       const lineCount = 1 + (hasClan ? 1 : 0) + (hasMass ? 1 : 0)
-      const fs = clamp(dr * 0.55, 18, 60)
+      const camZoom = this.camera?.zoom || 1
+      const fs = clamp(dr * 0.55, Math.max(18, 15 / camZoom), 80)
       const lineH = fs * 1.0
       const totalH = lineCount * lineH
       const startY = y - totalH / 2 + lineH / 2
@@ -3537,11 +3508,14 @@ export class GameEngine {
         lineIdx++
       }
       if (hasMass) {
-        const ms = clamp(dr * 0.38, 11, 24)
+        const ms = clamp(dr * 0.38, Math.max(11, 10 / camZoom), 28)
         ctx.font = `bold ${ms}px "Exo 2", Arial, sans-serif`
-        ctx.fillStyle = isMe ? 'rgba(255,255,100,0.95)' : 'rgba(255,255,255,0.75)'
-        ctx.shadowBlur = isMe ? 10 : 0
-        ctx.shadowColor = '#fbbf24'
+        ctx.fillStyle = isMe ? 'rgba(255,255,100,0.95)' : 'rgba(255,255,255,0.85)'
+        ctx.shadowBlur = isMe ? 10 : 4
+        ctx.shadowColor = isMe ? '#fbbf24' : 'rgba(0,0,0,0.8)'
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)'
+        ctx.lineWidth = Math.max(2, ms * 0.14)
+        ctx.strokeText(`${mass.toLocaleString()}`, x, startY + lineIdx * lineH)
         ctx.fillText(`${mass.toLocaleString()}`, x, startY + lineIdx * lineH)
         ctx.shadowBlur = 0
       }
