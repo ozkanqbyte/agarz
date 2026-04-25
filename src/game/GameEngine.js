@@ -1188,11 +1188,9 @@ export class GameEngine {
     const mouseTargetY = frozenPos ? frozenPos.y : this.mouse.y
 
     let splitCell = null
-    let closestDist = Infinity
     for (const cell of this.cells) {
       if (cell.mass < MIN_MASS_SPLIT) continue
-      const d = Math.sqrt((mouseTargetX-cell.x)**2 + (mouseTargetY-cell.y)**2)
-      if (d < closestDist) { closestDist = d; splitCell = cell }
+      if (!splitCell || cell.mass > splitCell.mass) splitCell = cell
     }
     if (!splitCell) return
 
