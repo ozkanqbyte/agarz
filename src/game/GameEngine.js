@@ -1236,6 +1236,7 @@ export class GameEngine {
       const ox = splitCell.x; const oy = splitCell.y
       splitCell.x = clamp(ox - globalDirX * nr2 * 0.5, nr2, WORLD_SIZE - nr2)
       splitCell.y = clamp(oy - globalDirY * nr2 * 0.5, nr2, WORLD_SIZE - nr2)
+      splitCell._splitCoast = now + SPLIT_DUR + 100
       const sx = clamp(ox + globalDirX * nr2, nr2, WORLD_SIZE - nr2)
       const sy = clamp(oy + globalDirY * nr2, nr2, WORLD_SIZE - nr2)
       const ex = clamp(ox + globalDirX * nr2 * 2, nr2, WORLD_SIZE - nr2)
@@ -1810,7 +1811,9 @@ export class GameEngine {
         const minD = a.radius + b.radius
         if (d >= minD) continue
         const nx = adx / d; const ny = ady / d
-        const push = (minD - d) * 0.4
+        const timeToMerge = Math.max(a.mergeTimer, b.mergeTimer) - now
+        const factor = timeToMerge < 2000 ? 0.10 : 0.18
+        const push = (minD - d) * factor
         a.x += nx * push; a.y += ny * push
         b.x -= nx * push; b.y -= ny * push
         a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius)
@@ -1835,7 +1838,7 @@ export class GameEngine {
         const b = this.cells[j]
         if (cur.mergeTimer > now || b.mergeTimer > now) continue
         if (cur._splitAnim || b._splitAnim || cur._splitCoast || b._splitCoast) continue
-        if (dist(cur, b) < Math.max(cur.radius, b.radius)) {
+        if (dist(cur, b) < (cur.radius + b.radius) * 0.85) {
           cur = new Cell(
             (cur.x*cur.mass + b.x*b.mass)/(cur.mass+b.mass),
             (cur.y*cur.mass + b.y*b.mass)/(cur.mass+b.mass),
