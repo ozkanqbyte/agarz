@@ -1194,9 +1194,25 @@ export class GameEngine {
     }
     if (!splitCell) return
 
+    let nearestEnemy = null
+    let nearestDist = 1200
+    for (const op of Object.values(this.otherPlayers)) {
+      const ex = op.x ?? (op.cells?.[0]?.x ?? 0)
+      const ey = op.y ?? (op.cells?.[0]?.y ?? 0)
+      const d = Math.sqrt((ex - splitCell.x)**2 + (ey - splitCell.y)**2)
+      if (d < nearestDist) { nearestDist = d; nearestEnemy = { x: ex, y: ey } }
+    }
+    for (const bot of (this.bots || [])) {
+      if (bot.dead) continue
+      const d = Math.sqrt((bot.x - splitCell.x)**2 + (bot.y - splitCell.y)**2)
+      if (d < nearestDist) { nearestDist = d; nearestEnemy = { x: bot.x, y: bot.y } }
+    }
+    const aimX = nearestEnemy ? nearestEnemy.x : mouseTargetX
+    const aimY = nearestEnemy ? nearestEnemy.y : mouseTargetY
+
     if (this._useSocket) {
-      const sdx = mouseTargetX - splitCell.x
-      const sdy = mouseTargetY - splitCell.y
+      const sdx = aimX - splitCell.x
+      const sdy = aimY - splitCell.y
       const slen = Math.sqrt(sdx*sdx + sdy*sdy)
       let dirX, dirY
       if (slen < 1) {
@@ -1213,8 +1229,8 @@ export class GameEngine {
     const half = splitCell.mass / 2
     splitCell.mass = half
     const nr2 = splitCell.radius
-    const cdx = mouseTargetX - splitCell.x
-    const cdy = mouseTargetY - splitCell.y
+    const cdx = aimX - splitCell.x
+    const cdy = aimY - splitCell.y
     const clen = Math.sqrt(cdx*cdx + cdy*cdy)
     let ndx, ndy
     if (clen < 1) {
@@ -1228,7 +1244,7 @@ export class GameEngine {
       clamp(splitCell.y + ndy*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
       half, splitCell.color
     )
-    const EFFECTIVE_SPLIT_SPEED = Math.max(SPLIT_SPEED * 2, Math.sqrt(half) * 1.8)
+    const EFFECTIVE_SPLIT_SPEED = Math.max(SPLIT_SPEED * 3, Math.sqrt(half) * 2.5)
     nc.vx = ndx * EFFECTIVE_SPLIT_SPEED
     nc.vy = ndy * EFFECTIVE_SPLIT_SPEED
     nc.mergeTimer = Date.now() + MERGE_TIME
@@ -1724,18 +1740,22 @@ export class GameEngine {
         const frozen = cell.frozen > 0
         const speedBoost = this.skills.speed.active ? 5.0 : 1
         const speedMult = frozen ? 0.3 : speedBoost
-        const hasSplitVel = Math.abs(cell.vx || 0) > 0.5 || Math.abs(cell.vy || 0) > 0.5
+        const splitVelMag2 = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
+        const hasSplitVel = splitVelMag2 > 0.5
         if (hasSplitVel) {
           cell.x += (cell.vx || 0) * dt * 60
           cell.y += (cell.vy || 0) * dt * 60
         }
-        if (!frozen && !hasSplitVel) {
-          const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
-          const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
-          if (d2 > cell.radius / 3) {
-            const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
-            const s2 = Math.min(spd * dt, d2)
-            if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
+        if (!frozen) {
+          const splitMouseFactor = hasSplitVel ? Math.min(1, (1 - splitVelMag2 / 38) * 2) : 1
+          if (splitMouseFactor > 0) {
+            const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
+            const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
+            if (d2 > cell.radius / 3) {
+              const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult * splitMouseFactor
+              const s2 = Math.min(spd * dt, d2)
+              if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
+            }
           }
         }
         if (!hasSplitVel && cell._tx !== undefined) {
@@ -1805,18 +1825,17 @@ export class GameEngine {
       let splitFactor = 1
       if (cell.mergeTimer > nowMs) {
         const splitAge = MERGE_TIME - (cell.mergeTimer - nowMs)
-        splitFactor = Math.min(1, splitAge / 3500)
+        splitFactor = Math.min(1, splitAge / 600)
+      }
+      if (splitVelMag > 0.01) {
+        cell.x += cell.vx * dt * 60
+        cell.y += cell.vy * dt * 60
+        cell.vx *= 0.985; cell.vy *= 0.985
+        if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
       }
       if (d > cell.radius / 3) {
         const s = Math.min(speed * dt * splitFactor, d)
         if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
-      }
-
-      if (splitVelMag > 0.01) {
-        cell.x += cell.vx * dt * 60
-        cell.y += cell.vy * dt * 60
-        cell.vx *= 0.94; cell.vy *= 0.94
-        if (Math.abs(cell.vx) < 0.05) { cell.vx = 0; cell.vy = 0 }
       }
 
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
@@ -1831,14 +1850,23 @@ export class GameEngine {
       for (let j = i+1; j < this.cells.length; j++) {
         const a = this.cells[i]; const b = this.cells[j]
         const bothExpired = a.mergeTimer < now && b.mergeTimer < now
-        if (!bothExpired) continue
         const d = dist(a, b)
-        const pullRange = (a.radius + b.radius) * 1.4
-        if (d < pullRange && d > 0) {
-          const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
-          const pull = Math.min(2, 40 / (d + 1))
-          a.vx = (a.vx||0) + dx * pull; a.vy = (a.vy||0) + dy * pull
-          b.vx = (b.vx||0) - dx * pull; b.vy = (b.vy||0) - dy * pull
+        if (bothExpired) {
+          const pullRange = (a.radius + b.radius) * 1.4
+          if (d < pullRange && d > 0) {
+            const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
+            const pull = Math.min(2, 40 / (d + 1))
+            a.vx = (a.vx||0) + dx * pull; a.vy = (a.vy||0) + dy * pull
+            b.vx = (b.vx||0) - dx * pull; b.vy = (b.vy||0) - dy * pull
+          }
+        } else {
+          const minD = a.radius + b.radius
+          if (d < minD && d > 0) {
+            const overlap = minD - d
+            const dx = (a.x - b.x) / d; const dy = (a.y - b.y) / d
+            a.x += dx * overlap * 0.5; a.y += dy * overlap * 0.5
+            b.x -= dx * overlap * 0.5; b.y -= dy * overlap * 0.5
+          }
         }
       }
     }
