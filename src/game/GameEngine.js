@@ -13,11 +13,11 @@ const SPLIT_SPEED = 20
 const MERGE_TIME = 10000
 const MAX_CELLS = 16
 const MIN_MASS_SPLIT = 35
-const EJECT_MASS_SM = 12
-const EJECT_MASS_MD = 12
-const EJECT_MASS_LG = 12
-const EJECT_COST = 2
-const MIN_EAT_RATIO = 1.15
+const EJECT_MASS_SM = 14
+const EJECT_MASS_MD = 14
+const EJECT_MASS_LG = 14
+const EJECT_COST = 4
+const MIN_EAT_RATIO = 1.10
 const GOLD_PER_CELL_EAT = 5
 const GOLD_BUY_A_COST = 10
 const GOLD_BUY_A_MASS = 60
@@ -1187,16 +1187,15 @@ export class GameEngine {
     const mouseTargetX = frozenPos ? frozenPos.x : this.mouse.x
     const mouseTargetY = frozenPos ? frozenPos.y : this.mouse.y
 
-    let splitCell = null
-    for (const cell of this.cells) {
-      if (cell.mass < MIN_MASS_SPLIT) continue
-      if (!splitCell || cell.mass > splitCell.mass) splitCell = cell
-    }
-    if (!splitCell) return
-
     if (this._useSocket) {
-      const sdx = mouseTargetX - splitCell.x
-      const sdy = mouseTargetY - splitCell.y
+      let biggest = null
+      for (const cell of this.cells) {
+        if (cell.mass < MIN_MASS_SPLIT) continue
+        if (!biggest || cell.mass > biggest.mass) biggest = cell
+      }
+      if (!biggest) return
+      const sdx = mouseTargetX - biggest.x
+      const sdy = mouseTargetY - biggest.y
       const slen = Math.sqrt(sdx*sdx + sdy*sdy)
       let dirX, dirY
       if (slen < 1) {
@@ -1210,30 +1209,42 @@ export class GameEngine {
       return
     }
 
-    const half = splitCell.mass / 2
-    splitCell.mass = half
-    const nr2 = splitCell.radius
-    const cdx = mouseTargetX - splitCell.x
-    const cdy = mouseTargetY - splitCell.y
-    const clen = Math.sqrt(cdx*cdx + cdy*cdy)
-    let ndx, ndy
-    if (clen < 1) {
-      const angle = Math.random() * Math.PI * 2
-      ndx = Math.cos(angle); ndy = Math.sin(angle)
+    const eligible = this.cells.filter(c => c.mass >= MIN_MASS_SPLIT)
+    const available = MAX_CELLS - this.cells.length
+    const toSplit = eligible.slice(0, available)
+    if (toSplit.length === 0) return
+
+    const cdx0 = mouseTargetX - toSplit[0].x
+    const cdy0 = mouseTargetY - toSplit[0].y
+    const clen0 = Math.sqrt(cdx0*cdx0 + cdy0*cdy0)
+    let globalDirX, globalDirY
+    if (clen0 < 1) {
+      const a = Math.random() * Math.PI * 2
+      globalDirX = Math.cos(a); globalDirY = Math.sin(a)
     } else {
-      ndx = cdx / clen; ndy = cdy / clen
+      globalDirX = cdx0 / clen0; globalDirY = cdy0 / clen0
     }
-    const nc = new Cell(
-      clamp(splitCell.x + ndx*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
-      clamp(splitCell.y + ndy*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
-      half, splitCell.color
-    )
-    const EFFECTIVE_SPLIT_SPEED = 35
-    nc.vx = ndx * EFFECTIVE_SPLIT_SPEED
-    nc.vy = ndy * EFFECTIVE_SPLIT_SPEED
-    nc.mergeTimer = Date.now() + MERGE_TIME
-    splitCell.mergeTimer = Date.now() + MERGE_TIME
-    this.cells.push(nc)
+
+    const now = Date.now()
+    const newCells = []
+    for (const splitCell of toSplit) {
+      const half = splitCell.mass / 2
+      splitCell.mass = half
+      const nr2 = splitCell.radius
+      const mergeDelay = Math.max(MERGE_TIME, Math.sqrt(half) * 600)
+      const spd = Math.max(30, Math.sqrt(splitCell.mass) * 0.7)
+      const nc = new Cell(
+        clamp(splitCell.x + globalDirX*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
+        clamp(splitCell.y + globalDirY*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
+        half, splitCell.color
+      )
+      nc.vx = globalDirX * spd
+      nc.vy = globalDirY * spd
+      nc.mergeTimer = now + mergeDelay
+      splitCell.mergeTimer = now + mergeDelay
+      newCells.push(nc)
+    }
+    this.cells.push(...newCells)
   }
 
   _freezeSplitDir() {
@@ -1264,7 +1275,7 @@ export class GameEngine {
     const ejR = 7
     for (const cell of this.cells) {
       if (cell.mass < massAmount * 2) continue
-      cell.mass -= massAmount + 2
+      cell.mass -= massAmount + EJECT_COST
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const angle = Math.atan2(dy, dx) + angleOffset
@@ -1289,7 +1300,7 @@ export class GameEngine {
       const baseAngle = Math.atan2(dyM, dxM)
       for (let i = 0; i < 3; i++) {
         if (cell.mass < massAmount * 2) break
-        cell.mass -= massAmount + 2
+        cell.mass -= massAmount + EJECT_COST
         const angle = baseAngle + fanOffsets[i]
         const em = new EjectedMass(
           cell.x + Math.cos(angle) * (cell.radius + ejR + 2),
@@ -2151,9 +2162,9 @@ export class GameEngine {
       if (cell.mass <= 20) continue
       let rate
       if (cell.mass < 200) rate = 0
-      else if (cell.mass < 1000) rate = cell.mass * 0.00004
-      else if (cell.mass < 5000) rate = cell.mass * 0.00008
-      else rate = cell.mass * 0.00015
+      else if (cell.mass < 1000) rate = cell.mass * 0.00012
+      else if (cell.mass < 5000) rate = cell.mass * 0.00025
+      else rate = cell.mass * 0.00045
       cell.mass = Math.max(20, cell.mass - rate * dt)
     }
   }

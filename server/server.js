@@ -284,14 +284,14 @@ const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 1
 const BASE_SPEED = 18
 const MIN_MASS_SPLIT = 35
-const EJECT_COST = 14
-const EJECT_MASS = 12
+const EJECT_COST = 18
+const EJECT_MASS = 14
 const MERGE_TIME = 10000
 const MERGE_FADE = 4000
-const MERGE_TIME_MIN = 7000
+const MERGE_TIME_MIN = 8000
 const MAX_CELLS = 16
-const SPLIT_SPEED = 22
-const MIN_EAT_RATIO = 1.05
+const SPLIT_SPEED = 30
+const MIN_EAT_RATIO = 1.10
 const MAX_MASS = 50000
 const VIRUS_FEED_SPLIT = 5
 
@@ -982,19 +982,20 @@ class GameRoom {
     const newCells = []
     for (const cell of player.cells) {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
-      const mergeDelay = cell.mass < 120 ? MERGE_TIME_MIN : MERGE_TIME
       cell.mass /= 2
+      const mergeDelay = Math.max(MERGE_TIME_MIN, Math.sqrt(cell.mass) * 600)
+      const spd = Math.max(SPLIT_SPEED, Math.sqrt(cell.mass) * 0.7)
       cell.mergeTimer = mergeDelay
       const nr = massToRadius(cell.mass)
-      const offsetDist = nr * 1.5 + 5;
+      const offsetDist = nr * 1.5 + 5
       newCells.push({
         id: rndId(),
         x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
         y: clamp(cell.y + ny * offsetDist, nr, WORLD_SIZE - nr),
         mass: cell.mass,
         mergeTimer: mergeDelay,
-        splitVx: nx * SPLIT_SPEED,
-        splitVy: ny * SPLIT_SPEED
+        splitVx: nx * spd,
+        splitVy: ny * spd
       })
     }
     player.cells.push(...newCells)
