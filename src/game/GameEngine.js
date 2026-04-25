@@ -1261,7 +1261,7 @@ export class GameEngine {
 
   _eject(massAmount, angleOffset = 0, speed = 40, maxCount = 999) {
     if (this._useSocket) return
-    const ejR = 14
+    const ejR = 7
     for (const cell of this.cells) {
       if (cell.mass < massAmount * 2) continue
       cell.mass -= massAmount + 2
@@ -1281,7 +1281,7 @@ export class GameEngine {
   _ejectBurst3(massAmount) {
     const SPEED = 40
     if (this._useSocket) { socketClient.sendEject(3); return }
-    const ejR = 14
+    const ejR = 7
     const fanOffsets = [-0.38, 0, 0.38]
     for (const cell of this.cells) {
       if (cell.mass < massAmount * 6) continue
@@ -1687,8 +1687,8 @@ export class GameEngine {
         if (!frozen && !hasSplitVel) {
           const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
           const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
-          if (d2 > cell.radius / 3) {
-            const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+          if (d2 > 1) {
+            const spd = Math.max(1.5, 9.5 / Math.pow(Math.max(20, cell.mass), 0.35)) * 55 * speedMult
             const s2 = Math.min(spd * dt, d2)
             if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
           }
@@ -1753,7 +1753,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+      const speed = Math.max(1.5, 9.5 / Math.pow(Math.max(20, cell.mass), 0.35)) * 55 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
       if (splitVelMag > 0.5) {
@@ -1762,7 +1762,7 @@ export class GameEngine {
         cell.vx *= 0.87; cell.vy *= 0.87
       } else {
         if (cell.vx) { cell.vx = 0; cell.vy = 0 }
-        if (d > cell.radius / 3) {
+        if (d > 1) {
           const s = Math.min(speed * dt, d)
           if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
         }
@@ -1779,16 +1779,20 @@ export class GameEngine {
     for (let i = 0; i < this.cells.length; i++) {
       for (let j = i+1; j < this.cells.length; j++) {
         const a = this.cells[i]; const b = this.cells[j]
-        const bothExpired = a.mergeTimer < now && b.mergeTimer < now
-        if (!bothExpired) continue
-        const d = dist(a, b)
-        const pullRange = (a.radius + b.radius) * 1.4
-        if (d < pullRange && d > 0) {
-          const dx = (b.x-a.x)/d; const dy = (b.y-a.y)/d
-          const pull = Math.min(2, 40 / (d + 1))
-          a.vx = (a.vx||0) + dx * pull; a.vy = (a.vy||0) + dy * pull
-          b.vx = (b.vx||0) - dx * pull; b.vy = (b.vy||0) - dy * pull
-        }
+        const canMerge = a.mergeTimer < now && b.mergeTimer < now
+        if (canMerge) continue
+        const adx = a.x - b.x; const ady = a.y - b.y
+        const d = Math.sqrt(adx*adx + ady*ady) || 0.01
+        const minD = a.radius + b.radius
+        if (d >= minD) continue
+        const nx = adx / d; const ny = ady / d
+        const push = (minD - d) * 0.5
+        a.x += nx * push; a.y += ny * push
+        b.x -= nx * push; b.y -= ny * push
+        a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius)
+        a.y = clamp(a.y, a.radius, WORLD_SIZE - a.radius)
+        b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius)
+        b.y = clamp(b.y, b.radius, WORLD_SIZE - b.radius)
       }
     }
   }
@@ -1881,8 +1885,7 @@ export class GameEngine {
       const virusR = Math.sqrt(virus.mass || 100) * 4.5
       for (const cell of this.cells) {
         if (dist(cell, virus) >= cell.radius + virusR * 0.5) continue
-        if (cell.mass < 300) continue
-        const vInfo = VIRUS_TYPES[virus.type] || VIRUS_TYPES.normal
+        if (cell.mass < 135) continue
 
         if (this.skills.shield.active) {
           this._showFloat('+300 KALKAN', '#06b6d4')
@@ -1895,8 +1898,6 @@ export class GameEngine {
         }
 
         const nowMs = Date.now()
-        const timeSinceLastPop = nowMs - (this._lastVirusPopTime || 0)
-        const shouldPop = timeSinceLastPop > 7000
         const preMass = cell.mass
         this.lastEatTime = nowMs
         soundSystem.virusEat()
@@ -1906,14 +1907,9 @@ export class GameEngine {
         this.onScoreChange(Math.floor(this.score))
         this.onXPGain(20)
 
-        if (shouldPop) {
-          this._lastVirusPopTime = nowMs
-          this._explodeCellMouse(cell, Math.min(8, Math.max(2, Math.floor(preMass / 100))))
-          this._showFloat(`💥 PATLAMA +${scoreGain}`, '#fbbf24')
-        } else {
-          cell.mass = preMass * 1.25
-          this._showFloat(`+25% DİKEN YENDİN +${scoreGain}`, '#4ade80')
-        }
+        const splitCount = Math.min(MAX_CELLS - this.cells.length, Math.floor(preMass / 35), 15)
+        this._explodeCellMouse(cell, Math.max(2, splitCount))
+        this._showFloat(`💥 DİKEN PATLADI +${scoreGain}`, '#fbbf24')
 
         if (virus.type === 'poison') { cell.poisoned = 5; this._showFloat('ZEHIR', '#a855f7') }
         else if (virus.type === 'freeze') { cell.frozen = 4; this._showFloat('DOND', '#38bdf8') }
@@ -2102,8 +2098,8 @@ export class GameEngine {
     if (ejectedToRemove.size > 0) {
       this.ejected = this.ejected.filter(e => !ejectedToRemove.has(e.id))
     }
-    if (this.ejected.length > 3) {
-      this.ejected = this.ejected.slice(-3)
+    if (this.ejected.length > 60) {
+      this.ejected = this.ejected.slice(-60)
     }
   }
 
@@ -2908,36 +2904,14 @@ export class GameEngine {
     }
     for (const [col, items] of byColor) {
       for (const em of items) {
-        const r = 16
-        const spd = Math.sqrt((em.vx||0)**2 + (em.vy||0)**2)
-        const moving = spd > 1.5
-        ctx.save()
-        if (this.qualityLevel !== 'low') {
-          ctx.shadowBlur = moving ? 30 : 14
-          ctx.shadowColor = col
-        }
-        if (moving && this.qualityLevel !== 'low') {
-          const trailLen = Math.min(spd * 1.8, 36)
-          const angle = Math.atan2(em.vy||0, em.vx||0) + Math.PI
-          const grad = ctx.createLinearGradient(
-            em.x, em.y,
-            em.x + Math.cos(angle) * trailLen, em.y + Math.sin(angle) * trailLen
-          )
-          grad.addColorStop(0, col)
-          grad.addColorStop(1, 'rgba(0,0,0,0)')
-          ctx.beginPath()
-          ctx.ellipse(em.x + Math.cos(angle) * trailLen/2, em.y + Math.sin(angle) * trailLen/2, trailLen/2, r * 0.45, Math.atan2(em.vy||0, em.vx||0) + Math.PI/2, 0, TWO_PI)
-          ctx.fillStyle = grad
-          ctx.fill()
-        }
+        const r = em._radius || 7
         ctx.beginPath()
         ctx.arc(em.x, em.y, r, 0, TWO_PI)
         ctx.fillStyle = col
         ctx.fill()
-        ctx.lineWidth = moving ? 3.5 : 2
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+        ctx.lineWidth = 1.5
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'
         ctx.stroke()
-        ctx.restore()
       }
     }
   }
