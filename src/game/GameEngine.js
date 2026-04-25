@@ -1694,6 +1694,8 @@ export class GameEngine {
         if (hasSplitVel) {
           cell.x += (cell.vx || 0) * dt * 60
           cell.y += (cell.vy || 0) * dt * 60
+          const _d = Math.pow(0.87, dt * 60)
+          cell.vx = (cell.vx || 0) * _d; cell.vy = (cell.vy || 0) * _d
         }
         if (!frozen && !hasSplitVel) {
           const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
@@ -1770,7 +1772,8 @@ export class GameEngine {
       if (splitVelMag > 0.5) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        cell.vx *= 0.87; cell.vy *= 0.87
+        const decay = Math.pow(0.87, dt * 60)
+        cell.vx *= decay; cell.vy *= decay
       } else {
         if (cell.vx) { cell.vx = 0; cell.vy = 0 }
         if (d > 1) {
