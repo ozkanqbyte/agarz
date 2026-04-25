@@ -1073,16 +1073,16 @@ export class GameEngine {
 
     if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
     if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { 
-      if (this._useSocket) { socketClient.sendEject(1) } 
+      if (this._useSocket) { console.log('[EJECT-W] Sending 1 yem'); socketClient.sendEject(1) } 
       else { this._eject(EJECT_MASS_SM, 0, 25, 1) } 
       this.lastEjectTime = now 
     }
     if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { 
-      if (this._useSocket) { socketClient.sendEject(2) } 
+      if (this._useSocket) { console.log('[EJECT-E] Sending 3 yem'); socketClient.sendEject(3) } 
       else { this._ejectBurst3(EJECT_MASS_SM) } 
       this.lastEjectTime = now 
     }
-    if (e.code === 'KeyR' && now - this.lastEjectTime > 80) { this._eject(EJECT_MASS_SM, 0, 25, 1); this.lastEjectTime = now; if (this._useSocket) socketClient.sendEject() }
+    if (e.code === 'KeyR') { this.lastEjectTime = 0 }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -1293,7 +1293,7 @@ export class GameEngine {
   _ejectBurst3(massAmount) {
     const EJECT_COLOR = '#ef4444'
     const SPEED = 25
-    if (this._useSocket) { socketClient.sendEject(); return }
+    if (this._useSocket) { socketClient.sendEject(3); return }
 
     let targetCell = null
     for (const cell of this.cells) {
@@ -1455,7 +1455,8 @@ export class GameEngine {
     const now = Date.now()
 
     if (this.keys['KeyR'] && now - this.lastEjectTime > 80) {
-      this._eject(EJECT_MASS_SM, 0, 55, 1)
+      if (this._useSocket) socketClient.sendEject(1)
+      else this._eject(EJECT_MASS_SM, 0, 55, 1)
       this.lastEjectTime = now
     }
 
@@ -1733,7 +1734,7 @@ export class GameEngine {
           const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
           const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
           if (d2 > cell.radius / 3) {
-            const spd = Math.max(1.5, 9.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+            const spd = Math.max(1.5, 11.5 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
             const s2 = Math.min(spd * dt, d2)
             if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
           }
@@ -3809,7 +3810,7 @@ export class GameEngine {
         bot.thinkTimer = bot.difficulty === 'easy' ? 1.2 : bot.difficulty === 'medium' ? 0.6 : 0.25
       }
       const isSlowed = !!this.slowedEntities[bot.id]
-      const speed = BASE_SPEED * Math.pow(Math.max(bot.mass, 1), -0.25) * 90 * (isSlowed ? 0.3 : 1)
+      const speed = BASE_SPEED * Math.pow(Math.max(bot.mass, 1), -0.25) * 55 * (isSlowed ? 0.3 : 1)
       let tdx = bot.targetX - bot.x, tdy = bot.targetY - bot.y
       if (bot._micro) { tdx += (Math.random()-0.5)*18; tdy += (Math.random()-0.5)*18 }
       const d = Math.sqrt(tdx*tdx + tdy*tdy)
