@@ -2185,8 +2185,8 @@ export class GameEngine {
     if (!this.cells.length) return
     const cx = this.cells.reduce((s,c) => s+c.x, 0) / this.cells.length
     const cy = this.cells.reduce((s,c) => s+c.y, 0) / this.cells.length
-    this.camera.x = lerp(this.camera.x, cx, 0.15)
-    this.camera.y = lerp(this.camera.y, cy, 0.15)
+    this.camera.x = lerp(this.camera.x, cx, 0.07)
+    this.camera.y = lerp(this.camera.y, cy, 0.07)
     const totalMassForZoom = this.cells.reduce((s,c) => s + c.mass, 0)
     const avgR = Math.sqrt(totalMassForZoom / this.cells.length) * 4.5
     const autoZoom = clamp(Math.min(this.canvas.width / (avgR * 4.5), this.canvas.height / (avgR * 4.5)), 0.07, 1.8)
@@ -3778,7 +3778,7 @@ export class GameEngine {
         bot.thinkTimer = bot.difficulty === 'easy' ? 1.2 : bot.difficulty === 'medium' ? 0.6 : 0.25
       }
       const isSlowed = !!this.slowedEntities[bot.id]
-      const speed = BASE_SPEED * Math.pow(Math.max(bot.mass, 1), -0.25) * 55 * (isSlowed ? 0.3 : 1)
+      const speed = BASE_SPEED * Math.pow(Math.max(bot.mass, 1), -0.25) * 38 * (isSlowed ? 0.3 : 1)
       let tdx = bot.targetX - bot.x, tdy = bot.targetY - bot.y
       if (bot._micro) { tdx += (Math.random()-0.5)*18; tdy += (Math.random()-0.5)*18 }
       const d = Math.sqrt(tdx*tdx + tdy*tdy)

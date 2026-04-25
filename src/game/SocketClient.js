@@ -69,7 +69,9 @@ class SocketClient {
   }
 
   sendEject(count = 1) {
-    if (!this._socket?.connected) return
+    console.log('[SocketClient.sendEject] count:', count, 'connected:', this._socket?.connected)
+    if (!this._socket?.connected) { console.log('[SocketClient] Socket NOT connected!'); return }
+    console.log('[SocketClient] Emitting input:eject with count:', count)
     this._socket.emit('input:eject', { count })
   }
 
