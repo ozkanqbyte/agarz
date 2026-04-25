@@ -1232,7 +1232,7 @@ export class GameEngine {
       splitCell.mass = half
       const nr2 = splitCell.radius
       const mergeDelay = Math.max(MERGE_TIME, Math.sqrt(half) * 600)
-      const spd = Math.max(5, 1.17 * Math.sqrt(splitCell.mass))
+      const spd = Math.max(3, 0.6 * Math.sqrt(splitCell.mass))
       const nc = new Cell(
         clamp(splitCell.x + globalDirX*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
         clamp(splitCell.y + globalDirY*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
@@ -1694,7 +1694,7 @@ export class GameEngine {
         if (hasSplitVel) {
           cell.x += (cell.vx || 0) * dt * 60
           cell.y += (cell.vy || 0) * dt * 60
-          const _d = Math.pow(0.87, dt * 60)
+          const _d = Math.pow(0.80, dt * 60)
           cell.vx = (cell.vx || 0) * _d; cell.vy = (cell.vy || 0) * _d
         }
         if (!frozen && !hasSplitVel) {
@@ -1772,7 +1772,7 @@ export class GameEngine {
       if (splitVelMag > 0.5) {
         cell.x += cell.vx * dt * 60
         cell.y += cell.vy * dt * 60
-        const decay = Math.pow(0.87, dt * 60)
+        const decay = Math.pow(0.80, dt * 60)
         cell.vx *= decay; cell.vy *= decay
       } else {
         if (cell.vx) { cell.vx = 0; cell.vy = 0 }
@@ -1795,12 +1795,15 @@ export class GameEngine {
         const a = this.cells[i]; const b = this.cells[j]
         const canMerge = a.mergeTimer < now && b.mergeTimer < now
         if (canMerge) continue
+        const aVel = Math.sqrt((a.vx||0)**2 + (a.vy||0)**2)
+        const bVel = Math.sqrt((b.vx||0)**2 + (b.vy||0)**2)
+        if (aVel > 0.5 || bVel > 0.5) continue
         const adx = a.x - b.x; const ady = a.y - b.y
         const d = Math.sqrt(adx*adx + ady*ady) || 0.01
         const minD = a.radius + b.radius
         if (d >= minD) continue
         const nx = adx / d; const ny = ady / d
-        const push = (minD - d) * 0.5
+        const push = (minD - d) * 0.4
         a.x += nx * push; a.y += ny * push
         b.x -= nx * push; b.y -= ny * push
         a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius)
