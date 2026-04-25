@@ -1226,20 +1226,22 @@ export class GameEngine {
     }
 
     const now = Date.now()
+    const SPLIT_DUR = 260
     const newCells = []
     for (const splitCell of toSplit) {
       const half = splitCell.mass / 2
       splitCell.mass = half
       const nr2 = splitCell.radius
       const mergeDelay = Math.max(MERGE_TIME, Math.sqrt(half) * 600)
-      const spd = Math.max(3, 0.6 * Math.sqrt(splitCell.mass))
-      const nc = new Cell(
-        clamp(splitCell.x + globalDirX*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
-        clamp(splitCell.y + globalDirY*(nr2*2 + 4), nr2, WORLD_SIZE-nr2),
-        half, splitCell.color
-      )
-      nc.vx = globalDirX * spd
-      nc.vy = globalDirY * spd
+      const ox = splitCell.x; const oy = splitCell.y
+      splitCell.x = clamp(ox - globalDirX * nr2 * 0.5, nr2, WORLD_SIZE - nr2)
+      splitCell.y = clamp(oy - globalDirY * nr2 * 0.5, nr2, WORLD_SIZE - nr2)
+      const sx = clamp(ox + globalDirX * nr2, nr2, WORLD_SIZE - nr2)
+      const sy = clamp(oy + globalDirY * nr2, nr2, WORLD_SIZE - nr2)
+      const ex = clamp(ox + globalDirX * nr2 * 2.5, nr2, WORLD_SIZE - nr2)
+      const ey = clamp(oy + globalDirY * nr2 * 2.5, nr2, WORLD_SIZE - nr2)
+      const nc = new Cell(sx, sy, half, splitCell.color)
+      nc._splitAnim = { sx, sy, ex, ey, t: now, dur: SPLIT_DUR }
       nc.mergeTimer = now + mergeDelay
       splitCell.mergeTimer = now + mergeDelay
       newCells.push(nc)
@@ -1758,8 +1760,20 @@ export class GameEngine {
       }
       return
     }
+    const nowMs = Date.now()
     for (const cell of this.cells) {
       if (!isFinite(cell.x) || !isFinite(cell.y)) { cell.x = WORLD_SIZE/2; cell.y = WORLD_SIZE/2 }
+      if (cell._splitAnim) {
+        const elapsed = nowMs - cell._splitAnim.t
+        const t = Math.min(1, elapsed / cell._splitAnim.dur)
+        const ease = 1 - (1 - t) * (1 - t)
+        cell.x = cell._splitAnim.sx + (cell._splitAnim.ex - cell._splitAnim.sx) * ease
+        cell.y = cell._splitAnim.sy + (cell._splitAnim.ey - cell._splitAnim.sy) * ease
+        cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
+        cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
+        if (t >= 1) { cell._splitAnim = null; cell.vx = 0; cell.vy = 0 }
+        continue
+      }
       const frozen = cell.frozen > 0
       const speedBoost = this.skills.speed.active ? 5.0 : 1
       const speedMult = frozen ? 0.3 : speedBoost
@@ -1767,21 +1781,10 @@ export class GameEngine {
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
       const speed = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
-
-      const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
-      if (splitVelMag > 0.5) {
-        cell.x += cell.vx * dt * 60
-        cell.y += cell.vy * dt * 60
-        const decay = Math.pow(0.80, dt * 60)
-        cell.vx *= decay; cell.vy *= decay
-      } else {
-        if (cell.vx) { cell.vx = 0; cell.vy = 0 }
-        if (d > 1) {
-          const s = Math.min(speed * dt, d)
-          if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
-        }
+      if (d > 1) {
+        const s = Math.min(speed * dt, d)
+        if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
       }
-
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
       cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
     }
@@ -1795,9 +1798,7 @@ export class GameEngine {
         const a = this.cells[i]; const b = this.cells[j]
         const canMerge = a.mergeTimer < now && b.mergeTimer < now
         if (canMerge) continue
-        const aVel = Math.sqrt((a.vx||0)**2 + (a.vy||0)**2)
-        const bVel = Math.sqrt((b.vx||0)**2 + (b.vy||0)**2)
-        if (aVel > 0.5 || bVel > 0.5) continue
+        if (a._splitAnim || b._splitAnim) continue
         const adx = a.x - b.x; const ady = a.y - b.y
         const d = Math.sqrt(adx*adx + ady*ady) || 0.01
         const minD = a.radius + b.radius
@@ -1827,6 +1828,7 @@ export class GameEngine {
         if (merged.has(j)) continue
         const b = this.cells[j]
         if (cur.mergeTimer > now || b.mergeTimer > now) continue
+        if (cur._splitAnim || b._splitAnim) continue
         if (dist(cur, b) < Math.max(cur.radius, b.radius)) {
           cur = new Cell(
             (cur.x*cur.mass + b.x*b.mass)/(cur.mass+b.mass),
@@ -2196,8 +2198,10 @@ export class GameEngine {
       return
     }
     if (!this.cells.length) return
-    const cx = this.cells.reduce((s,c) => s+c.x, 0) / this.cells.length
-    const cy = this.cells.reduce((s,c) => s+c.y, 0) / this.cells.length
+    const camCells = this.cells.filter(c => !c._splitAnim)
+    const camSrc = camCells.length > 0 ? camCells : this.cells
+    const cx = camSrc.reduce((s,c) => s+c.x, 0) / camSrc.length
+    const cy = camSrc.reduce((s,c) => s+c.y, 0) / camSrc.length
     this.camera.x = lerp(this.camera.x, cx, 0.07)
     this.camera.y = lerp(this.camera.y, cy, 0.07)
     const totalMassForZoom = this.cells.reduce((s,c) => s + c.mass, 0)
