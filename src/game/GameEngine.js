@@ -1771,9 +1771,15 @@ export class GameEngine {
         cell.y = cell._splitAnim.sy + (cell._splitAnim.ey - cell._splitAnim.sy) * ease
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
-        if (t >= 1) { cell._splitAnim = null; cell.vx = 0; cell.vy = 0 }
+        if (t >= 1) {
+          cell._splitCoast = nowMs + 180
+          cell._splitAnim = null
+          cell.vx = 0; cell.vy = 0
+        }
         continue
       }
+      if (cell._splitCoast && nowMs < cell._splitCoast) continue
+      if (cell._splitCoast && nowMs >= cell._splitCoast) cell._splitCoast = null
       const frozen = cell.frozen > 0
       const speedBoost = this.skills.speed.active ? 5.0 : 1
       const speedMult = frozen ? 0.3 : speedBoost
@@ -1798,7 +1804,7 @@ export class GameEngine {
         const a = this.cells[i]; const b = this.cells[j]
         const canMerge = a.mergeTimer < now && b.mergeTimer < now
         if (canMerge) continue
-        if (a._splitAnim || b._splitAnim) continue
+        if (a._splitAnim || b._splitAnim || a._splitCoast || b._splitCoast) continue
         const adx = a.x - b.x; const ady = a.y - b.y
         const d = Math.sqrt(adx*adx + ady*ady) || 0.01
         const minD = a.radius + b.radius
@@ -1828,7 +1834,7 @@ export class GameEngine {
         if (merged.has(j)) continue
         const b = this.cells[j]
         if (cur.mergeTimer > now || b.mergeTimer > now) continue
-        if (cur._splitAnim || b._splitAnim) continue
+        if (cur._splitAnim || b._splitAnim || cur._splitCoast || b._splitCoast) continue
         if (dist(cur, b) < Math.max(cur.radius, b.radius)) {
           cur = new Cell(
             (cur.x*cur.mass + b.x*b.mass)/(cur.mass+b.mass),
@@ -2198,7 +2204,7 @@ export class GameEngine {
       return
     }
     if (!this.cells.length) return
-    const camCells = this.cells.filter(c => !c._splitAnim)
+    const camCells = this.cells.filter(c => !c._splitAnim && !c._splitCoast)
     const camSrc = camCells.length > 0 ? camCells : this.cells
     const cx = camSrc.reduce((s,c) => s+c.x, 0) / camSrc.length
     const cy = camSrc.reduce((s,c) => s+c.y, 0) / camSrc.length
