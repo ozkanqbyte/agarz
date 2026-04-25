@@ -241,6 +241,9 @@ export class GameEngine {
 
     this.keys = {}
     this.lastEjectTime = 0
+    this.lastEjectTimeW = 0
+    this.lastEjectTimeE = 0
+    this.lastEjectTimeR = 0
     this.lastGoldBuy = 0
     this.lastMacroZ = 0
     this.lastMacroX = 0
@@ -1072,17 +1075,17 @@ export class GameEngine {
     const now = Date.now()
 
     if (e.code === 'Space') { this._freezeSplitDir(); this._split(); soundSystem.split() }
-    if (e.code === 'KeyW' && now - this.lastEjectTime > 200) { 
-      if (this._useSocket) { console.log('[EJECT-W] Sending 1 yem'); socketClient.sendEject(1) } 
-      else { this._eject(EJECT_MASS_SM, 0, 25, 1) } 
-      this.lastEjectTime = now 
+    if (e.code === 'KeyW' && now - this.lastEjectTimeW > 150) {
+      if (this._useSocket) socketClient.sendEject(1)
+      else this._eject(EJECT_MASS_SM, 0, 25, 1)
+      this.lastEjectTimeW = now
     }
-    if (e.code === 'KeyE' && now - this.lastEjectTime > 300) { 
-      if (this._useSocket) { console.log('[EJECT-E] Sending 3 yem'); socketClient.sendEject(3) } 
-      else { this._ejectBurst3(EJECT_MASS_SM) } 
-      this.lastEjectTime = now 
+    if (e.code === 'KeyE' && now - this.lastEjectTimeE > 250) {
+      if (this._useSocket) socketClient.sendEject(3)
+      else this._ejectBurst3(EJECT_MASS_SM)
+      this.lastEjectTimeE = now
     }
-    if (e.code === 'KeyR') { this.lastEjectTime = 0 }
+    if (e.code === 'KeyR') { this.lastEjectTimeR = 0 }
     if (e.code === 'KeyA' && now - this.lastGoldBuy > 300) { this._buyMass('small'); this.lastGoldBuy = now }
     if (e.code === 'KeyS' && now - this.lastGoldBuy > 300) { this._buyMass('large'); this.lastGoldBuy = now }
     if (e.code === 'KeyZ' && now - this.lastMacroZ > 300) { this._macroDoubleSplit(); this.lastMacroZ = now }
@@ -1331,16 +1334,16 @@ export class GameEngine {
     }
     if (!sourceCell) return
     const dxM = this.mouse.x - sourceCell.x, dyM = this.mouse.y - sourceCell.y
-    const angle = Math.atan2(dyM, dxM)
-    const perpAngle = angle + Math.PI / 2
+    const baseAngle = Math.atan2(dyM, dxM)
+    const fanOffsets = [-0.38, 0, 0.38]
     for (let i = 0; i < 3; i++) {
       if (sourceCell.mass < massAmount * 2) break
       sourceCell.mass -= massAmount + 2
       const ejR2 = Math.max(10, Math.min(sourceCell.radius * 0.12, 28))
-      const perpOffset = (i - 1) * Math.max(ejR2 * 2.5, 40)
+      const angle = baseAngle + fanOffsets[i]
       const em = new EjectedMass(
-        sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR2 + 2) + Math.cos(perpAngle) * perpOffset,
-        sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR2 + 2) + Math.sin(perpAngle) * perpOffset,
+        sourceCell.x + Math.cos(angle) * (sourceCell.radius + ejR2 + 2),
+        sourceCell.y + Math.sin(angle) * (sourceCell.radius + ejR2 + 2),
         Math.cos(angle) * SPEED, Math.sin(angle) * SPEED,
         EJECT_COLOR, massAmount, ejR2
       )
@@ -1454,10 +1457,10 @@ export class GameEngine {
     this.bgTime += dt
     const now = Date.now()
 
-    if (this.keys['KeyR'] && now - this.lastEjectTime > 80) {
+    if (this.keys['KeyR'] && now - this.lastEjectTimeR > 65) {
       if (this._useSocket) socketClient.sendEject(1)
       else this._eject(EJECT_MASS_SM, 0, 55, 1)
-      this.lastEjectTime = now
+      this.lastEjectTimeR = now
     }
 
     this._rebuildGrids()
@@ -1799,7 +1802,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = Math.max(1.5, 6.5 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+      const speed = Math.max(1.5, 11.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
 
       const splitVelMag = Math.sqrt((cell.vx||0)**2 + (cell.vy||0)**2)
       const nowMs = Date.now()
