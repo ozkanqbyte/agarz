@@ -659,7 +659,7 @@ export class GameEngine {
               op.mass = p.m || 20
               op.name = p.n || op.name; op.color = p.c || op.color
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
-              op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null
+              op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null; op.team = p.tm || 'none'
               const prevById = new Map((op.cells || []).filter(c => c.id).map(c => [c.id, c]))
               const newIdSet = new Set(cells.map(c => c.id).filter(Boolean))
               for (const [cid, pCell] of prevById) {
@@ -699,7 +699,8 @@ export class GameEngine {
                 cells: cells.map(c => ({ id: c.id, ...c, _x: c.x, _y: c.y })),
                 name: p.n || '?',
                 color: p.c || '#6366f1', isGod: !!p.g, clan: p.cl || null,
-                frozen: !!p.frozen, poisoned: !!p.poisoned, ownedPackage: p.pk || 'free'
+                frozen: !!p.frozen, poisoned: !!p.poisoned, ownedPackage: p.pk || 'free',
+                team: p.tm || 'none'
               }
             }
           }
@@ -2452,8 +2453,20 @@ export class GameEngine {
     for (const p of Object.values(this.otherPlayers)) {
       const px = mapX + (p.x || 0) * scale
       const py = mapY + (p.y || 0) * scale
-      ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2)
-      ctx.fillStyle = p.color || '#94a3b8'; ctx.fill()
+      const isTeammate = this.playerTeam && this.playerTeam !== 'none' && p.team === this.playerTeam
+      if (isTeammate) {
+        ctx.beginPath(); ctx.arc(px, py, 5.5, 0, Math.PI * 2)
+        ctx.fillStyle = p.team === 'red' ? 'rgba(239,68,68,0.35)' : 'rgba(59,130,246,0.35)'
+        ctx.fill()
+        ctx.beginPath(); ctx.arc(px, py, 5.5, 0, Math.PI * 2)
+        ctx.strokeStyle = p.team === 'red' ? '#f87171' : '#60a5fa'
+        ctx.lineWidth = 1.5; ctx.stroke()
+        ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2)
+        ctx.fillStyle = p.team === 'red' ? '#fca5a5' : '#bfdbfe'; ctx.fill()
+      } else {
+        ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2)
+        ctx.fillStyle = p.color || '#94a3b8'; ctx.fill()
+      }
     }
 
     const zoom = camera.zoom

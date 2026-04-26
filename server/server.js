@@ -1337,7 +1337,8 @@ class GameRoom {
         frozen: p.frozen > 0 ? 1 : 0,
         poisoned: p.poisoned > 0 ? 1 : 0,
         ghost: p.skillGhostTimer > 0 ? 1 : 0,
-        pk: p.ownedPackage || 'free'
+        pk: p.ownedPackage || 'free',
+        tm: p.team || 'none'
       })
     }
     const modeData = {}

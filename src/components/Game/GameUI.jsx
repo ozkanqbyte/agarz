@@ -743,57 +743,48 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
 
       <AnimatePresence>
         {status.spectating && !deathScreen && (
-          <>
-            <motion.div
-              key="spectator-top"
-              initial={{ opacity: 0, y: -30 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -30 }}
-              style={{
-                position: 'absolute', top: 0, left: 0, right: 0, zIndex: 40,
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                paddingTop: 12, pointerEvents: 'none'
-              }}>
-              <div style={{
-                background: 'rgba(6,4,22,0.90)', border: '1px solid rgba(168,85,247,0.5)',
-                backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-                borderRadius: 18, padding: '10px 28px 12px',
-                boxShadow: '0 0 40px rgba(168,85,247,0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4
-              }}>
+          <motion.div
+            key="spectator-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }}>
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 14
+            }}>
+              <motion.div
+                initial={{ y: -30 }} animate={{ y: 0 }} transition={{ type: 'spring', stiffness: 280 }}
+                style={{
+                  background: 'rgba(6,4,22,0.92)', border: '1px solid rgba(168,85,247,0.55)',
+                  backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                  borderRadius: 20, padding: '10px 28px 12px',
+                  boxShadow: '0 0 40px rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4
+                }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 10px #a855f7' }} />
-                  <span style={{ color: '#c4b5fd', fontSize: 10, fontWeight: 900, letterSpacing: 3, textTransform: 'uppercase' }}>İzleme Modu</span>
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 10px #a855f7' }} />
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 8px #a855f7' }} />
+                  <span style={{ color: '#c4b5fd', fontSize: 10, fontWeight: 900, letterSpacing: 3 }}>İZLEME MODU</span>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 8px #a855f7' }} />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: `radial-gradient(circle at 35% 35%, ${spectateStats.color}cc, ${spectateStats.color}55)`, border: `2px solid ${spectateStats.color}99`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: '#fff', boxShadow: `0 0 12px ${spectateStats.color}60` }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: `radial-gradient(circle at 35% 35%, ${spectateStats.color}cc, ${spectateStats.color}44)`, border: `2px solid ${spectateStats.color}bb`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 900, color: '#fff', boxShadow: `0 0 14px ${spectateStats.color}55` }}>
                     {(spectateName||'?')[0].toUpperCase()}
                   </div>
-                  <span style={{ color: '#fff', fontSize: 22, fontWeight: 900, letterSpacing: 0.5 }}>{spectateName}</span>
+                  <span style={{ color: '#fff', fontSize: 22, fontWeight: 900 }}>{spectateName}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 16, marginTop: 2 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 11, color: '#6b7280' }}>Kütle</span>
-                    <span style={{ fontSize: 14, fontWeight: 900, color: '#fbbf24' }}>{spectateStats.mass.toLocaleString()}</span>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: '#6b7280' }}>Kütle</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: '#fbbf24' }}>{spectateStats.mass.toLocaleString()}</span>
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
+            </div>
 
-            <motion.div
-              key="spectator-bottom"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 30 }}
-              style={{
-                position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)',
-                zIndex: 40, display: 'flex', gap: 8, pointerEvents: 'auto'
-              }}>
-              {[
-                { label: '◀ Önceki', dir: -1 },
-                { label: 'Sonraki ▶', dir: 1 },
-              ].map(({ label, dir }) => (
-                <motion.button key={label} whileTap={{ scale: 0.93 }}
+            <div style={{
+              position: 'absolute', bottom: 90, left: 0, right: 0,
+              display: 'flex', justifyContent: 'center', gap: 10, pointerEvents: 'auto'
+            }}>
+              {[{ label: '◀ Önceki', dir: -1 }, { label: 'Sonraki ▶', dir: 1 }].map(({ label, dir }) => (
+                <motion.button key={label} whileTap={{ scale: 0.92 }}
                   onClick={() => {
                     engineRef.current?._spectateChange(dir)
                     const eng = engineRef.current
@@ -804,17 +795,17 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
                       setSpectateStats({ mass: Math.floor(t?.mass || 0), color: t?.color || '#6366f1' })
                     }
                   }}
-                  style={{ background: 'rgba(168,85,247,0.22)', border: '1px solid rgba(168,85,247,0.5)', color: '#c4b5fd', borderRadius: 14, padding: '10px 22px', fontWeight: 900, fontSize: 14, cursor: 'pointer', boxShadow: '0 0 14px rgba(168,85,247,0.15)' }}>
+                  style={{ background: 'rgba(168,85,247,0.25)', border: '1px solid rgba(168,85,247,0.6)', color: '#c4b5fd', borderRadius: 14, padding: '11px 24px', fontWeight: 900, fontSize: 14, cursor: 'pointer', boxShadow: '0 0 18px rgba(168,85,247,0.2)' }}>
                   {label}
                 </motion.button>
               ))}
-              <motion.button whileTap={{ scale: 0.93 }}
+              <motion.button whileTap={{ scale: 0.92 }}
                 onClick={() => { onRestart?.(playerTeam) }}
-                style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, border: 'none', color: '#fff', borderRadius: 14, padding: '10px 22px', fontWeight: 900, fontSize: 14, cursor: 'pointer', boxShadow: `0 0 20px rgba(${theme.glowColor},0.4)` }}>
+                style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, border: 'none', color: '#fff', borderRadius: 14, padding: '11px 24px', fontWeight: 900, fontSize: 14, cursor: 'pointer', boxShadow: `0 0 22px rgba(${theme.glowColor},0.45)` }}>
                 🔄 Tekrar Başla
               </motion.button>
-            </motion.div>
-          </>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </>
