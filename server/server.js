@@ -965,6 +965,10 @@ class GameRoom {
   }
 
   _handleSplit(player, splitDir) {
+    const now = Date.now()
+    if (!player._lastSplitTime) player._lastSplitTime = 0
+    if (now - player._lastSplitTime < 150) return
+    player._lastSplitTime = now
     if (player.frozen > 0 || player.cells.length >= MAX_CELLS) return
     
     let nx = 1, ny = 0
@@ -984,10 +988,10 @@ class GameRoom {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       cell.mass /= 2
       const mergeDelay = Math.max(MERGE_TIME_MIN, Math.sqrt(cell.mass) * 600)
-      const spd = Math.max(SPLIT_SPEED, Math.sqrt(cell.mass) * 0.7)
+      const spd = Math.max(SPLIT_SPEED, Math.sqrt(cell.mass) * 0.5)
       cell.mergeTimer = mergeDelay
       const nr = massToRadius(cell.mass)
-      const offsetDist = nr * 1.5 + 5
+      const offsetDist = nr * 2.0 + 1
       newCells.push({
         id: rndId(),
         x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
