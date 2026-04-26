@@ -68,6 +68,7 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
   const [newTeamCode, setNewTeamCode] = useState('')
   const [showPlayerList, setShowPlayerList] = useState(false)
   const [spectateName, setSpectateName] = useState('?')
+  const [spectateStats, setSpectateStats] = useState({ mass: 0, color: '#6366f1' })
 
   const joystickRef = useRef(null)
   const joystickTouchRef = useRef(null)
@@ -127,12 +128,14 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
     const origStatus = engineRef.current.onStatusChange
     engineRef.current.onStatusChange = (s) => {
       setStatus(prev => ({ ...prev, ...s }))
-      if (s.spectating !== undefined) {
+      if (s.spectating) {
         const eng = engineRef.current
         if (eng) {
           const targets = Object.values(eng.otherPlayers || {})
           const idx = (eng.spectateIndex || 0) % Math.max(1, targets.length)
-          setSpectateName(targets[idx]?.name || '?')
+          const t = targets[idx]
+          setSpectateName(t?.name || '?')
+          setSpectateStats({ mass: Math.floor(t?.mass || 0), color: t?.color || '#6366f1' })
         }
       }
       origStatus && origStatus(s)
@@ -665,18 +668,16 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
                   </div>
                 ))}
               </div>
-              {mode === 'teams' && (
-                <div className="mb-4">
-                  <div className="text-xs font-bold mb-1.5 text-left" style={{ color: theme.uiAccent }}>🛡️ Takım Kodu</div>
-                  <input
-                    type="text" maxLength={6} placeholder={playerTeam !== 'none' ? playerTeam : 'ALPHA'}
-                    value={newTeamCode}
-                    onChange={e => setNewTeamCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))}
-                    className="w-full px-3 py-2 rounded-xl text-white font-black tracking-widest text-center text-sm outline-none"
-                    style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${theme.glowColor},0.35)` }}
-                  />
-                </div>
-              )}
+              <div className="mb-4">
+                <div className="text-xs font-bold mb-1.5 text-left" style={{ color: theme.uiAccent }}>🛡️ Takım Kodu <span style={{ color: '#4b5563', fontWeight: 400 }}>(isteğe bağlı)</span></div>
+                <input
+                  type="text" maxLength={6} placeholder={playerTeam !== 'none' ? playerTeam : 'ALPHA'}
+                  value={newTeamCode}
+                  onChange={e => setNewTeamCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))}
+                  className="w-full px-3 py-2 rounded-xl text-white font-black tracking-widest text-center text-sm outline-none"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${theme.glowColor},0.35)` }}
+                />
+              </div>
               <motion.button
                 onClick={() => { setDeathScreen(null); onRestart?.(newTeamCode || playerTeam) }}
                 whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
@@ -742,60 +743,78 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
 
       <AnimatePresence>
         {status.spectating && !deathScreen && (
-          <motion.div
-            key="spectator-panel"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 30 }}
-            style={{
-              position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)',
-              zIndex: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-              pointerEvents: 'auto'
-            }}>
-            <div style={{
-              background: 'rgba(6,6,20,0.92)', border: '1px solid rgba(168,85,247,0.45)',
-              backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
-              borderRadius: 20, padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12,
-              boxShadow: '0 0 30px rgba(168,85,247,0.2)'
-            }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 8px #a855f7', animation: 'pulse 1.5s infinite' }} />
-              <span style={{ color: '#c4b5fd', fontSize: 11, fontWeight: 900, letterSpacing: 2 }}>İZLEME MODU</span>
-              <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{spectateName}</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <motion.button
-                whileTap={{ scale: 0.93 }}
-                onClick={() => {
-                  engineRef.current?._spectateChange(-1)
-                  const eng = engineRef.current
-                  if (eng) { const ts = Object.values(eng.otherPlayers || {}); setSpectateName(ts[(eng.spectateIndex||0) % Math.max(1,ts.length)]?.name || '?') }
-                }}
-                style={{
-                  background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.45)',
-                  color: '#c4b5fd', borderRadius: 12, padding: '8px 18px', fontWeight: 900, fontSize: 13, cursor: 'pointer'
-                }}>◀ Önceki</motion.button>
-              <motion.button
-                whileTap={{ scale: 0.93 }}
-                onClick={() => {
-                  engineRef.current?._spectateChange(1)
-                  const eng = engineRef.current
-                  if (eng) { const ts = Object.values(eng.otherPlayers || {}); setSpectateName(ts[(eng.spectateIndex||0) % Math.max(1,ts.length)]?.name || '?') }
-                }}
-                style={{
-                  background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.45)',
-                  color: '#c4b5fd', borderRadius: 12, padding: '8px 18px', fontWeight: 900, fontSize: 13, cursor: 'pointer'
-                }}>Sonraki ▶</motion.button>
-              <motion.button
-                whileTap={{ scale: 0.93 }}
+          <>
+            <motion.div
+              key="spectator-top"
+              initial={{ opacity: 0, y: -30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -30 }}
+              style={{
+                position: 'absolute', top: 0, left: 0, right: 0, zIndex: 40,
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                paddingTop: 12, pointerEvents: 'none'
+              }}>
+              <div style={{
+                background: 'rgba(6,4,22,0.90)', border: '1px solid rgba(168,85,247,0.5)',
+                backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+                borderRadius: 18, padding: '10px 28px 12px',
+                boxShadow: '0 0 40px rgba(168,85,247,0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 10px #a855f7' }} />
+                  <span style={{ color: '#c4b5fd', fontSize: 10, fontWeight: 900, letterSpacing: 3, textTransform: 'uppercase' }}>İzleme Modu</span>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 10px #a855f7' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: `radial-gradient(circle at 35% 35%, ${spectateStats.color}cc, ${spectateStats.color}55)`, border: `2px solid ${spectateStats.color}99`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: '#fff', boxShadow: `0 0 12px ${spectateStats.color}60` }}>
+                    {(spectateName||'?')[0].toUpperCase()}
+                  </div>
+                  <span style={{ color: '#fff', fontSize: 22, fontWeight: 900, letterSpacing: 0.5 }}>{spectateName}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 16, marginTop: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 11, color: '#6b7280' }}>Kütle</span>
+                    <span style={{ fontSize: 14, fontWeight: 900, color: '#fbbf24' }}>{spectateStats.mass.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              key="spectator-bottom"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 30 }}
+              style={{
+                position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+                zIndex: 40, display: 'flex', gap: 8, pointerEvents: 'auto'
+              }}>
+              {[
+                { label: '◀ Önceki', dir: -1 },
+                { label: 'Sonraki ▶', dir: 1 },
+              ].map(({ label, dir }) => (
+                <motion.button key={label} whileTap={{ scale: 0.93 }}
+                  onClick={() => {
+                    engineRef.current?._spectateChange(dir)
+                    const eng = engineRef.current
+                    if (eng) {
+                      const ts = Object.values(eng.otherPlayers || {})
+                      const t = ts[(eng.spectateIndex||0) % Math.max(1,ts.length)]
+                      setSpectateName(t?.name || '?')
+                      setSpectateStats({ mass: Math.floor(t?.mass || 0), color: t?.color || '#6366f1' })
+                    }
+                  }}
+                  style={{ background: 'rgba(168,85,247,0.22)', border: '1px solid rgba(168,85,247,0.5)', color: '#c4b5fd', borderRadius: 14, padding: '10px 22px', fontWeight: 900, fontSize: 14, cursor: 'pointer', boxShadow: '0 0 14px rgba(168,85,247,0.15)' }}>
+                  {label}
+                </motion.button>
+              ))}
+              <motion.button whileTap={{ scale: 0.93 }}
                 onClick={() => { onRestart?.(playerTeam) }}
-                style={{
-                  background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`,
-                  border: 'none', color: '#fff', borderRadius: 12, padding: '8px 18px',
-                  fontWeight: 900, fontSize: 13, cursor: 'pointer',
-                  boxShadow: `0 0 18px rgba(${theme.glowColor},0.4)`
-                }}>🔄 Tekrar Başla</motion.button>
-            </div>
-          </motion.div>
+                style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, border: 'none', color: '#fff', borderRadius: 14, padding: '10px 22px', fontWeight: 900, fontSize: 14, cursor: 'pointer', boxShadow: `0 0 20px rgba(${theme.glowColor},0.4)` }}>
+                🔄 Tekrar Başla
+              </motion.button>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </>

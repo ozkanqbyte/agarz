@@ -182,6 +182,7 @@ export default function GameCanvas({ onLevelUp }) {
       const idx = targets.indexOf(targetId)
       if (idx >= 0) engineRef.current.spectateIndex = idx
     }
+    engineRef.current.onStatusChange?.({ spectating: true })
   }
   const handleRestart = (teamCode) => {
     if (!engineRef.current) return
@@ -189,6 +190,7 @@ export default function GameCanvas({ onLevelUp }) {
     engineRef.current.dead = false
     engineRef.current.cells = []
     if (teamCode) engineRef.current.playerTeam = teamCode
+    engineRef.current.onStatusChange?.({ spectating: false })
     engineRef.current.init()
   }
 

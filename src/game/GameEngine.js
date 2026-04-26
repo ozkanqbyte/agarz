@@ -1088,8 +1088,8 @@ export class GameEngine {
     if (e.code === 'KeyX' && now - this.lastMacroX > 500) { this._macroMaxSplit(); this.lastMacroX = now }
     if (e.code === 'KeyT') { this.autoMove = !this.autoMove; this.onStatusChange({ autoMove: this.autoMove }) }
     if (e.code === 'KeyQ') { this.spectating = !this.spectating; this.onStatusChange({ spectating: this.spectating }) }
-    if (e.code === 'Digit1') this._spectateChange(-1)
-    if (e.code === 'Digit2') this._spectateChange(1)
+    if (e.code === 'Digit1' || e.code === 'ArrowLeft') this._spectateChange(-1)
+    if (e.code === 'Digit2' || e.code === 'ArrowRight') this._spectateChange(1)
     if (e.code === 'KeyF') { this._activateSpeed(); soundSystem.skill() }
     if (e.code === 'KeyG') { this._activateSlow(); soundSystem.skill() }
     if (e.code === 'KeyH') { this._activateShield(); soundSystem.skill() }
@@ -3152,9 +3152,11 @@ export class GameEngine {
     } else {
       this.trailHistory = []
     }
+    const multiCell = this.cells.length > 1
     for (const cell of this.cells) {
       this.ctx.globalAlpha = ghostAlpha
-      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame, this.options.ownedPackage || 'free', myTotalMass)
+      const displayMass = multiCell ? Math.floor(cell.mass) : myTotalMass
+      this._drawCell(cell.x, cell.y, cell.radius, this.playerColor, this.playerName, this.isGod, this.options.clan, true, cell.poisoned > 0, cell.frozen > 0, this.options.avatar || 'gradient', cell.eatPulse || 0, this.options.nameEffect, this.options.activeFrame, this.options.ownedPackage || 'free', displayMass)
       this.ctx.globalAlpha = 1
     }
   }
