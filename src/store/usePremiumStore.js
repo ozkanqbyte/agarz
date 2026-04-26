@@ -98,18 +98,19 @@ const usePremiumStore = create((set, get) => ({
     return { success: true }
   },
 
+  coins: 0,
+  setCoins: (coins) => set({ coins }),
+  addCoins: (amount) => set(s => ({ coins: s.coins + amount })),
+
   mockPurchaseSkin: (skinId) => {
-    const { ownedSkins } = get()
+    const { ownedSkins, coins } = get()
     const skin = SKINS.find(s => s.id === skinId)
     if (!skin || ownedSkins.includes(skinId)) return { success: false, error: 'Zaten sahipsin' }
-    const { useProgressStore } = require('./useProgressStore')
-    const ps = useProgressStore?.getState?.()
-    if (!ps) return { success: false, error: 'Store hatası' }
-    if (!ps.spendCoins(skin.price)) return { success: false, error: 'Yetersiz altın' }
+    if (coins < skin.price) return { success: false, error: 'Yetersiz altın' }
     const newSkins = [...ownedSkins, skinId]
-    set({ ownedSkins: newSkins })
+    set({ ownedSkins: newSkins, coins: coins - skin.price })
     import('../firebase/syncService').then(({ fbSavePremium }) => {
-      fbSavePremium(authRef.uid, { ownedPackage: get().ownedPackage, ownedSkins: newSkins })
+      fbSavePremium(authRef.uid, { ownedPackage: get().ownedPackage, ownedSkins: newSkins, coins: get().coins })
     }).catch(() => {})
     return { success: true }
   },

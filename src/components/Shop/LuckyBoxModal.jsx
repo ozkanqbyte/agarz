@@ -10,22 +10,27 @@ import toast from 'react-hot-toast'
 const SKILL_NAMES = { speed: 'Hizlanma', slow: 'Yavaslatma', shield: 'Kalkan', magnet: 'Manyetik', ghost: 'Hayalet', teleport: 'Isinlanma' }
 
 const RARITY_CFG = {
-  common:    { label: 'NORMAL',  color: '#60a5fa', bg: '#1e3a5f' },
-  rare:      { label: 'NADİR',   color: '#a78bfa', bg: '#2e1a5f' },
-  epic:      { label: 'EPİK',    color: '#ec4899', bg: '#5f1a3a' },
-  legendary: { label: 'EFSANE', color: '#fbbf24', bg: '#5f3a00' },
+  common:    { label: 'YAYGIN',   color: '#94a3b8', bg: '#1a1f2e' },
+  rare:      { label: 'NADİR',    color: '#22c55e', bg: '#0d2a1a' },
+  epic:      { label: 'EPİK',     color: '#818cf8', bg: '#1a1a3a' },
+  legendary: { label: 'EFSANE',  color: '#f59e0b', bg: '#2a1a00' },
+  mythic:    { label: 'MİTİK',    color: '#ec4899', bg: '#2a0a1a' },
 }
 
 const TYPE_ICONS = {
-  gold:      (r) => `+${r.amount} GOLD`,
-  xp:        (r) => `+${r.amount} XP`,
-  xpBoost:   ()  => 'XP x2 BOOST',
-  godTemp:   (r) => `GOD ${r.games} OYUN`,
-  frame:     (r) => `CERCEVE: ${(r.id||'').toUpperCase()}`,
-  skin:      (r) => `SKIN: ${(r.id||'').toUpperCase()}`,
-  nameEffect:(r) => `EFEKT: ${(r.id||'').toUpperCase()}`,
-  lootbox:   (r) => `EKSTRA KUTU x${r.amount||1}`,
-  skill:     (r) => `YETENEK: ${SKILL_NAMES[r.id]||r.id} x${r.uses||2}`,
+  gold:       (r) => `+${r.amount} ALTIN`,
+  xp:         (r) => `+${r.amount} XP`,
+  xpBoost:    ()  => 'XP BOOST',
+  godTemp:    (r) => `GOD ${r.games} OYUN`,
+  frame:      (r) => r.name || `CERCEVE: ${(r.id||'').toUpperCase()}`,
+  skin:       (r) => r.name || `SKIN: ${(r.id||'').toUpperCase()}`,
+  nameEffect: (r) => r.name || `EFEKT: ${(r.id||'').toUpperCase()}`,
+  trail:      (r) => r.name || `İZ: ${(r.id||'').toUpperCase()}`,
+  deathEffect:(r) => r.name || `ÖLÜM EFEKTİ: ${(r.id||'').toUpperCase()}`,
+  lootbox:    (r) => `EKSTRA KUTU x${r.amount||1}`,
+  chest:      (r) => r.name || `SANDIK`,
+  skill:      (r) => `YETENEK: ${SKILL_NAMES[r.id]||r.id} x${r.uses||2}`,
+  title:      (r) => r.name || `UNVAN: ${(r.id||'').toUpperCase()}`,
 }
 
 function RewardCard({ reward, size = 'md', active = false }) {
@@ -61,8 +66,8 @@ function RewardCard({ reward, size = 'md', active = false }) {
 
 export default function LuckyBoxModal({ boxType, onClose }) {
   const box = LUCKY_BOXES[boxType]
-  const { spendCoins, coins, addCoins, addXP, addPendingGod, addFrame, addLootBox, activateXpBoost, addNameEffect, addSkillUnlock, ownedFrames, ownedNameEffects, ownedSkills, activeNameEffect, activeFrame } = useProgressStore()
-  const { _hydrate: premiumHydrate, ownedSkins } = usePremiumStore()
+  const { spendCoins, coins, addCoins, addXP, addPendingGod, addFrame, addLootBox, activateXpBoost, addNameEffect, addSkillUnlock, addTrailEffect, addDeathEffect, ownedFrames, ownedNameEffects, ownedSkills, activeNameEffect, activeFrame } = useProgressStore()
+  const { addSkin } = usePremiumStore()
   const { user } = useAuthStore()
 
   const [phase, setPhase] = useState('idle')
@@ -119,18 +124,19 @@ export default function LuckyBoxModal({ boxType, onClose }) {
   }
 
   const applyReward = (r) => {
-    if (r.type === 'gold') addCoins(r.amount)
-    if (r.type === 'xp') addXP(r.amount)
-    if (r.type === 'xpBoost') activateXpBoost()
-    if (r.type === 'godTemp') addPendingGod(r.games || 1)
-    if (r.type === 'frame') { addFrame(r.id); toast.success(`Yeni çerçeve kazandın: ${r.id}`) }
-    if (r.type === 'skin') {
-      premiumHydrate({ ownedSkins: [r.id] })
-      toast.success(`Yeni skin kazandın: ${r.id}`)
-    }
-    if (r.type === 'nameEffect') { addNameEffect(r.id); toast.success(`Yeni isim efekti kazandın!`) }
-    if (r.type === 'lootbox') for (let i = 0; i < (r.amount || 1); i++) addLootBox()
-    if (r.type === 'skill') { addSkillUnlock(r.id, r.uses || 2); toast.success(`Yetenek kazandın: ${SKILL_NAMES[r.id] || r.id} x${r.uses || 2}`) }
+    if (r.type === 'gold')       { addCoins(r.amount) }
+    if (r.type === 'xp')         { addXP(r.amount) }
+    if (r.type === 'xpBoost')    { activateXpBoost() }
+    if (r.type === 'godTemp')    { addPendingGod(r.games || 1) }
+    if (r.type === 'frame')      { addFrame(r.id); toast.success(`✨ Çerçeve kazandın: ${r.name || r.id}`) }
+    if (r.type === 'skin')       { addSkin?.(r.id); toast.success(`🎨 Skin kazandın: ${r.name || r.id}`) }
+    if (r.type === 'nameEffect') { addNameEffect(r.id); toast.success(`💫 İsim efekti kazandın: ${r.name || r.id}`) }
+    if (r.type === 'trail')      { addTrailEffect?.(r.id); toast.success(`✨ İz efekti kazandın: ${r.name || r.id}`) }
+    if (r.type === 'deathEffect'){ addDeathEffect?.(r.id); toast.success(`💥 Ölüm efekti kazandın: ${r.name || r.id}`) }
+    if (r.type === 'lootbox')    { for (let i = 0; i < (r.amount || 1); i++) addLootBox() }
+    if (r.type === 'chest')      { for (let i = 0; i < (r.amount || 1); i++) addLootBox() }
+    if (r.type === 'skill')      { addSkillUnlock(r.id, r.uses || 2); toast.success(`⚡ Yetenek kazandın: ${SKILL_NAMES[r.id] || r.id} x${r.uses || 2}`) }
+    if (r.type === 'title')      { toast.success(`🏆 Unvan kazandın: ${r.name || r.id}`) }
 
     const uid = user?.uid
     if (uid && !uid.startsWith('guest_')) {
@@ -144,6 +150,10 @@ export default function LuckyBoxModal({ boxType, onClose }) {
           ownedSkins: pms.ownedSkins,
           activeNameEffect: ps.activeNameEffect,
           activeFrame: ps.activeFrame,
+          ownedTrailEffects: ps.ownedTrailEffects,
+          ownedDeathEffects: ps.ownedDeathEffects,
+          activeTrailEffect: ps.activeTrailEffect,
+          activeDeathEffect: ps.activeDeathEffect,
         }).catch(() => {})
       }, 300)
     }
