@@ -644,6 +644,7 @@ export class GameEngine {
               for (const sc of serverCells) {
                 if (updatedById.has(sc.id)) {
                   const cell = updatedById.get(sc.id)
+                  cell._px = cell._tx ?? sc.x; cell._py = cell._ty ?? sc.y
                   cell._tx = sc.x; cell._ty = sc.y
                   cell._targetMass = sc.mass
                   cell.vx = sc.vx; cell.vy = sc.vy
@@ -1710,22 +1711,27 @@ export class GameEngine {
         const speedBoost = this.skills.speed.active ? 5.0 : 1
         const speedMult = frozen ? 0.3 : speedBoost
         const hasSplitVel = Math.abs(cell.vx || 0) > 0.5 || Math.abs(cell.vy || 0) > 0.5
-        if (hasSplitVel) {
-          const elapsed = Math.min(0.067, (Date.now() - (cell._lastServerUpdate || Date.now())) / 1000)
-          const predX = (cell._tx ?? cell.x) + (cell.vx || 0) * elapsed * 60
-          const predY = (cell._ty ?? cell.y) + (cell.vy || 0) * elapsed * 60
-          const ex = predX - cell.x, ey = predY - cell.y
-          const e2 = ex * ex + ey * ey
-          if (e2 > 0.5) {
-            const lerpT = Math.min(0.7, dt * 22)
-            cell.x += ex * lerpT; cell.y += ey * lerpT
+        if (hasSplitVel && cell._tx !== undefined) {
+          const elapsed = Date.now() - (cell._lastServerUpdate || Date.now())
+          const t = elapsed / 33.3
+          const px = cell._px ?? cell._tx, py = cell._py ?? cell._ty
+          let targetX, targetY
+          if (t <= 1) {
+            targetX = px + (cell._tx - px) * t
+            targetY = py + (cell._ty - py) * t
+          } else {
+            const extra = Math.min(0.067, (elapsed - 33.3) / 1000)
+            targetX = cell._tx + (cell.vx || 0) * extra * 60
+            targetY = cell._ty + (cell.vy || 0) * extra * 60
           }
+          cell.x = lerp(cell.x, targetX, Math.min(1, dt * 30))
+          cell.y = lerp(cell.y, targetY, Math.min(1, dt * 30))
         } else {
           if (!frozen) {
             const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
             const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
             if (d2 > 1) {
-              const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+              const spd = Math.max(2.0, 18.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
               const s2 = Math.min(spd * dt, d2)
               if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
             }
@@ -1734,7 +1740,7 @@ export class GameEngine {
             const ex = cell._tx - cell.x, ey = cell._ty - cell.y
             const e2 = ex * ex + ey * ey
             if (e2 > 1) {
-              const lerpT = Math.min(0.12, dt * 4)
+              const lerpT = e2 > 80 * 80 ? 0.5 : Math.min(0.12, dt * 4)
               cell.x += ex * lerpT; cell.y += ey * lerpT
             }
           }
