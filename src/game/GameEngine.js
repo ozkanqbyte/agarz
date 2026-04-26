@@ -915,12 +915,16 @@ export class GameEngine {
     if (this.syncInterval) clearInterval(this.syncInterval)
     this.syncInterval = setInterval(() => {
       if (!this.running || this.dead || !socketClient.connected) return
-      const mx = this.mouse?.x ?? this.camera.x
-      const my = this.mouse?.y ?? this.camera.y
+      let mx = this.mouse?.x ?? this.camera.x
+      let my = this.mouse?.y ?? this.camera.y
+      if (!this.mouse && this.cells.length) {
+        mx = this.cells[0].x
+        my = this.cells[0].y
+      }
       const clientMass = Math.floor(this.cells.reduce((s,c) => s+c.mass, 0))
       const cellPositions = this.cells.map(c => ({ x: Math.round(c.x), y: Math.round(c.y) }))
       socketClient.sendInput(mx | 0, my | 0, clientMass, cellPositions)
-    }, 16)
+    }, 30)
   }
 
   async _initFirebase() {
@@ -1287,8 +1291,10 @@ export class GameEngine {
     for (const cell of this.cells) {
       if (cell.mass < massAmount * 2) continue
       cell.mass -= massAmount + EJECT_COST
-      const dx = this.mouse.x - cell.x
-      const dy = this.mouse.y - cell.y
+      const mouseX = this.mouse?.x ?? cell.x
+      const mouseY = this.mouse?.y ?? cell.y
+      const dx = mouseX - cell.x
+      const dy = mouseY - cell.y
       const angle = Math.atan2(dy, dx) + angleOffset
       const em = new EjectedMass(
         cell.x + Math.cos(angle) * (cell.radius + ejR + 2),
@@ -2204,8 +2210,8 @@ export class GameEngine {
         const idx = this.spectateIndex % allTargets.length
         const t = allTargets[idx]
         if (t) {
-          this.camera.x = lerp(this.camera.x, t.x, 0.08)
-          this.camera.y = lerp(this.camera.y, t.y, 0.08)
+          this.camera.x = lerp(this.camera.x, t.x, 1 - Math.pow(0.88, dt * 60))
+          this.camera.y = lerp(this.camera.y, t.y, 1 - Math.pow(0.88, dt * 60))
           const mass = t.mass || 20
           const r = Math.sqrt(mass) * 4.5
           const autoZoom = clamp(Math.min(this.canvas.width/(r*6), this.canvas.height/(r*6), 1.2), 0.08, 1.2)
@@ -2219,8 +2225,9 @@ export class GameEngine {
     const camSrc = camCells.length > 0 ? camCells : this.cells
     const cx = camSrc.reduce((s,c) => s+c.x, 0) / camSrc.length
     const cy = camSrc.reduce((s,c) => s+c.y, 0) / camSrc.length
-    this.camera.x = lerp(this.camera.x, cx, 0.07)
-    this.camera.y = lerp(this.camera.y, cy, 0.07)
+    const camLerp = 1 - Math.pow(0.88, dt * 60)
+    this.camera.x = lerp(this.camera.x, cx, camLerp)
+    this.camera.y = lerp(this.camera.y, cy, camLerp)
     const totalMassForZoom = this.cells.reduce((s,c) => s + c.mass, 0)
     const avgR = Math.sqrt(totalMassForZoom / this.cells.length) * 4.5
     const autoZoom = clamp(Math.min(this.canvas.width / (avgR * 4.5), this.canvas.height / (avgR * 4.5)), 0.07, 1.8)

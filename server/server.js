@@ -605,8 +605,9 @@ class GameRoom {
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        cell.splitVx *= 0.85
-        cell.splitVy *= 0.85
+        const decay = Math.pow(0.80, dt * TICK_RATE)
+        cell.splitVx *= decay
+        cell.splitVy *= decay
         if (Math.abs(cell.splitVx) < 0.08) { cell.splitVx = 0; cell.splitVy = 0 }
       }
       if (!frozen && !hasSplitVel) {
@@ -626,7 +627,7 @@ class GameRoom {
       cell.y = clamp(cell.y, r, WORLD_SIZE - r)
     }
     if (player.cells.length > 1) {
-      for (let iter = 0; iter < 12; iter++) {
+      for (let iter = 0; iter < 6; iter++) {
         for (let i = 0; i < player.cells.length; i++) {
           for (let j = i + 1; j < player.cells.length; j++) {
             const ca = player.cells[i], cb = player.cells[j]
@@ -643,7 +644,7 @@ class GameRoom {
               pushFactor = 1.0 - fade
             }
             if (pushFactor <= 0 || ad >= minD) continue
-            const overlap = (minD - ad) * 0.4 * pushFactor
+            const overlap = (minD - ad) * 0.22 * pushFactor
             let nx, ny
             if (ad < 0.01) {
               const angle = (i * 2.399) + j
@@ -988,7 +989,7 @@ class GameRoom {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       cell.mass /= 2
       const mergeDelay = Math.max(MERGE_TIME_MIN, Math.sqrt(cell.mass) * 600)
-      const spd = Math.max(SPLIT_SPEED, Math.sqrt(cell.mass) * 0.5)
+      const spd = Math.max(6, massToRadius(cell.mass) * 0.30)
       cell.mergeTimer = mergeDelay
       const nr = massToRadius(cell.mass)
       const offsetDist = nr * 2.0 + 1
