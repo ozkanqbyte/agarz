@@ -1707,14 +1707,8 @@ export class GameEngine {
         const frozen = cell.frozen > 0
         const speedBoost = this.skills.speed.active ? 5.0 : 1
         const speedMult = frozen ? 0.3 : speedBoost
-        const hasSplitVel = Math.abs(cell.vx || 0) > 0.1 || Math.abs(cell.vy || 0) > 0.1
-        if (hasSplitVel) {
-          cell.x += (cell.vx || 0) * dt * 60
-          cell.y += (cell.vy || 0) * dt * 60
-          const _d = Math.pow(0.80, dt * 60)
-          cell.vx = (cell.vx || 0) * _d; cell.vy = (cell.vy || 0) * _d
-        }
-        if (!frozen && !hasSplitVel) {
+        const hasSplitVel = Math.abs(cell.vx || 0) > 0.5 || Math.abs(cell.vy || 0) > 0.5
+        if (!frozen) {
           const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
           const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
           if (d2 > 1) {
@@ -1723,11 +1717,14 @@ export class GameEngine {
             if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
           }
         }
-        if (!hasSplitVel && cell._tx !== undefined) {
+        if (cell._tx !== undefined) {
           const ex = cell._tx - cell.x, ey = cell._ty - cell.y
           const e2 = ex * ex + ey * ey
-          if (e2 > 4) {
-            const lerpT = e2 > 600 * 600 ? 1.0 : Math.min(0.15, dt * 5)
+          if (e2 > 1) {
+            const lerpT = hasSplitVel
+              ? Math.min(1, dt * 18)
+              : e2 > 40 * 40 ? Math.min(0.5, dt * 15)
+              : Math.min(0.12, dt * 4)
             cell.x += ex * lerpT; cell.y += ey * lerpT
           }
         }
