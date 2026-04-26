@@ -648,12 +648,14 @@ export class GameEngine {
                   cell._targetMass = sc.mass
                   cell.vx = sc.vx; cell.vy = sc.vy
                   cell._mergeTimer = sc.mt
+                  cell._lastServerUpdate = Date.now()
                 } else {
                   const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
                   nc.id = sc.id
                   nc._tx = sc.x; nc._ty = sc.y; nc._targetMass = sc.mass
                   nc.vx = sc.vx; nc.vy = sc.vy
                   nc._mergeTimer = sc.mt
+                  nc._lastServerUpdate = Date.now()
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -1708,24 +1710,33 @@ export class GameEngine {
         const speedBoost = this.skills.speed.active ? 5.0 : 1
         const speedMult = frozen ? 0.3 : speedBoost
         const hasSplitVel = Math.abs(cell.vx || 0) > 0.5 || Math.abs(cell.vy || 0) > 0.5
-        if (!frozen) {
-          const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
-          const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
-          if (d2 > 1) {
-            const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
-            const s2 = Math.min(spd * dt, d2)
-            if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
-          }
-        }
-        if (cell._tx !== undefined) {
-          const ex = cell._tx - cell.x, ey = cell._ty - cell.y
+        if (hasSplitVel) {
+          const elapsed = Math.min(0.067, (Date.now() - (cell._lastServerUpdate || Date.now())) / 1000)
+          const predX = (cell._tx ?? cell.x) + (cell.vx || 0) * elapsed * 60
+          const predY = (cell._ty ?? cell.y) + (cell.vy || 0) * elapsed * 60
+          const ex = predX - cell.x, ey = predY - cell.y
           const e2 = ex * ex + ey * ey
-          if (e2 > 1) {
-            const lerpT = hasSplitVel
-              ? Math.min(1, dt * 18)
-              : e2 > 40 * 40 ? Math.min(0.5, dt * 15)
-              : Math.min(0.12, dt * 4)
+          if (e2 > 0.5) {
+            const lerpT = Math.min(0.7, dt * 22)
             cell.x += ex * lerpT; cell.y += ey * lerpT
+          }
+        } else {
+          if (!frozen) {
+            const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
+            const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
+            if (d2 > 1) {
+              const spd = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+              const s2 = Math.min(spd * dt, d2)
+              if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
+            }
+          }
+          if (cell._tx !== undefined) {
+            const ex = cell._tx - cell.x, ey = cell._ty - cell.y
+            const e2 = ex * ex + ey * ey
+            if (e2 > 1) {
+              const lerpT = Math.min(0.12, dt * 4)
+              cell.x += ex * lerpT; cell.y += ey * lerpT
+            }
           }
         }
         if (cell._targetMass !== undefined) cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 8))
@@ -1734,7 +1745,7 @@ export class GameEngine {
       }
       if (this.cells.length > 1) {
         const now = Date.now()
-        for (let iter = 0; iter < 4; iter++) {
+        for (let iter = 0; iter < 8; iter++) {
           for (let i = 0; i < this.cells.length; i++) {
             for (let j = i + 1; j < this.cells.length; j++) {
               const ca = this.cells[i], cb = this.cells[j]
@@ -1759,7 +1770,7 @@ export class GameEngine {
               } else {
                 nx = adx / ad; ny = ady / ad
               }
-              const push = (minD - ad) * 0.12 * pushFactor
+              const push = (minD - ad) * 0.25 * pushFactor
               ca.x += nx * push; ca.y += ny * push
               cb.x -= nx * push; cb.y -= ny * push
               ca.x = clamp(ca.x, ca.radius, WORLD_SIZE - ca.radius)
