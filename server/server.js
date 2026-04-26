@@ -601,7 +601,7 @@ class GameRoom {
     const speedMult = player.skillSpeedTimer > 0 ? 5 : 1
     for (const cell of player.cells) {
       const r = massToRadius(cell.mass)
-      const hasSplitVel = cell.splitVx && Math.abs(cell.splitVx) > 0.5
+      const hasSplitVel = !!cell.splitVx
       if (cell.splitVx) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)

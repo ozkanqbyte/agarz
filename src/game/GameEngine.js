@@ -1707,7 +1707,7 @@ export class GameEngine {
         const frozen = cell.frozen > 0
         const speedBoost = this.skills.speed.active ? 5.0 : 1
         const speedMult = frozen ? 0.3 : speedBoost
-        const hasSplitVel = Math.abs(cell.vx || 0) > 0.5 || Math.abs(cell.vy || 0) > 0.5
+        const hasSplitVel = Math.abs(cell.vx || 0) > 0.1 || Math.abs(cell.vy || 0) > 0.1
         if (hasSplitVel) {
           cell.x += (cell.vx || 0) * dt * 60
           cell.y += (cell.vy || 0) * dt * 60
@@ -1737,7 +1737,7 @@ export class GameEngine {
       }
       if (this.cells.length > 1) {
         const now = Date.now()
-        for (let iter = 0; iter < 12; iter++) {
+        for (let iter = 0; iter < 4; iter++) {
           for (let i = 0; i < this.cells.length; i++) {
             for (let j = i + 1; j < this.cells.length; j++) {
               const ca = this.cells[i], cb = this.cells[j]
@@ -1762,7 +1762,7 @@ export class GameEngine {
               } else {
                 nx = adx / ad; ny = ady / ad
               }
-              const push = (minD - ad) * 0.8 * pushFactor
+              const push = (minD - ad) * 0.12 * pushFactor
               ca.x += nx * push; ca.y += ny * push
               cb.x -= nx * push; cb.y -= ny * push
               ca.x = clamp(ca.x, ca.radius, WORLD_SIZE - ca.radius)
