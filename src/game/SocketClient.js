@@ -60,7 +60,7 @@ class SocketClient {
 
   sendInput(x, y, clientMass, cells) {
     if (!this._socket?.connected) return
-    this._socket.volatile.emit('input:update', { x, y, clientMass, cells })
+    this._socket.emit('input:update', { x, y, clientMass, cells })
   }
 
   sendSplit(dx, dy) {

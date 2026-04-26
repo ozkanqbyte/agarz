@@ -54,6 +54,7 @@ export default function Lobby() {
   const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState([])
   const [selectedMode, setSelectedMode] = useState(modeParam || gameMode || 'ffa')
+  const [teamCode, setTeamCode] = useState('')
   const [countdown, setCountdown] = useState(null)
   const [ready, setReady] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState(null)
@@ -179,7 +180,8 @@ export default function Lobby() {
   useEffect(() => {
     if (countdown === null) return
     if (countdown <= 0) {
-      navigate(`/game?room=${roomId}&name=${encodeURIComponent(playerName)}&mode=${selectedMode}`)
+      const tc = teamCode.trim().toUpperCase().slice(0,6) || ''
+      navigate(`/game?room=${roomId}&name=${encodeURIComponent(playerName)}&mode=${selectedMode}${tc ? `&team=${tc}` : ''}`)
       return
     }
     const timer = setTimeout(() => setCountdown(c => c - 1), 1000)
@@ -206,7 +208,8 @@ export default function Lobby() {
     try {
       await update(ref(db, `lobbies/${roomId}`), { starting: true, countdown: 5, mode: selectedMode })
     } catch (e) {
-      navigate(`/game?room=${roomId}&name=${encodeURIComponent(playerName)}&mode=${selectedMode}`)
+      const tc = teamCode.trim().toUpperCase().slice(0,6) || ''
+      navigate(`/game?room=${roomId}&name=${encodeURIComponent(playerName)}&mode=${selectedMode}${tc ? `&team=${tc}` : ''}`)
     }
   }
 
@@ -576,6 +579,21 @@ export default function Lobby() {
               ))}
             </div>
             {!isHost && <div className="text-xs text-gray-600 mt-2">Sadece host mod değiştirebilir</div>}
+            {selectedMode === 'teams' && (
+              <div className="mt-3 pt-3 border-t" style={{ borderColor: uiBorder }}>
+                <div className="text-xs font-bold mb-2" style={{ color: theme.uiAccent }}>🛡️ Takım Kodu (opsiyonel)</div>
+                <input
+                  type="text"
+                  maxLength={6}
+                  placeholder="Örn: ALPHA"
+                  value={teamCode}
+                  onChange={e => setTeamCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))}
+                  className="w-full px-3 py-2 rounded-xl text-white font-black tracking-widest text-center text-sm outline-none"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${theme.glowColor},0.35)`, caretColor: theme.uiAccent }}
+                />
+                <div className="text-xs text-gray-600 mt-1">Aynı kodu giren oyuncular takım olur</div>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3">

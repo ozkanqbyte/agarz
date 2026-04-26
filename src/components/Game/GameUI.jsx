@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import useGameStore from '../../store/useGameStore'
@@ -65,7 +65,56 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
   const [skills, setSkills] = useState({ speed: { active: false, timer: 0, cooldown: 0 }, slow: { active: false, timer: 0, cooldown: 0 }, shield: { active: false, timer: 0, cooldown: 0 } })
   const [deathScreen, setDeathScreen] = useState(null)
   const [respawnCountdown, setRespawnCountdown] = useState(5)
+  const [newTeamCode, setNewTeamCode] = useState('')
   const [showPlayerList, setShowPlayerList] = useState(false)
+  const [spectateName, setSpectateName] = useState('?')
+
+  const joystickRef = useRef(null)
+  const joystickTouchRef = useRef(null)
+  const joystickBaseRef = useRef(null)
+  const JOYSTICK_R = 55
+
+  const onJoystickStart = useCallback((e) => {
+    e.preventDefault()
+    const touch = e.changedTouches[0]
+    joystickTouchRef.current = touch.identifier
+    const base = joystickBaseRef.current?.getBoundingClientRect()
+    if (!base) return
+    const cx = base.left + base.width / 2, cy = base.top + base.height / 2
+    const dx = touch.clientX - cx, dy = touch.clientY - cy
+    const d = Math.sqrt(dx*dx + dy*dy)
+    const nx = d > 1 ? dx/d : 0, ny = d > 1 ? dy/d : 0
+    const clamped = Math.min(d, JOYSTICK_R)
+    if (joystickRef.current) {
+      joystickRef.current.style.transform = `translate(${nx*clamped}px, ${ny*clamped}px)`
+    }
+    engineRef.current?.setJoystickInput(nx, ny)
+  }, [engineRef])
+
+  const onJoystickMove = useCallback((e) => {
+    e.preventDefault()
+    let touch = null
+    for (const t of e.changedTouches) { if (t.identifier === joystickTouchRef.current) { touch = t; break } }
+    if (!touch) return
+    const base = joystickBaseRef.current?.getBoundingClientRect()
+    if (!base) return
+    const cx = base.left + base.width / 2, cy = base.top + base.height / 2
+    const dx = touch.clientX - cx, dy = touch.clientY - cy
+    const d = Math.sqrt(dx*dx + dy*dy)
+    const nx = d > 1 ? dx/d : 0, ny = d > 1 ? dy/d : 0
+    const clamped = Math.min(d, JOYSTICK_R)
+    if (joystickRef.current) {
+      joystickRef.current.style.transform = `translate(${nx*clamped}px, ${ny*clamped}px)`
+    }
+    engineRef.current?.setJoystickInput(nx, ny)
+  }, [engineRef])
+
+  const onJoystickEnd = useCallback((e) => {
+    e.preventDefault()
+    joystickTouchRef.current = null
+    if (joystickRef.current) joystickRef.current.style.transform = 'translate(0px, 0px)'
+    engineRef.current?.setJoystickInput(0, 0)
+  }, [engineRef])
 
   const myBadges = BADGES.filter(b => earnedBadges.includes(b.id)).slice(-3)
 
@@ -76,7 +125,18 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
     const orig = engineRef.current.onGoldChange
     engineRef.current.onGoldChange = (g) => { setGold(g); orig && orig(g) }
     const origStatus = engineRef.current.onStatusChange
-    engineRef.current.onStatusChange = (s) => { setStatus(prev => ({ ...prev, ...s })); origStatus && origStatus(s) }
+    engineRef.current.onStatusChange = (s) => {
+      setStatus(prev => ({ ...prev, ...s }))
+      if (s.spectating !== undefined) {
+        const eng = engineRef.current
+        if (eng) {
+          const targets = Object.values(eng.otherPlayers || {})
+          const idx = (eng.spectateIndex || 0) % Math.max(1, targets.length)
+          setSpectateName(targets[idx]?.name || '?')
+        }
+      }
+      origStatus && origStatus(s)
+    }
     const origTimer = engineRef.current.onTimerChange
     engineRef.current.onTimerChange = (t) => { setGameTimer(t); origTimer && origTimer(t) }
     const origSkill = engineRef.current.onSkillChange
@@ -299,8 +359,18 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: isMe ? '#fff' : '#e2e8f0', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
-                      {p.name}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <div style={{ color: isMe ? '#fff' : '#e2e8f0', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2, flex: 1, minWidth: 0 }}>
+                        {p.name}
+                      </div>
+                      {mode === 'teams' && p.team && p.team !== 'none' && (
+                        <span style={{ fontSize: 9, fontWeight: 900, padding: '1px 4px', borderRadius: 4, flexShrink: 0,
+                          background: p.team === 'red' ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)',
+                          color: p.team === 'red' ? '#f87171' : '#60a5fa',
+                          border: `1px solid ${p.team === 'red' ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.5)'}` }}>
+                          {p.team === 'red' ? '🔴' : '🔵'}
+                        </span>
+                      )}
                     </div>
                     <div style={{ color: '#6b7280', fontSize: 9, fontWeight: 600, letterSpacing: 0.5 }}>
                       {Math.floor(p.mass).toLocaleString()}
@@ -454,16 +524,60 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
         )}
       </AnimatePresence>
 
-      <div className="sm:hidden absolute bottom-24 right-4 flex flex-col gap-2" style={{ zIndex: 10 }}>
-        <motion.button onClick={onSplit} whileTap={{ scale: 0.9 }}
-          className="w-16 h-16 rounded-full font-black text-white text-xl flex items-center justify-center"
-          style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 20px rgba(${theme.glowColor},0.5)` }}>
-          ✂
+      <div className="sm:hidden absolute bottom-6 left-6 flex items-end gap-4" style={{ zIndex: 20 }}>
+        <div
+          ref={joystickBaseRef}
+          onTouchStart={onJoystickStart}
+          onTouchMove={onJoystickMove}
+          onTouchEnd={onJoystickEnd}
+          onTouchCancel={onJoystickEnd}
+          style={{
+            width: 120, height: 120, borderRadius: '50%',
+            background: 'rgba(20,20,40,0.55)',
+            border: `2px solid rgba(${theme.glowColor},0.4)`,
+            boxShadow: `0 0 18px rgba(${theme.glowColor},0.2)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            touchAction: 'none', position: 'relative', flexShrink: 0
+          }}>
+          <div
+            ref={joystickRef}
+            style={{
+              width: 46, height: 46, borderRadius: '50%',
+              background: `radial-gradient(circle at 35% 35%, rgba(${theme.glowColor},0.95), rgba(${theme.glowColor},0.4))`,
+              boxShadow: `0 0 14px rgba(${theme.glowColor},0.6)`,
+              transition: 'transform 0.05s',
+              touchAction: 'none', pointerEvents: 'none'
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="sm:hidden absolute bottom-6 right-6 flex flex-col gap-3" style={{ zIndex: 20 }}>
+        <motion.button
+          onTouchStart={(e) => { e.preventDefault(); onSplit() }}
+          whileTap={{ scale: 0.88 }}
+          className="w-18 h-18 rounded-full font-black text-white flex items-center justify-center flex-col"
+          style={{
+            width: 72, height: 72, borderRadius: '50%',
+            background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`,
+            boxShadow: `0 0 22px rgba(${theme.glowColor},0.55)`,
+            fontSize: 22, touchAction: 'none'
+          }}>
+          ✂️
+          <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.8 }}>BÖLDÜR</span>
         </motion.button>
-        <motion.button onClick={onEject} whileTap={{ scale: 0.9 }}
-          className="w-16 h-16 rounded-full font-bold text-white text-xl flex items-center justify-center"
-          style={{ background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.25)' }}>
+        <motion.button
+          onTouchStart={(e) => { e.preventDefault(); onEject() }}
+          whileTap={{ scale: 0.88 }}
+          style={{
+            width: 66, height: 66, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.1)',
+            border: '2px solid rgba(255,255,255,0.3)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20, color: 'white', touchAction: 'none'
+          }}>
           💨
+          <span style={{ fontSize: 8, fontWeight: 700, opacity: 0.7 }}>FIRLATIR</span>
         </motion.button>
       </div>
 
@@ -551,8 +665,20 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
                   </div>
                 ))}
               </div>
+              {mode === 'teams' && (
+                <div className="mb-4">
+                  <div className="text-xs font-bold mb-1.5 text-left" style={{ color: theme.uiAccent }}>🛡️ Takım Kodu</div>
+                  <input
+                    type="text" maxLength={6} placeholder={playerTeam !== 'none' ? playerTeam : 'ALPHA'}
+                    value={newTeamCode}
+                    onChange={e => setNewTeamCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))}
+                    className="w-full px-3 py-2 rounded-xl text-white font-black tracking-widest text-center text-sm outline-none"
+                    style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${theme.glowColor},0.35)` }}
+                  />
+                </div>
+              )}
               <motion.button
-                onClick={() => { setDeathScreen(null); onRestart?.() }}
+                onClick={() => { setDeathScreen(null); onRestart?.(newTeamCode || playerTeam) }}
                 whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                 className="w-full py-4 rounded-2xl font-black text-lg mb-3"
                 style={{ background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`, boxShadow: `0 0 25px rgba(${theme.glowColor},0.4)` }}>
@@ -613,6 +739,65 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
           {roomId}
         </div>
       </div>
+
+      <AnimatePresence>
+        {status.spectating && !deathScreen && (
+          <motion.div
+            key="spectator-panel"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            style={{
+              position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+              pointerEvents: 'auto'
+            }}>
+            <div style={{
+              background: 'rgba(6,6,20,0.92)', border: '1px solid rgba(168,85,247,0.45)',
+              backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+              borderRadius: 20, padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12,
+              boxShadow: '0 0 30px rgba(168,85,247,0.2)'
+            }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 8px #a855f7', animation: 'pulse 1.5s infinite' }} />
+              <span style={{ color: '#c4b5fd', fontSize: 11, fontWeight: 900, letterSpacing: 2 }}>İZLEME MODU</span>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>{spectateName}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <motion.button
+                whileTap={{ scale: 0.93 }}
+                onClick={() => {
+                  engineRef.current?._spectateChange(-1)
+                  const eng = engineRef.current
+                  if (eng) { const ts = Object.values(eng.otherPlayers || {}); setSpectateName(ts[(eng.spectateIndex||0) % Math.max(1,ts.length)]?.name || '?') }
+                }}
+                style={{
+                  background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.45)',
+                  color: '#c4b5fd', borderRadius: 12, padding: '8px 18px', fontWeight: 900, fontSize: 13, cursor: 'pointer'
+                }}>◀ Önceki</motion.button>
+              <motion.button
+                whileTap={{ scale: 0.93 }}
+                onClick={() => {
+                  engineRef.current?._spectateChange(1)
+                  const eng = engineRef.current
+                  if (eng) { const ts = Object.values(eng.otherPlayers || {}); setSpectateName(ts[(eng.spectateIndex||0) % Math.max(1,ts.length)]?.name || '?') }
+                }}
+                style={{
+                  background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.45)',
+                  color: '#c4b5fd', borderRadius: 12, padding: '8px 18px', fontWeight: 900, fontSize: 13, cursor: 'pointer'
+                }}>Sonraki ▶</motion.button>
+              <motion.button
+                whileTap={{ scale: 0.93 }}
+                onClick={() => { onRestart?.(playerTeam) }}
+                style={{
+                  background: `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`,
+                  border: 'none', color: '#fff', borderRadius: 12, padding: '8px 18px',
+                  fontWeight: 900, fontSize: 13, cursor: 'pointer',
+                  boxShadow: `0 0 18px rgba(${theme.glowColor},0.4)`
+                }}>🔄 Tekrar Başla</motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

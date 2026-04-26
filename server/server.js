@@ -282,18 +282,17 @@ const VIRUS_MIN_MASS = 300
 const TICK_RATE = 30
 const TICK_MS = 1000 / TICK_RATE
 const BROADCAST_EVERY = 1
-const BASE_SPEED = 18
+const BASE_SPEED = 13
 const MIN_MASS_SPLIT = 35
-const EJECT_COST = 18
-const EJECT_MASS = 14
-const MERGE_TIME = 10000
-const MERGE_FADE = 4000
-const MERGE_TIME_MIN = 8000
+const EJECT_COST = 15
+const EJECT_MASS = 13
+const MERGE_TIME_BASE = 30000
+const MERGE_TIME_PER_MASS = 20
 const MAX_CELLS = 16
 const SPLIT_SPEED = 30
 const MIN_EAT_RATIO = 1.10
 const MAX_MASS = 50000
-const VIRUS_FEED_SPLIT = 5
+const VIRUS_FEED_SPLIT = 7
 
 const FOOD_COLORS = [
   '#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b',
@@ -600,12 +599,13 @@ class GameRoom {
     const frozen = player.frozen > 0
     const speedMult = player.skillSpeedTimer > 0 ? 5 : 1
     for (const cell of player.cells) {
+      if (cell.collisionIgnore > 0) cell.collisionIgnore = Math.max(0, cell.collisionIgnore - dt)
       const r = massToRadius(cell.mass)
-      const hasSplitVel = Math.abs(cell.splitVx || 0) > 2.5
-      if (cell.splitVx) {
+      const hasSplitVel = Math.abs(cell.splitVx || 0) > 0.08
+      if (hasSplitVel) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        const decay = Math.pow(0.80, dt * TICK_RATE)
+        const decay = Math.pow(0.89, dt * 25)
         cell.splitVx *= decay
         cell.splitVy *= decay
         if (Math.abs(cell.splitVx) < 0.08) { cell.splitVx = 0; cell.splitVy = 0 }
@@ -631,20 +631,16 @@ class GameRoom {
         for (let i = 0; i < player.cells.length; i++) {
           for (let j = i + 1; j < player.cells.length; j++) {
             const ca = player.cells[i], cb = player.cells[j]
+            if ((ca.collisionIgnore || 0) > 0 || (cb.collisionIgnore || 0) > 0) continue
             const adx = ca.x - cb.x, ady = ca.y - cb.y
             const ad = Math.sqrt(adx * adx + ady * ady)
             const ra = massToRadius(ca.mass), rb = massToRadius(cb.mass)
             const minD = ra + rb
-            const timerMin = Math.min(ca.mergeTimer, cb.mergeTimer)
-            let pushFactor
-            if (timerMin < MERGE_TIME) {
-              pushFactor = 1.0
-            } else {
-              const fade = Math.min(1, (timerMin - MERGE_TIME) / MERGE_FADE)
-              pushFactor = 1.0 - fade
-            }
+            const timerMin = Math.min(ca.mergeTimer || 0, cb.mergeTimer || 0)
+            const threshMin = MERGE_TIME_BASE + Math.min(ca.mass, cb.mass) * MERGE_TIME_PER_MASS
+            const pushFactor = timerMin >= threshMin ? 0 : 1.0
             if (pushFactor <= 0 || ad >= minD) continue
-            const overlap = (minD - ad) * 0.22 * pushFactor
+            const overlap = (minD - ad) * 0.22
             let nx, ny
             if (ad < 0.01) {
               const angle = (i * 2.399) + j
@@ -668,12 +664,8 @@ class GameRoom {
 
   _massDecay(player, dt) {
     for (const cell of player.cells) {
-      if (cell.mass <= 100) continue
-      let rate
-      if (cell.mass < 1000) rate = cell.mass * 0.0008
-      else if (cell.mass < 5000) rate = cell.mass * 0.0016
-      else rate = cell.mass * 0.003
-      cell.mass = Math.max(20, cell.mass - rate * dt)
+      if (cell.mass <= 20) continue
+      cell.mass = Math.max(20, cell.mass * (1 - 0.002 * dt))
     }
   }
 
@@ -686,7 +678,9 @@ class GameRoom {
     for (let i = 0; i < player.cells.length; i++) {
       for (let j = i + 1; j < player.cells.length; j++) {
         const a = player.cells[i], b = player.cells[j]
-        if (a.mergeTimer < MERGE_TIME + MERGE_FADE || b.mergeTimer < MERGE_TIME + MERGE_FADE) continue
+        const threshA = MERGE_TIME_BASE + a.mass * MERGE_TIME_PER_MASS
+        const threshB = MERGE_TIME_BASE + b.mass * MERGE_TIME_PER_MASS
+        if (a.mergeTimer < threshA || b.mergeTimer < threshB) continue
         if (dist(a, b) < massToRadius(a.mass) + massToRadius(b.mass) - 2) {
           toMerge.push([i, j])
         }
@@ -832,24 +826,34 @@ class GameRoom {
   }
 
   _explodePlayer(player, sourceCell) {
-    const splits = Math.min(MAX_CELLS - player.cells.length, Math.min(8, Math.floor(sourceCell.mass / 16)))
-    if (splits <= 0) return
+    const maxSplits = MAX_CELLS - player.cells.length
+    if (maxSplits <= 0) return
+    let splits = maxSplits
+    let massLeft = sourceCell.mass
+    if (massLeft < 466) {
+      let splitAmount = 1
+      while (massLeft > 0) { splitAmount *= 2; massLeft = sourceCell.mass - splitAmount * 36 }
+      splits = Math.min(splitAmount, maxSplits)
+    } else {
+      splits = Math.min(maxSplits, 15)
+    }
     const massPerPiece = sourceCell.mass / (splits + 1)
     sourceCell.mass = massPerPiece
-    const dx = (player.inputX || sourceCell.x) - sourceCell.x
-    const dy = (player.inputY || sourceCell.y) - sourceCell.y
-    const baseAngle = Math.atan2(dy, dx)
+    sourceCell.mergeTimer = 0
+    sourceCell.collisionIgnore = 0.6
     for (let i = 0; i < splits; i++) {
-      const spread = (i / splits) * Math.PI * 1.2 - Math.PI * 0.6
-      const angle = baseAngle + spread + (Math.random() - 0.5) * 0.25
+      const angle = Math.random() * Math.PI * 2
+      const nr = massToRadius(massPerPiece)
+      const spd = nr * 0.8
       const newCell = {
         id: rndId(),
-        x: sourceCell.x + Math.cos(angle) * 2,
-        y: sourceCell.y + Math.sin(angle) * 2,
+        x: clamp(sourceCell.x, nr, WORLD_SIZE - nr),
+        y: clamp(sourceCell.y, nr, WORLD_SIZE - nr),
         mass: massPerPiece,
         mergeTimer: 0,
-        splitVx: Math.cos(angle) * SPLIT_SPEED * 0.45,
-        splitVy: Math.sin(angle) * SPLIT_SPEED * 0.45
+        collisionIgnore: 0.6,
+        splitVx: Math.cos(angle) * spd,
+        splitVy: Math.sin(angle) * spd
       }
       player.cells.push(newCell)
     }
@@ -988,17 +992,17 @@ class GameRoom {
     for (const cell of player.cells) {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       cell.mass /= 2
-      const mergeDelay = Math.max(MERGE_TIME_MIN, Math.sqrt(cell.mass) * 600)
-      const spd = Math.max(6, massToRadius(cell.mass) * 0.30)
-      cell.mergeTimer = mergeDelay
       const nr = massToRadius(cell.mass)
-      const offsetDist = nr * 2.0 + 1
+      const spd = nr * 2.2
+      cell.mergeTimer = 0
+      cell.collisionIgnore = 0.6
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x + nx * offsetDist, nr, WORLD_SIZE - nr),
-        y: clamp(cell.y + ny * offsetDist, nr, WORLD_SIZE - nr),
+        x: clamp(cell.x, nr, WORLD_SIZE - nr),
+        y: clamp(cell.y, nr, WORLD_SIZE - nr),
         mass: cell.mass,
-        mergeTimer: mergeDelay,
+        mergeTimer: 0,
+        collisionIgnore: 0.6,
         splitVx: nx * spd,
         splitVy: ny * spd
       })
@@ -1379,7 +1383,7 @@ class GameRoom {
       .filter(p => !p.dead && p.mass > 0)
       .sort((a, b) => b.mass - a.mass)
       .slice(0, 10)
-      .map(p => ({ id: p.id, name: p.name, mass: Math.floor(p.mass), color: p.color, isGod: !!p.isGod, clan: p.clan || null }))
+      .map(p => ({ id: p.id, name: p.name, mass: Math.floor(p.mass), color: p.color, isGod: !!p.isGod, clan: p.clan || null, team: p.team || 'none' }))
   }
 
   getPublicPlayers(excludeId) {

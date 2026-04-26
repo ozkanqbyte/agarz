@@ -229,6 +229,7 @@ export class GameEngine {
     this._bestScore = 0
     this.gold = 0
     this.dead = false
+    this._gameStartTime = Date.now()
     this.running = false
     this.offline = false
     this.frameId = null
@@ -515,7 +516,7 @@ export class GameEngine {
           this.dead = true
           this._showFloat('Yenildin!', '#ef4444')
           this.screenFlash = 1
-          setTimeout(() => { this.onDeath?.({ killedBy: d.killedBy }) }, 500)
+          setTimeout(() => { this.onDeath?.({ killedBy: d.killedBy, score: Math.floor(this.score), kills: this.kills, time: Math.floor((Date.now() - this._gameStartTime) / 1000) }) }, 500)
         }
       })
       .on('player:killed', (d) => {
@@ -528,7 +529,7 @@ export class GameEngine {
           this._showFloat(`💀 ${d.killerName || '?'} seni yedi!`, '#ef4444')
           this.screenFlash = 1
           this._spawnExplosion(this.cells[0]?.x ?? this.camera.x, this.cells[0]?.y ?? this.camera.y, this.playerColor)
-          setTimeout(() => { if (!this.dead) return; this.onDeath?.({ killedBy: d.killerName }) }, 800)
+          setTimeout(() => { if (!this.dead) return; this.onDeath?.({ killedBy: d.killerName, score: Math.floor(this.score), kills: this.kills, time: Math.floor((Date.now() - this._gameStartTime) / 1000) }) }, 800)
         }
       })
       .on('food:update', (d) => {
@@ -589,8 +590,8 @@ export class GameEngine {
           this._spawnAbsorb(d.x ?? eaterCell.x, d.y ?? eaterCell.y, eaterCell.x, eaterCell.y, '#f59e0b')
           const eatR = Math.sqrt(gain) * 4.5
           this.dyingCells.push({ x: d.x ?? eaterCell.x, y: d.y ?? eaterCell.y, tx: eaterCell.x, ty: eaterCell.y, r: eatR, color: '#f59e0b', life: 1 })
-          this.screenFlash = 0.3
-          soundSystem.eat && soundSystem.eat()
+          this._spawnEatRipple(d.x ?? eaterCell.x, d.y ?? eaterCell.y, '#f59e0b', eatR)
+          soundSystem.eatPlayer()
         }
       })
       .on('virus:mass_gain', (d) => {
@@ -626,37 +627,22 @@ export class GameEngine {
           if (p.id === this.playerId) {
             this._serverMass = p.m || 0
             if (p.cs && Array.isArray(p.cs) && p.cs.length > 0) {
-              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10), vx: c.vx || 0, vy: c.vy || 0, mt: c.mt || 0 }))
+              const serverCells = p.cs.map(c => ({ id: c.i, x: c.x, y: c.y, mass: Math.max(10, c.m || 10), mt: c.mt || 0 }))
               const serverIdSet = new Set(serverCells.map(c => c.id))
-              const confirmedCells = this.cells.filter(c => serverIdSet.has(c.id))
-              const removedCells = this.cells.filter(c => !serverIdSet.has(c.id))
-              for (const rc of removedCells) {
-                let tx = rc.x, ty = rc.y
-                let bestD = Infinity
-                for (const c of confirmedCells) {
-                  const d2 = (c.x - rc.x)**2 + (c.y - rc.y)**2
-                  if (d2 < bestD) { bestD = d2; tx = c.x; ty = c.y }
-                }
-                this.dyingCells.push({ x: rc.x, y: rc.y, tx, ty, r: rc.radius * 0.85, color: rc.color || this.color, life: 1, _merge: true })
-              }
-              this.cells = confirmedCells
+              this.cells = this.cells.filter(c => serverIdSet.has(c.id))
               const updatedById = new Map(this.cells.map(c => [c.id, c]))
               for (const sc of serverCells) {
                 if (updatedById.has(sc.id)) {
                   const cell = updatedById.get(sc.id)
-                  cell._px = cell._tx ?? sc.x; cell._py = cell._ty ?? sc.y
-                  cell._tx = sc.x; cell._ty = sc.y
-                  cell._targetMass = sc.mass
-                  cell.vx = sc.vx; cell.vy = sc.vy
+                  cell._srvX = sc.x; cell._srvY = sc.y; cell._srvMass = sc.mass
                   cell._mergeTimer = sc.mt
-                  cell._lastServerUpdate = Date.now()
                 } else {
                   const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
                   nc.id = sc.id
-                  nc._tx = sc.x; nc._ty = sc.y; nc._targetMass = sc.mass
-                  nc.vx = sc.vx; nc.vy = sc.vy
+                  nc._srvX = sc.x; nc._srvY = sc.y; nc._srvMass = sc.mass
                   nc._mergeTimer = sc.mt
-                  nc._lastServerUpdate = Date.now()
+                  nc.x = sc.x; nc.y = sc.y; nc.mass = sc.mass
+                  nc._isNewCell = true
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
                 }
@@ -1111,6 +1097,7 @@ export class GameEngine {
     if (e.code === 'KeyJ') { this._activateGhost(); soundSystem.skill() }
     if (e.code === 'KeyK') { this._startTeleportAim(); soundSystem.skill() }
     if (e.code === 'KeyN') { soundSystem._enabled = !soundSystem._enabled; this._showFloat(soundSystem._enabled ? '🔊 Ses Açık' : '🔇 Ses Kapalı', '#6366f1') }
+    if (e.code === 'Backquote') { this._debugMode = !this._debugMode }
   }
 
   _onClick(e) {
@@ -1198,24 +1185,19 @@ export class GameEngine {
     const mouseTargetY = frozenPos ? frozenPos.y : this.mouse.y
 
     if (this._useSocket) {
-      let biggest = null
-      for (const cell of this.cells) {
-        if (cell.mass < MIN_MASS_SPLIT) continue
-        if (!biggest || cell.mass > biggest.mass) biggest = cell
-      }
-      if (!biggest) return
-      const sdx = mouseTargetX - biggest.x
-      const sdy = mouseTargetY - biggest.y
-      const slen = Math.sqrt(sdx*sdx + sdy*sdy)
-      let dirX, dirY
-      if (slen < 1) {
-        const angle = Math.random() * Math.PI * 2
-        dirX = Math.cos(angle); dirY = Math.sin(angle)
-      } else {
-        dirX = sdx / slen; dirY = sdy / slen
-      }
+      const now2 = Date.now()
+      if (!this._lastSplitTime) this._lastSplitTime = 0
+      if (now2 - this._lastSplitTime < 150) return
+      const eligible2 = this.cells.filter(c => c.mass >= MIN_MASS_SPLIT)
+      if (eligible2.length === 0) return
+      const cdx0 = mouseTargetX - eligible2[0].x
+      const cdy0 = mouseTargetY - eligible2[0].y
+      const clen0 = Math.sqrt(cdx0*cdx0 + cdy0*cdy0)
+      let dirX = 1, dirY = 0
+      if (clen0 >= 1) { dirX = cdx0 / clen0; dirY = cdy0 / clen0 }
+      else { const a = Math.random()*Math.PI*2; dirX = Math.cos(a); dirY = Math.sin(a) }
       socketClient.sendSplit(dirX, dirY)
-      this._lastSplitTime = Date.now()
+      this._lastSplitTime = now2
       return
     }
 
@@ -1463,6 +1445,7 @@ export class GameEngine {
     this._updatePremiumEffects(dt)
     this._updateAbsorbParticles(dt)
     this._updateDyingCells(dt)
+    this._updateEatRipples(dt)
     this._checkFoodCollisions()
     if (!this._useSocket) this._checkVirusCollisions()
     else this._checkVirusCollisionsClient()
@@ -1578,13 +1561,49 @@ export class GameEngine {
 
   _updateDyingCells(dt) {
     for (const d of this.dyingCells) {
-      const speed = d._merge ? dt * 1.2 : dt * 4
-      d.x = lerp(d.x, d.tx, speed)
-      d.y = lerp(d.y, d.ty, speed)
-      d.life -= d._merge ? dt * 0.4 : dt * 2.5
-      d.r = lerp(d.r, 0, d._merge ? dt * 0.55 : dt * 3)
+      d.x = lerp(d.x, d.tx, dt * 5)
+      d.y = lerp(d.y, d.ty, dt * 5)
+      d.life -= dt * 2.8
+      d.r = lerp(d.r, 0, dt * 4)
     }
     this.dyingCells = this.dyingCells.filter(d => d.life > 0 && d.r > 1)
+  }
+
+  _spawnEatRipple(x, y, color, r) {
+    if (!this._eatRipples) this._eatRipples = []
+    this._eatRipples.push({ x, y, color, r: r * 0.5, maxR: r * 3.5, life: 1 })
+    this._eatRipples.push({ x, y, color, r: r * 0.2, maxR: r * 2.2, life: 1, delay: 0.08 })
+    this._spawnParticle(x, y, color, 8)
+  }
+
+  _updateEatRipples(dt) {
+    if (!this._eatRipples?.length) return
+    for (const rp of this._eatRipples) {
+      if (rp.delay > 0) { rp.delay -= dt; continue }
+      rp.r = lerp(rp.r, rp.maxR, dt * 6)
+      rp.life -= dt * 3.5
+    }
+    this._eatRipples = this._eatRipples.filter(rp => rp.life > 0)
+  }
+
+  _drawEatRipples() {
+    if (!this._eatRipples?.length) return
+    const { ctx } = this
+    for (const rp of this._eatRipples) {
+      if (rp.delay > 0) continue
+      const alpha = Math.max(0, rp.life) * 0.7
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.beginPath()
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2)
+      ctx.strokeStyle = rp.color
+      ctx.lineWidth = Math.max(1, rp.life * 4)
+      ctx.shadowBlur = 18 * rp.life
+      ctx.shadowColor = rp.color
+      ctx.stroke()
+      ctx.shadowBlur = 0
+      ctx.restore()
+    }
   }
 
   _premiumEatEffect(x, y, color) {
@@ -1705,84 +1724,51 @@ export class GameEngine {
 
   _moveCells(dt) {
     if (this._useSocket) {
+      const mouseX = this.mouse.x, mouseY = this.mouse.y
       for (const cell of this.cells) {
-        if (!isFinite(cell.x) || !isFinite(cell.y)) { cell.x = WORLD_SIZE/2; cell.y = WORLD_SIZE/2 }
-        const frozen = cell.frozen > 0
-        const speedBoost = this.skills.speed.active ? 5.0 : 1
-        const speedMult = frozen ? 0.3 : speedBoost
-        const hasSplitVel = Math.abs(cell.vx || 0) > 0.5 || Math.abs(cell.vy || 0) > 0.5
-        if (hasSplitVel && cell._tx !== undefined) {
-          const elapsed = Date.now() - (cell._lastServerUpdate || Date.now())
-          const t = elapsed / 33.3
-          const px = cell._px ?? cell._tx, py = cell._py ?? cell._ty
-          let targetX, targetY
-          if (t <= 1) {
-            targetX = px + (cell._tx - px) * t
-            targetY = py + (cell._ty - py) * t
-          } else {
-            const extra = Math.min(0.067, (elapsed - 33.3) / 1000)
-            targetX = cell._tx + (cell.vx || 0) * extra * 60
-            targetY = cell._ty + (cell.vy || 0) * extra * 60
-          }
-          cell.x = lerp(cell.x, targetX, Math.min(1, dt * 30))
-          cell.y = lerp(cell.y, targetY, Math.min(1, dt * 30))
-        } else {
-          if (!frozen) {
-            const dx2 = this.mouse.x - cell.x, dy2 = this.mouse.y - cell.y
-            const d2 = Math.sqrt(dx2*dx2 + dy2*dy2)
-            if (d2 > 1) {
-              const spd = Math.max(2.0, 18.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
-              const s2 = Math.min(spd * dt, d2)
-              if (s2 > 0) { cell.x += (dx2/d2)*s2; cell.y += (dy2/d2)*s2 }
-            }
-          }
-          if (cell._tx !== undefined) {
-            const ex = cell._tx - cell.x, ey = cell._ty - cell.y
-            const e2 = ex * ex + ey * ey
-            if (e2 > 1) {
-              const lerpT = e2 > 80 * 80 ? 0.5 : Math.min(0.12, dt * 4)
-              cell.x += ex * lerpT; cell.y += ey * lerpT
-            }
+        if (!isFinite(cell.x) || !isFinite(cell.y)) {
+          cell.x = cell._srvX ?? WORLD_SIZE / 2
+          cell.y = cell._srvY ?? WORLD_SIZE / 2
+        }
+        if (cell._srvMass !== undefined) {
+          cell.mass = lerp(cell.mass, cell._srvMass, Math.min(1, dt * 5))
+        }
+        if (cell._srvX !== undefined) {
+          const ex = cell._srvX - cell.x, ey = cell._srvY - cell.y
+          const ed = Math.sqrt(ex * ex + ey * ey)
+          if (ed > 350) {
+            cell.x = cell._srvX; cell.y = cell._srvY
+          } else if (ed > 80) {
+            cell.x = lerp(cell.x, cell._srvX, Math.min(1, dt * 2.5))
+            cell.y = lerp(cell.y, cell._srvY, Math.min(1, dt * 2.5))
           }
         }
-        if (cell._targetMass !== undefined) cell.mass = lerp(cell.mass, cell._targetMass, Math.min(1, dt * 8))
+        const dx = mouseX - cell.x, dy = mouseY - cell.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d > 1) {
+          const speed = Math.max(1.5, 13.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60
+          const s = Math.min(speed * dt, d)
+          cell.x += (dx / d) * s; cell.y += (dy / d) * s
+        }
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
       }
       if (this.cells.length > 1) {
-        const now = Date.now()
-        for (let iter = 0; iter < 8; iter++) {
+        for (let iter = 0; iter < 3; iter++) {
           for (let i = 0; i < this.cells.length; i++) {
             for (let j = i + 1; j < this.cells.length; j++) {
               const ca = this.cells[i], cb = this.cells[j]
               const adx = ca.x - cb.x, ady = ca.y - cb.y
               const ad = Math.sqrt(adx * adx + ady * ady)
-              const minD = ca.radius + cb.radius
-              if (ad >= minD) continue
-              const timerA = ca._mergeTimer || 0, timerB = cb._mergeTimer || 0
-              const timerMin = Math.min(timerA, timerB)
-              let pushFactor
-              if (timerMin < 15000) {
-                pushFactor = 1.0
-              } else {
-                const fade = Math.min(1, (timerMin - 15000) / 8000)
-                pushFactor = 1.0 - fade
-              }
-              if (pushFactor <= 0) continue
-              let nx, ny
-              if (ad < 0.01) {
-                const angle = (i * 2.399) + j
-                nx = Math.cos(angle); ny = Math.sin(angle)
-              } else {
-                nx = adx / ad; ny = ady / ad
-              }
-              const push = (minD - ad) * 0.25 * pushFactor
-              ca.x += nx * push; ca.y += ny * push
-              cb.x -= nx * push; cb.y -= ny * push
-              ca.x = clamp(ca.x, ca.radius, WORLD_SIZE - ca.radius)
-              ca.y = clamp(ca.y, ca.radius, WORLD_SIZE - ca.radius)
-              cb.x = clamp(cb.x, cb.radius, WORLD_SIZE - cb.radius)
-              cb.y = clamp(cb.y, cb.radius, WORLD_SIZE - cb.radius)
+              const ra = ca.radius, rb = cb.radius
+              const minD = ra + rb
+              if (ad >= minD || ad < 0.01) continue
+              const overlap = (minD - ad) * 0.3
+              const nx = adx / ad, ny = ady / ad
+              ca.x = clamp(ca.x + nx * overlap * 0.5, ra, WORLD_SIZE - ra)
+              ca.y = clamp(ca.y + ny * overlap * 0.5, ra, WORLD_SIZE - ra)
+              cb.x = clamp(cb.x - nx * overlap * 0.5, rb, WORLD_SIZE - rb)
+              cb.y = clamp(cb.y - ny * overlap * 0.5, rb, WORLD_SIZE - rb)
             }
           }
         }
@@ -1815,7 +1801,7 @@ export class GameEngine {
       const dx = this.mouse.x - cell.x
       const dy = this.mouse.y - cell.y
       const d = Math.sqrt(dx*dx + dy*dy)
-      const speed = Math.max(2.0, 14.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
+      const speed = Math.max(1.5, 13.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60 * speedMult
       if (d > 1) {
         const s = Math.min(speed * dt, d)
         if (s > 0) { cell.x += (dx/d) * s; cell.y += (dy/d) * s }
@@ -2235,18 +2221,16 @@ export class GameEngine {
       return
     }
     if (!this.cells.length) return
-    const camCells = this.cells.filter(c => !c._splitAnim && !c._splitCoast)
-    const camSrc = camCells.length > 0 ? camCells : this.cells
-    const cx = camSrc.reduce((s,c) => s+c.x, 0) / camSrc.length
-    const cy = camSrc.reduce((s,c) => s+c.y, 0) / camSrc.length
-    const camLerp = 1 - Math.pow(0.88, dt * 60)
+    const cx = this.cells.reduce((s,c) => s+c.x, 0) / this.cells.length
+    const cy = this.cells.reduce((s,c) => s+c.y, 0) / this.cells.length
+    const camLerp = 1 - Math.pow(0.90, dt * 60)
     this.camera.x = lerp(this.camera.x, cx, camLerp)
     this.camera.y = lerp(this.camera.y, cy, camLerp)
     const totalMassForZoom = this.cells.reduce((s,c) => s + c.mass, 0)
     const avgR = Math.sqrt(totalMassForZoom / this.cells.length) * 4.5
     const autoZoom = clamp(Math.min(this.canvas.width / (avgR * 4.5), this.canvas.height / (avgR * 4.5)), 0.07, 1.8)
     const targetZoom = clamp(autoZoom * this._zoomFactor, 0.04, 4.0)
-    this.camera.zoom = lerp(this.camera.zoom, targetZoom, 0.12)
+    this.camera.zoom = lerp(this.camera.zoom, targetZoom, 0.10)
   }
 
   _spawnParticle(x, y, color, count = 4) {
@@ -2308,6 +2292,7 @@ export class GameEngine {
     this._drawZombieParticles()
     this._drawAbsorbParticles()
     this._drawParticles()
+    this._drawEatRipples()
     this._drawDyingCells()
     this._drawOtherPlayers()
     this._drawMyPlayer()
@@ -2357,6 +2342,7 @@ export class GameEngine {
     this._drawModeHUD()
     this._drawModeBanner()
     this._drawDirectionArrows()
+    if (this._debugMode) this._drawDebug()
 
     if (this._waitingForServer) {
       ctx.fillStyle = 'rgba(6,6,18,1)'
@@ -2372,6 +2358,56 @@ export class GameEngine {
       ctx.fillText('Sunucuya bağlanılıyor' + dots, W / 2, H / 2)
       ctx.shadowBlur = 0
     }
+  }
+
+  _drawDebug() {
+    const { ctx, canvas, camera } = this
+    const W = canvas.width
+    const lines = []
+    lines.push(`[DEBUG] Tilde (~) kapatır`)
+    lines.push(`Hücreler: ${this.cells.length} | Kütle: ${Math.round(this._serverMass || 0)}`)
+    lines.push(`Kamera: ${Math.round(camera.x)},${Math.round(camera.y)} zoom:${camera.zoom.toFixed(3)}`)
+    lines.push(`Mouse: ${Math.round(this.mouse?.x || 0)},${Math.round(this.mouse?.y || 0)}`)
+    for (let i = 0; i < this.cells.length; i++) {
+      const c = this.cells[i]
+      const srvDx = c._srvX !== undefined ? Math.round(c._srvX - c.x) : '?'
+      const srvDy = c._srvY !== undefined ? Math.round(c._srvY - c.y) : '?'
+      lines.push(`  [${i}] pos:(${Math.round(c.x)},${Math.round(c.y)}) mass:${Math.round(c.mass)} srvErr:(${srvDx},${srvDy})`)
+    }
+    ctx.save()
+    ctx.font = 'bold 13px monospace'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    const pad = 10, lh = 18
+    const boxH = lines.length * lh + pad * 2
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'
+    ctx.fillRect(pad, 60, 420, boxH)
+    ctx.fillStyle = '#00ff88'
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], pad * 2, 60 + pad + i * lh)
+    }
+    if (this._useSocket && this.cells.length) {
+      const zoom = camera.zoom
+      for (const c of this.cells) {
+        if (c._srvX === undefined) continue
+        const sx = (c._srvX - camera.x) * zoom + W / 2
+        const sy = (c._srvY - camera.y) * zoom + canvas.height / 2
+        ctx.strokeStyle = '#ff0044'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(sx, sy, 8, 0, Math.PI * 2)
+        ctx.stroke()
+        const cx = (c.x - camera.x) * zoom + W / 2
+        const cy = (c.y - camera.y) * zoom + canvas.height / 2
+        ctx.strokeStyle = '#ffff00'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.lineTo(sx, sy)
+        ctx.stroke()
+      }
+    }
+    ctx.restore()
   }
 
   _drawMinimap() {
@@ -4318,4 +4354,9 @@ export class GameEngine {
   setTheme(id) { this.theme = getTheme(id) }
   touchSplit() { this._split() }
   touchEject() { this._eject(EJECT_MASS_SM) }
+  setJoystickInput(nx, ny) {
+    if (!this.camera) return
+    const range = Math.max(this.canvas?.width || 600, this.canvas?.height || 400) * 0.35
+    this.mouse = { x: this.camera.x + nx * range, y: this.camera.y + ny * range }
+  }
 }
