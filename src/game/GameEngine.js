@@ -477,7 +477,10 @@ export class GameEngine {
     if (state?.boss) this.modeBoss = { ...state.boss, pulse: 0 }
     if (state?.koth) this.kothZone = state.koth
     if (state?.zombies?.length) this.infectionZombies = new Set(state.zombies)
-    if (state?.assignedTeam) this.playerTeam = state.assignedTeam
+    if (state?.assignedTeam) {
+      this.playerTeam = state.assignedTeam
+      this.onStatusChange?.({ team: state.assignedTeam })
+    }
     if (state?.spawnX != null && state?.spawnY != null && this.cells.length > 0) {
       this.cells[0].x = state.spawnX
       this.cells[0].y = state.spawnY

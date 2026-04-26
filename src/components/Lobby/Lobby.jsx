@@ -579,21 +579,19 @@ export default function Lobby() {
               ))}
             </div>
             {!isHost && <div className="text-xs text-gray-600 mt-2">Sadece host mod değiştirebilir</div>}
-            {selectedMode === 'teams' && (
-              <div className="mt-3 pt-3 border-t" style={{ borderColor: uiBorder }}>
-                <div className="text-xs font-bold mb-2" style={{ color: theme.uiAccent }}>🛡️ Takım Kodu (opsiyonel)</div>
-                <input
-                  type="text"
-                  maxLength={6}
-                  placeholder="Örn: ALPHA"
-                  value={teamCode}
-                  onChange={e => setTeamCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))}
-                  className="w-full px-3 py-2 rounded-xl text-white font-black tracking-widest text-center text-sm outline-none"
-                  style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${theme.glowColor},0.35)`, caretColor: theme.uiAccent }}
-                />
-                <div className="text-xs text-gray-600 mt-1">Aynı kodu giren oyuncular takım olur</div>
-              </div>
-            )}
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: uiBorder }}>
+              <div className="text-xs font-bold mb-2" style={{ color: theme.uiAccent }}>🛡️ Takım Kodu <span style={{ color: '#4b5563', fontWeight: 400 }}>(isteğe bağlı)</span></div>
+              <input
+                type="text"
+                maxLength={6}
+                placeholder="Örn: ALPHA"
+                value={teamCode}
+                onChange={e => setTeamCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''))}
+                className="w-full px-3 py-2 rounded-xl text-white font-black tracking-widest text-center text-sm outline-none"
+                style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid rgba(${theme.glowColor},0.35)`, caretColor: theme.uiAccent }}
+              />
+              <div className="text-xs mt-1" style={{ color: '#4b5563' }}>Aynı kodu giren oyuncular aynı takıma atanır</div>
+            </div>
           </div>
 
           <div className="flex gap-3">

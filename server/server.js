@@ -1428,9 +1428,20 @@ io.on('connection', (socket) => {
       const ownedPackage = VALID_PACKAGES.includes(data.ownedPackage) ? data.ownedPackage : 'free'
 
       const spawnMass = room.mode === 'shrink_survival' ? 500 : 300
-      const assignedTeam = room.mode === 'teams'
-        ? (Array.from(room.players.values()).filter(p => p.team === 'red').length <= Array.from(room.players.values()).filter(p => p.team === 'blue').length ? 'red' : 'blue')
-        : (data.team || 'none')
+      let assignedTeam
+      if (room.mode === 'teams') {
+        const teamCode = (data.team || '').trim().toUpperCase().slice(0, 6)
+        if (teamCode) {
+          const existingWithCode = Array.from(room.players.values()).find(p => p.teamCode === teamCode)
+          assignedTeam = existingWithCode ? existingWithCode.team : (
+            Array.from(room.players.values()).filter(p => p.team === 'red').length <= Array.from(room.players.values()).filter(p => p.team === 'blue').length ? 'red' : 'blue'
+          )
+        } else {
+          assignedTeam = Array.from(room.players.values()).filter(p => p.team === 'red').length <= Array.from(room.players.values()).filter(p => p.team === 'blue').length ? 'red' : 'blue'
+        }
+      } else {
+        assignedTeam = data.team || 'none'
+      }
 
       const player = {
         id: playerId,
@@ -1442,6 +1453,7 @@ io.on('connection', (socket) => {
         isPremium: !!data.isPremium,
         ownedPackage,
         team: assignedTeam,
+        teamCode: (data.team || '').trim().toUpperCase().slice(0, 6) || null,
         mass: spawnMass,
         x: spawnX,
         y: spawnY,

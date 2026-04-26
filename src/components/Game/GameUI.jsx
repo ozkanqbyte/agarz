@@ -54,7 +54,8 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
   const [searchParams] = useSearchParams()
   const activeQuestCount = quests.filter(q => !q.completed && !q.claimed).length
   const completedQuestCount = quests.filter(q => q.completed && !q.claimed).length
-  const playerTeam = searchParams.get('team') || 'none'
+  const urlTeamCode = searchParams.get('team') || 'none'
+  const playerTeam = urlTeamCode
   const theme = getTheme(currentTheme)
   const [showKeys, setShowKeys] = useState(false)
   const [gold, setGold] = useState(0)
@@ -718,14 +719,17 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
           }}>
           {mode === 'rush' ? '⚡' : '⏱'} {formatTime(gameTimer)}
         </motion.div>
-        {(mode === 'teams' || mode === 'clan_war') && playerTeam !== 'none' && (
+        {(mode === 'teams' || mode === 'clan_war') && (status.team === 'red' || status.team === 'blue') && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full font-black text-sm"
             style={{
-              background: playerTeam === 'red' ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.25)',
-              border: `1px solid ${playerTeam === 'red' ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.6)'}`,
-              color: playerTeam === 'red' ? '#f87171' : '#93c5fd'
+              background: status.team === 'red' ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.25)',
+              border: `1px solid ${status.team === 'red' ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.6)'}`,
+              color: status.team === 'red' ? '#f87171' : '#93c5fd'
             }}>
-            {playerTeam === 'red' ? '🔴 Kırmızı Takım' : '🔵 Mavi Takım'}
+            {status.team === 'red' ? '🔴 Kırmızı Takım' : '🔵 Mavi Takım'}
+            {urlTeamCode !== 'none' && urlTeamCode !== status.team && (
+              <span style={{ fontSize: 10, opacity: 0.75, marginLeft: 2 }}>· {urlTeamCode}</span>
+            )}
           </div>
         )}
         {mode === 'battle_royale' && (
