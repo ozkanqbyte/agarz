@@ -237,6 +237,14 @@ export default function Lobby() {
 
   const readyCount = players.filter(p => p.ready).length
 
+  useEffect(() => {
+    if (!isHost) return
+    if (players.length === 0) return
+    if (readyCount === players.length) {
+      startGame()
+    }
+  }, [readyCount, players.length, isHost])
+
   const sendFriendRequestFromLobby = async (targetPlayer) => {
     if (!playerId || playerId.startsWith('guest_') || !targetPlayer?.uid) return
     try {
@@ -610,30 +618,10 @@ export default function Lobby() {
               {ready ? '✓ Hazırım!' : '○ Hazır Değilim'}
             </motion.button>
 
-            {isHost && (
-              <motion.button onClick={startGame}
-                whileHover={{ scale: 1.03, boxShadow: `0 0 30px rgba(${theme.glowColor},0.6)` }}
-                whileTap={{ scale: 0.97 }}
-                className="px-8 py-4 rounded-xl font-black text-white text-lg"
-                style={{
-                  background: (readyCount === players.length && players.length > 0) || players.length <= 1
-                    ? `linear-gradient(135deg, ${theme.gradientA}, ${theme.gradientB})`
-                    : 'rgba(255,255,255,0.07)',
-                  boxShadow: (readyCount === players.length && players.length > 0) || players.length <= 1
-                    ? `0 0 20px rgba(${theme.glowColor},0.4)` : 'none',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: (readyCount === players.length && players.length > 0) || players.length <= 1 ? '#fff' : '#4b5563',
-                  cursor: 'pointer',
-                }}>
-                {(readyCount === players.length && players.length > 0) || players.length <= 1 ? '▶ BAŞLAT' : `⏳ ${players.length - readyCount} Bekle`}
-              </motion.button>
-            )}
-            {!isHost && (
-              <div className="px-6 py-4 rounded-xl font-bold text-sm flex items-center"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#4b5563' }}>
-                Host başlatacak
-              </div>
-            )}
+            <div className="px-6 py-4 rounded-xl font-bold text-sm flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: readyCount === players.length && players.length > 0 ? '#4ade80' : '#6b7280' }}>
+              {readyCount === players.length && players.length > 0 ? '✓ Başlıyor...' : `⏳ ${players.length - readyCount} oyuncu bekliyor`}
+            </div>
           </div>
         </div>
 
