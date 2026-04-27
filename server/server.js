@@ -1338,7 +1338,11 @@ class GameRoom {
         poisoned: p.poisoned > 0 ? 1 : 0,
         ghost: p.skillGhostTimer > 0 ? 1 : 0,
         pk: p.ownedPackage || 'free',
-        tm: p.team || 'none'
+        tm: p.team || 'none',
+        fr: p.frame || null,
+        ne: p.nameEffect || null,
+        tr: p.trail || null,
+        tl: p.title || null
       })
     }
     const modeData = {}
@@ -1454,6 +1458,10 @@ io.on('connection', (socket) => {
         ownedPackage,
         team: assignedTeam,
         teamCode: (data.team || '').trim().toUpperCase().slice(0, 6) || null,
+        frame: data.frame || null,
+        nameEffect: data.nameEffect || null,
+        trail: data.trail || null,
+        title: data.title || null,
         mass: spawnMass,
         x: spawnX,
         y: spawnY,

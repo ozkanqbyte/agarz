@@ -448,7 +448,11 @@ export class GameEngine {
       clan: this.options.clan || null,
       isPremium: this.options.isPremium || false,
       ownedPackage: this.options.ownedPackage || 'free',
-      team: this.playerTeam
+      team: this.playerTeam,
+      frame: this.options.activeFrame || null,
+      nameEffect: this.options.nameEffect || null,
+      trail: this.options.trailEffect || null,
+      title: this.options.activeTitle || null
     })
 
     if (state?.food?.length) {
@@ -663,6 +667,10 @@ export class GameEngine {
               op.name = p.n || op.name; op.color = p.c || op.color
               op.isGod = !!p.g; op.frozen = !!p.frozen; op.poisoned = !!p.poisoned
               op.ownedPackage = p.pk || 'free'; op.clan = p.cl || null; op.team = p.tm || 'none'
+              if (p.fr !== undefined) op.frame = p.fr || null
+              if (p.ne !== undefined) op.nameEffect = p.ne || null
+              if (p.tr !== undefined) op.trail = p.tr || null
+              if (p.tl !== undefined) op.title = p.tl || null
               const prevById = new Map((op.cells || []).filter(c => c.id).map(c => [c.id, c]))
               const newIdSet = new Set(cells.map(c => c.id).filter(Boolean))
               for (const [cid, pCell] of prevById) {
@@ -703,7 +711,10 @@ export class GameEngine {
                 name: p.n || '?',
                 color: p.c || '#6366f1', isGod: !!p.g, clan: p.cl || null,
                 frozen: !!p.frozen, poisoned: !!p.poisoned, ownedPackage: p.pk || 'free',
-                team: p.tm || 'none'
+                team: p.tm || 'none',
+                frame: p.fr || null, nameEffect: p.ne || null,
+                trail: p.tr || null, title: p.tl || null,
+                _trailHistory: []
               }
             }
           }
@@ -3142,7 +3153,28 @@ export class GameEngine {
           this._drawCell(cx, cy, r * 1.05, '#00e5ff', '', false, null, false)
           this.ctx.restore()
         }
-        this._drawCell(cx, cy, r, drawColor, p.name, p.isGod, p.clan, false, false, false, 'gradient', 0, null, null, p.ownedPackage || 'free')
+        if (p.trail) {
+          if (!p._trailHistory) p._trailHistory = []
+          const now = performance.now()
+          if (!p._trailLast || now - p._trailLast > 35) {
+            p._trailLast = now
+            p._trailHistory.push({ x: cx, y: cy, r, t: now })
+            if (p._trailHistory.length > 10) p._trailHistory.shift()
+          }
+          this._drawTrailForPlayer(p._trailHistory, p.trail, p.color)
+        }
+        this._drawCell(cx, cy, r, drawColor, p.name, p.isGod, p.clan, false, false, false, 'gradient', 0, p.nameEffect || null, p.frame || null, p.ownedPackage || 'free')
+        if (p.title) {
+          const screenX = (cx - this.camera.x) * this.camera.zoom + this.canvas.width / 2
+          const screenY = (cy - this.camera.y) * this.camera.zoom + this.canvas.height / 2 - r * this.camera.zoom - 22
+          this.ctx.save()
+          this.ctx.font = `bold ${Math.max(9, Math.min(13, r * this.camera.zoom * 0.18))}px "Segoe UI", sans-serif`
+          this.ctx.textAlign = 'center'
+          this.ctx.fillStyle = p._titleColor || '#fbbf24'
+          this.ctx.globalAlpha = 0.9
+          this.ctx.fillText(`【${p.title}】`, screenX, screenY)
+          this.ctx.restore()
+        }
       }
     }
     for (const bot of this.bots) {
