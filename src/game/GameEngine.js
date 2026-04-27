@@ -626,6 +626,15 @@ export class GameEngine {
       .on('serverAnnouncement', (d) => {
         if (this.options?.onAnnouncement) this.options.onAnnouncement(d)
       })
+      .on('premiumUpdated', (d) => {
+        if (this.options?.onPremiumUpdated) this.options.onPremiumUpdated(d)
+      })
+      .on('coinUpdated', (d) => {
+        if (this.options?.onCoinUpdated) this.options.onCoinUpdated(d)
+      })
+      .on('cosmeticAdded', (d) => {
+        if (this.options?.onCosmeticAdded) this.options.onCosmeticAdded(d)
+      })
       .on('world:state', (data) => {
         if (!data?.players) return
         if (data.modeData?.crystals) this.modeCrystals = data.modeData.crystals

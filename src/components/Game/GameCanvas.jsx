@@ -112,6 +112,22 @@ export default function GameCanvas({ onLevelUp }) {
         const icon = icons[d.type] || 'ℹ️'
         toast(`${icon} ${d.message}`, { duration: 8000, style: { background: 'rgba(15,15,30,0.97)', color: '#e2e8f0', border: '1px solid rgba(99,102,241,0.4)' } })
       },
+      onPremiumUpdated: (d) => {
+        usePremiumStore.setState({ ownedPackage: d.ownedPackage })
+        toast.success(`⭐ Premium güncellendi: ${d.ownedPackage?.toUpperCase()}`, { duration: 5000, style: { background: 'rgba(15,15,30,0.97)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.4)' } })
+      },
+      onCoinUpdated: (d) => {
+        useProgressStore.setState({ coins: d.coins })
+        toast.success(`💰 Admin coin verdi! Bakiye: ${d.coins?.toLocaleString()}`, { duration: 5000, style: { background: 'rgba(15,15,30,0.97)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.4)' } })
+      },
+      onCosmeticAdded: (d) => {
+        if (d.type === 'frame') useProgressStore.setState(s => ({ ownedFrames: [...new Set([...(s.ownedFrames||[]), d.itemId])] }))
+        else if (d.type === 'nameEffect') useProgressStore.setState(s => ({ ownedNameEffects: [...new Set([...(s.ownedNameEffects||[]), d.itemId])] }))
+        else if (d.type === 'trail') useProgressStore.setState(s => ({ ownedTrailEffects: [...new Set([...(s.ownedTrailEffects||[]), d.itemId])] }))
+        else if (d.type === 'deathEffect') useProgressStore.setState(s => ({ ownedDeathEffects: [...new Set([...(s.ownedDeathEffects||[]), d.itemId])] }))
+        else if (d.type === 'skin') usePremiumStore.setState(s => ({ ownedSkins: [...new Set([...(s.ownedSkins||[]), d.itemId])] }))
+        toast.success(`✨ Yeni kozmetik kazandın: ${d.itemId}`, { duration: 5000, style: { background: 'rgba(15,15,30,0.97)', color: '#818cf8', border: '1px solid rgba(129,140,248,0.4)' } })
+      },
     })
 
     engineRef.current = engine

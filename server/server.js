@@ -1903,9 +1903,15 @@ app.post('/api/admin/give-coins', adminAuth, async (req, res) => {
   try {
     const snap = await firebaseDb.ref(`users/${uid}/gameData/progress/coins`).once('value')
     const current = snap.val() || 0
-    await firebaseDb.ref(`users/${uid}/gameData/progress/coins`).set(current + Number(amount))
+    const newTotal = current + Number(amount)
+    await firebaseDb.ref(`users/${uid}/gameData/progress/coins`).set(newTotal)
     await writeAdminLog('give_coins', adminUid || 'admin', { uid, amount })
-    res.json({ ok: true, newTotal: current + Number(amount) })
+    const socket = [...io.sockets.sockets.values()].find(s => {
+      for (const [, r] of rooms) for (const [, p] of r.players) if (p.id === uid && p.socketId === s.id) return true
+      return false
+    })
+    if (socket) socket.emit('coinUpdated', { coins: newTotal })
+    res.json({ ok: true, newTotal })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1955,6 +1961,11 @@ app.post('/api/admin/add-cosmetic', adminAuth, async (req, res) => {
       await firebaseDb.ref(`users/${uid}/gameData/inventory/${path}`).set(arr)
     }
     await writeAdminLog('add_cosmetic', adminUid || 'admin', { uid, type, itemId })
+    const socket = [...io.sockets.sockets.values()].find(s => {
+      for (const [, r] of rooms) for (const [, p] of r.players) if (p.id === uid && p.socketId === s.id) return true
+      return false
+    })
+    if (socket) socket.emit('cosmeticAdded', { type, itemId, path, arr })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
