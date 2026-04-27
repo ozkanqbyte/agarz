@@ -7,6 +7,7 @@ console.log('[ENV-CHECK] FIREBASE_SERVICE_ACCOUNT:', process.env.FIREBASE_SERVIC
 console.log('[ENV-CHECK] NODE_ENV:', process.env.NODE_ENV)
 console.log('[ENV-CHECK] PORT:', process.env.PORT)
 
+const os = require('os')
 const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
@@ -1421,9 +1422,18 @@ io.on('connection', (socket) => {
   let room = null
   let playerId = null
 
-  socket.on('room:join', (data, cb) => {
+  socket.on('room:join', async (data, cb) => {
     try {
-      playerId = data.playerId || socket.id
+      const joiningId = data.playerId || socket.id
+      if (firebaseDb && joiningId && joiningId.length > 10) {
+        const banSnap = await firebaseDb.ref(`users/${joiningId}/banned`).once('value')
+        if (banSnap.val() === true) {
+          const reasonSnap = await firebaseDb.ref(`users/${joiningId}/banReason`).once('value')
+          socket.emit('kicked', { reason: `Hesabın askıya alındı: ${reasonSnap.val() || 'Kural ihlali'}` })
+          return
+        }
+      }
+      playerId = joiningId
       room = getRoom(data.roomId || 'main_ffa', data.mode || 'ffa')
       socket.join(room.id)
 
@@ -1781,7 +1791,6 @@ app.get('/rooms', (req, res) => {
    ADMIN API
    ============================================================ */
 const ADMIN_SECRET = process.env.ADMIN_SECRET || 'AGARZ_ADMIN_SECRET_2024'
-const os = require('os')
 
 function adminAuth(req, res, next) {
   const token = req.headers['x-admin-token'] || req.query.token

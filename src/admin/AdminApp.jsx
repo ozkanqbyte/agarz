@@ -11,6 +11,7 @@ import Announcements from './pages/Announcements'
 import ServerConfig from './pages/ServerConfig'
 import Logs from './pages/Logs'
 import Moderators from './pages/Moderators'
+import Cosmetics from './pages/Cosmetics'
 
 function AdminGuard({ children, user, role, loading }) {
   const [searchParams] = useSearchParams()
@@ -94,6 +95,14 @@ export default function AdminApp() {
           <AdminGuard user={user} role={role} loading={loading}>
             <AdminLayout user={user} role={role}>
               <Moderators user={user} />
+            </AdminLayout>
+          </AdminGuard>
+        } />
+
+        <Route path="/cosmetics" element={
+          <AdminGuard user={user} role={role} loading={loading}>
+            <AdminLayout user={user} role={role}>
+              <Cosmetics user={user} />
             </AdminLayout>
           </AdminGuard>
         } />
