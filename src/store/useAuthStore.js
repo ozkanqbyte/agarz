@@ -21,9 +21,10 @@ function generateProfileId() {
   return 'AGARIX#' + id
 }
 
-const makeDefaultProfile = (uid, name) => ({
+const makeDefaultProfile = (uid, name, email) => ({
   uid,
   name: name || 'Player',
+  email: email || null,
   profileId: generateProfileId(),
   level: 1,
   xp: 0,
@@ -35,6 +36,7 @@ const makeDefaultProfile = (uid, name) => ({
   theme: 'cyberpunk',
   color: '#' + ['6366f1','8b5cf6','ec4899','06b6d4','10b981','f59e0b','ef4444'][Math.floor(Math.random()*7)],
   createdAt: Date.now(),
+  lastSeen: Date.now(),
   stats: { gamesPlayed: 0, highScore: 0, kills: 0, totalMass: 0 },
   friends: {},
   badges: []
@@ -84,9 +86,15 @@ const useAuthStore = create((set, get) => ({
             fbSet(dbRef(db, `users/${uid}/profile/profileId`), profileId).catch(() => {})
             data.profileId = profileId
           }
+          fbSet(dbRef(db, `users/${uid}/profile/lastSeen`), Date.now()).catch(() => {})
+          const cu = auth.currentUser
+          if (cu?.email && !data.email) {
+            fbSet(dbRef(db, `users/${uid}/profile/email`), cu.email).catch(() => {})
+          }
           set({ profile: data })
         } else {
-          const defaultProfile = makeDefaultProfile(uid, auth.currentUser?.displayName || 'Player')
+          const cu = auth.currentUser
+          const defaultProfile = makeDefaultProfile(uid, cu?.displayName || 'Player', cu?.email || null)
           fbSet(profileRef, defaultProfile).catch(() => {})
           set({ profile: defaultProfile })
         }
@@ -103,7 +111,7 @@ const useAuthStore = create((set, get) => ({
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password)
       await updateProfile(cred.user, { displayName })
-      const profile = makeDefaultProfile(cred.user.uid, displayName)
+      const profile = makeDefaultProfile(cred.user.uid, displayName, email)
       await fbSet(dbRef(db, `users/${cred.user.uid}/profile`), profile)
       return { success: true }
     } catch (e) {
@@ -130,7 +138,10 @@ const useAuthStore = create((set, get) => ({
       const profileRef = dbRef(db, `users/${cred.user.uid}/profile`)
       const snap = await get(profileRef)
       if (!snap.exists()) {
-        await fbSet(profileRef, makeDefaultProfile(cred.user.uid, cred.user.displayName))
+        await fbSet(profileRef, makeDefaultProfile(cred.user.uid, cred.user.displayName, cred.user.email))
+      } else {
+        fbSet(dbRef(db, `users/${cred.user.uid}/profile/lastSeen`), Date.now()).catch(() => {})
+        if (cred.user.email) fbSet(dbRef(db, `users/${cred.user.uid}/profile/email`), cred.user.email).catch(() => {})
       }
       return { success: true }
     } catch (e) {
