@@ -1,8 +1,8 @@
 import { ref as dbRef, get, set, onValue, off } from 'firebase/database'
 import { db } from './config'
 
-const SERVER = import.meta.env.VITE_SERVER_URL || 'https://agarz-production.up.railway.app'
-export const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || 'AGARZ_ADMIN_SECRET_2024'
+const SERVER = (import.meta.env.VITE_SERVER_URL || 'https://agarz-production.up.railway.app').trim()
+export const ADMIN_SECRET = (import.meta.env.VITE_ADMIN_SECRET || 'AGARZ_ADMIN_SECRET_2024').trim()
 
 function headers() {
   return { 'Content-Type': 'application/json', 'x-admin-token': ADMIN_SECRET }
