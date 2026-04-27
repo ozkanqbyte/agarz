@@ -8,7 +8,7 @@ import { socketClient } from '../../game/SocketClient'
 import useAuthStore from '../../store/useAuthStore'
 import useProgressStore, { BADGES } from '../../store/useProgressStore'
 import usePremiumStore from '../../store/usePremiumStore'
-import { FRAMES, NAME_EFFECTS } from '../../store/useShopStore'
+import { FRAMES, NAME_EFFECTS, TRAIL_EFFECTS, DEATH_EFFECTS } from '../../store/useShopStore'
 import toast from 'react-hot-toast'
 
 const PRESET_AVATARS = [
@@ -512,6 +512,74 @@ export default function ProfilePage() {
                       {activeNameEffect === e.id && <span style={{ marginLeft: 'auto', fontSize: 10 }}>✓</span>}
                     </motion.button>
                   ))}
+                </div>
+              </div>
+
+              {/* TRAIL EFFECTS */}
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: '#6b7280', letterSpacing: 2, marginBottom: 12 }}>İZ EFEKTİ (TRAIL)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                  <motion.button whileTap={{ scale: 0.96 }} onClick={() => { setActiveTrailEffect(null); toast.success('İz efekti kaldırıldı') }}
+                    style={{
+                      background: activeTrailEffect === null ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${activeTrailEffect === null ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                      borderRadius: 12, padding: '10px 14px', color: activeTrailEffect === null ? '#818cf8' : '#6b7280',
+                      fontWeight: 700, fontSize: 12, cursor: 'pointer', textAlign: 'left',
+                    }}>Yok</motion.button>
+                  {TRAIL_EFFECTS.filter(e => ownedTrailEffects.includes(e.id)).map(e => (
+                    <motion.button key={e.id} whileTap={{ scale: 0.96 }}
+                      onClick={() => { setActiveTrailEffect(e.id); toast.success(`${e.name} izi aktif!`) }}
+                      style={{
+                        background: activeTrailEffect === e.id ? e.color + '18' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${activeTrailEffect === e.id ? e.color + '55' : 'rgba(255,255,255,0.08)'}`,
+                        borderRadius: 12, padding: '10px 14px',
+                        color: activeTrailEffect === e.id ? e.color : '#6b7280',
+                        fontWeight: 700, fontSize: 12, cursor: 'pointer', textAlign: 'left',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
+                      {e.icon} {e.name}
+                      {activeTrailEffect === e.id && <span style={{ marginLeft: 'auto', fontSize: 10 }}>✓ AKTİF</span>}
+                    </motion.button>
+                  ))}
+                  {ownedTrailEffects.length === 0 && (
+                    <div style={{ gridColumn: '1/-1', padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', color: '#4b5563', fontSize: 11, textAlign: 'center' }}>
+                      Henüz iz efektin yok — sandıklardan kazan!
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* DEATH EFFECTS */}
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: '#6b7280', letterSpacing: 2, marginBottom: 12 }}>ÖLÜM EFEKTİ</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                  <motion.button whileTap={{ scale: 0.96 }} onClick={() => { setActiveDeathEffect(null); toast.success('Ölüm efekti kaldırıldı') }}
+                    style={{
+                      background: activeDeathEffect === null ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${activeDeathEffect === null ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                      borderRadius: 12, padding: '10px 14px', color: activeDeathEffect === null ? '#818cf8' : '#6b7280',
+                      fontWeight: 700, fontSize: 12, cursor: 'pointer', textAlign: 'left',
+                    }}>Yok</motion.button>
+                  {DEATH_EFFECTS.filter(e => ownedDeathEffects.includes(e.id)).map(e => (
+                    <motion.button key={e.id} whileTap={{ scale: 0.96 }}
+                      onClick={() => { setActiveDeathEffect(e.id); toast.success(`${e.name} ölüm efekti aktif!`) }}
+                      style={{
+                        background: activeDeathEffect === e.id ? e.color + '18' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${activeDeathEffect === e.id ? e.color + '55' : 'rgba(255,255,255,0.08)'}`,
+                        borderRadius: 12, padding: '10px 14px',
+                        color: activeDeathEffect === e.id ? e.color : '#6b7280',
+                        fontWeight: 700, fontSize: 12, cursor: 'pointer', textAlign: 'left',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
+                      {e.icon} {e.name}
+                      {activeDeathEffect === e.id && <span style={{ marginLeft: 'auto', fontSize: 10 }}>✓ AKTİF</span>}
+                    </motion.button>
+                  ))}
+                  {ownedDeathEffects.length === 0 && (
+                    <div style={{ gridColumn: '1/-1', padding: '10px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', color: '#4b5563', fontSize: 11, textAlign: 'center' }}>
+                      Henüz ölüm efektin yok — sandıklardan kazan!
+                    </div>
+                  )}
                 </div>
               </div>
 
