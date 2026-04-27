@@ -38,7 +38,7 @@ export default function Economy({ user }) {
             </div>
             <motion.button whileTap={{ scale: 0.97 }} disabled={busy}
               onClick={() => { if (confirm(`Tüm oyunculara ${bulkAmount} coin verilecek. Onaylıyor musun?`)) doAction(() => adminApi.giveCoinsAll(bulkAmount, user?.uid), `Tüm oyunculara ${bulkAmount} coin verildi!`) }}
-              style={{ padding: '11px', borderRadius: 12, border: 'none', background: busy ? 'rgba(251,191,36,0.2)' : 'rgba(251,191,36,0.25)', color: '#fbbf24', fontWeight: 800, fontSize: 13, cursor: busy ? 'not-allowed' : 'pointer', border: '1px solid rgba(251,191,36,0.3)' }}>
+              style={{ padding: '11px', borderRadius: 12, border: '1px solid rgba(251,191,36,0.3)', background: busy ? 'rgba(251,191,36,0.2)' : 'rgba(251,191,36,0.25)', color: '#fbbf24', fontWeight: 800, fontSize: 13, cursor: busy ? 'not-allowed' : 'pointer' }}>
               {busy ? '⏳ İşleniyor...' : `💰 ${bulkAmount} Coin Herkese Ver`}
             </motion.button>
           </div>

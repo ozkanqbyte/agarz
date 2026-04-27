@@ -64,7 +64,7 @@ export default function ServerConfig({ user }) {
                     </div>
                     {changed && (
                       <motion.button whileTap={{ scale: 0.95 }} disabled={!!busy[key]} onClick={() => save(key)}
-                        style={{ padding: '7px 16px', borderRadius: 10, border: 'none', background: busy[key] ? 'rgba(251,191,36,0.2)' : 'rgba(251,191,36,0.2)', color: '#fbbf24', fontWeight: 800, fontSize: 12, cursor: 'pointer', border: '1px solid rgba(251,191,36,0.4)' }}>
+                        style={{ padding: '7px 16px', borderRadius: 10, border: '1px solid rgba(251,191,36,0.4)', background: 'rgba(251,191,36,0.2)', color: '#fbbf24', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
                         {busy[key] ? '⏳' : '💾 Kaydet'}
                       </motion.button>
                     )}
