@@ -81,27 +81,7 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.get('/health', (_, res) => res.json({ ok: true }))
 
-app.get('/payment/debug-creds', (_, res) => {
-  const mid  = process.env.PAYTR_MERCHANT_ID   || PAYTR_MERCHANT_ID
-  const key  = process.env.PAYTR_MERCHANT_KEY  || PAYTR_MERCHANT_KEY
-  const salt = process.env.PAYTR_MERCHANT_SALT || PAYTR_MERCHANT_SALT
-  res.json({
-    merchant_id: mid,
-    merchant_key_len: key.length,
-    merchant_key_first4: key.substring(0, 4),
-    merchant_key_last4: key.substring(key.length - 4),
-    merchant_salt_len: salt.length,
-    merchant_salt_first4: salt.substring(0, 4),
-    merchant_salt_last4: salt.substring(salt.length - 4),
-    firebase_ok: !!firebaseDb,
-    from_env_live: {
-      id_len: (process.env.PAYTR_MERCHANT_ID||'').length,
-      key_len: (process.env.PAYTR_MERCHANT_KEY||'').length,
-      salt_len: (process.env.PAYTR_MERCHANT_SALT||'').length,
-      fb_len: (process.env.FIREBASE_SERVICE_ACCOUNT||'').length,
-    }
-  })
-})
+app.get('/payment/debug-creds', (_, res) => res.status(404).json({ error: 'Not found' }))
 
 app.post('/payment/create-checkout', async (req, res) => {
   const { packageId, uid, email, name } = req.body
@@ -1415,7 +1395,29 @@ setInterval(() => {
   }
 }, 2 * 60 * 1000)
 
+const VALID_FRAMES       = ['silver','gold','neon','fire','ice','diamond','rainbow','galaxy','sakura','void','crown']
+const VALID_NAME_EFFECTS = ['glow','sparkle','fire','electric','ice','rainbow','galaxy','aurora','void','phantom']
+const VALID_TRAILS       = ['sparkle','fire','ice','electric','sakura','galaxy','rainbow','void','aurora']
+const VALID_TITLES       = ['beginner','player','warrior','expert','master','legend','godlike','killer','champion','immortal','hunter','predator']
+
+const connRateMap = new Map()
+const chatRateMap = new Map()
+function checkRate(map, key, maxPerWindow, windowMs) {
+  const now = Date.now()
+  const entry = map.get(key) || { count: 0, ts: now }
+  if (now - entry.ts > windowMs) { entry.count = 0; entry.ts = now }
+  entry.count++
+  map.set(key, entry)
+  return entry.count <= maxPerWindow
+}
+
 io.on('connection', (socket) => {
+  const ip = (socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || 'unknown').split(',')[0].trim()
+  if (!checkRate(connRateMap, ip, 10, 10000)) {
+    socket.emit('error', { code: 'RATE_LIMIT', msg: 'Çok fazla bağlantı' })
+    socket.disconnect(true)
+    return
+  }
   let room = null
   let playerId = null
 
@@ -1458,10 +1460,10 @@ io.on('connection', (socket) => {
         ownedPackage,
         team: assignedTeam,
         teamCode: (data.team || '').trim().toUpperCase().slice(0, 6) || null,
-        frame: data.frame || null,
-        nameEffect: data.nameEffect || null,
-        trail: data.trail || null,
-        title: data.title || null,
+        frame:      (data.frame      && VALID_FRAMES.includes(data.frame))            ? data.frame      : null,
+        nameEffect: (data.nameEffect && VALID_NAME_EFFECTS.includes(data.nameEffect)) ? data.nameEffect : null,
+        trail:      (data.trail      && VALID_TRAILS.includes(data.trail))             ? data.trail      : null,
+        title:      (data.title      && VALID_TITLES.includes(data.title))             ? data.title      : null,
         mass: spawnMass,
         x: spawnX,
         y: spawnY,
@@ -1699,8 +1701,9 @@ io.on('connection', (socket) => {
 
   socket.on('chat:send', (data) => {
     if (!room || !playerId) return
+    if (!checkRate(chatRateMap, socket.id, 5, 5000)) return
     const player = room.players.get(playerId)
-    const text = (data.text || '').trim().slice(0, 200)
+    const text = (data.text || '').trim().slice(0, 120)
     if (!text) return
     const msg = {
       id: rndId(), playerId,
@@ -1772,6 +1775,287 @@ app.get('/rooms', (req, res) => {
     id, mode: r.mode, players: r.players.size
   }))
   res.json(list)
+})
+
+/* ============================================================
+   ADMIN API
+   ============================================================ */
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'AGARZ_ADMIN_SECRET_2024'
+const os = require('os')
+
+function adminAuth(req, res, next) {
+  const token = req.headers['x-admin-token'] || req.query.token
+  if (token !== ADMIN_SECRET) return res.status(403).json({ error: 'Yetkisiz' })
+  next()
+}
+
+async function writeAdminLog(action, adminUid, details = {}) {
+  if (!firebaseDb) return
+  try {
+    const ref = firebaseDb.ref('adminLogs').push()
+    await ref.set({ action, adminUid, details, ts: Date.now() })
+  } catch {}
+}
+
+app.get('/api/admin/health', adminAuth, (req, res) => {
+  const mem = process.memoryUsage()
+  const load = os.loadavg()
+  const totalMem = os.totalmem()
+  const freeMem = os.freemem()
+  const totalPlayers = Array.from(rooms.values()).reduce((s, r) => s + r.players.size, 0)
+  const roomList = Array.from(rooms.entries()).map(([id, r]) => ({
+    id, mode: r.mode, players: r.players.size,
+    playerList: Array.from(r.players.values()).map(p => ({
+      id: p.id, name: p.name, mass: Math.round(p.mass), team: p.team,
+      x: Math.round(p.x), y: Math.round(p.y), kills: p.kills
+    }))
+  }))
+  res.json({
+    ok: true,
+    uptime: Math.floor(process.uptime()),
+    rooms: rooms.size,
+    totalPlayers,
+    roomList,
+    memory: { used: Math.round(mem.rss / 1024 / 1024), heap: Math.round(mem.heapUsed / 1024 / 1024), total: Math.round(totalMem / 1024 / 1024), free: Math.round(freeMem / 1024 / 1024) },
+    cpu: { load1: load[0].toFixed(2), load5: load[1].toFixed(2), cores: os.cpus().length },
+    gameConfig: { MERGE_TIME, MERGE_FADE, SPLIT_SPEED }
+  })
+})
+
+app.get('/api/admin/players', adminAuth, async (req, res) => {
+  if (!firebaseDb) return res.json({ players: [] })
+  try {
+    const snap = await firebaseDb.ref('users').limitToLast(200).once('value')
+    const val = snap.val() || {}
+    const players = Object.entries(val).map(([uid, data]) => ({
+      uid,
+      name: data.profile?.name || '?',
+      email: data.profile?.email || '',
+      color: data.profile?.color || '#6366f1',
+      level: data.gameData?.progress?.level || 1,
+      xp: data.gameData?.progress?.xp || 0,
+      coins: data.gameData?.progress?.coins || 0,
+      highScore: data.gameData?.progress?.highScore || 0,
+      totalKills: data.gameData?.progress?.totalKills || 0,
+      gamesPlayed: data.gameData?.progress?.gamesPlayed || 0,
+      premium: data.gameData?.premium?.ownedPackage || 'free',
+      banned: !!data.banned,
+      banReason: data.banReason || null,
+      bannedAt: data.bannedAt || null,
+      createdAt: data.profile?.createdAt || null,
+      lastSeen: data.profile?.lastSeen || null,
+    }))
+    res.json({ players })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/ban', adminAuth, async (req, res) => {
+  const { uid, reason, duration, adminUid } = req.body
+  if (!uid || !firebaseDb) return res.status(400).json({ error: 'uid gerekli' })
+  try {
+    const banData = { banned: true, banReason: reason || 'Kural ihlali', bannedAt: Date.now(), banDuration: duration || 'permanent' }
+    await firebaseDb.ref(`users/${uid}`).update(banData)
+    await writeAdminLog('ban', adminUid || 'admin', { uid, reason, duration })
+    for (const [, room] of rooms) {
+      for (const [, p] of room.players) {
+        if (p.id === uid) { io.to(p.socketId).emit('kicked', { reason: 'Hesabın askıya alındı.' }); room.players.delete(uid) }
+      }
+    }
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/unban', adminAuth, async (req, res) => {
+  const { uid, adminUid } = req.body
+  if (!uid || !firebaseDb) return res.status(400).json({ error: 'uid gerekli' })
+  try {
+    await firebaseDb.ref(`users/${uid}`).update({ banned: false, banReason: null, bannedAt: null, banDuration: null })
+    await writeAdminLog('unban', adminUid || 'admin', { uid })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/delete-player', adminAuth, async (req, res) => {
+  const { uid, adminUid } = req.body
+  if (!uid || !firebaseDb) return res.status(400).json({ error: 'uid gerekli' })
+  try {
+    await firebaseDb.ref(`users/${uid}`).remove()
+    if (admin.auth) { try { await admin.auth().deleteUser(uid) } catch {} }
+    await writeAdminLog('delete_player', adminUid || 'admin', { uid })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/give-coins', adminAuth, async (req, res) => {
+  const { uid, amount, adminUid } = req.body
+  if (!uid || !amount || !firebaseDb) return res.status(400).json({ error: 'uid ve amount gerekli' })
+  try {
+    const snap = await firebaseDb.ref(`users/${uid}/gameData/progress/coins`).once('value')
+    const current = snap.val() || 0
+    await firebaseDb.ref(`users/${uid}/gameData/progress/coins`).set(current + Number(amount))
+    await writeAdminLog('give_coins', adminUid || 'admin', { uid, amount })
+    res.json({ ok: true, newTotal: current + Number(amount) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/give-coins-all', adminAuth, async (req, res) => {
+  const { amount, adminUid } = req.body
+  if (!amount || !firebaseDb) return res.status(400).json({ error: 'amount gerekli' })
+  try {
+    const snap = await firebaseDb.ref('users').once('value')
+    const val = snap.val() || {}
+    const updates = {}
+    for (const [uid, data] of Object.entries(val)) {
+      const current = data.gameData?.progress?.coins || 0
+      updates[`users/${uid}/gameData/progress/coins`] = current + Number(amount)
+    }
+    await firebaseDb.ref().update(updates)
+    await writeAdminLog('give_coins_all', adminUid || 'admin', { amount, count: Object.keys(val).length })
+    res.json({ ok: true, count: Object.keys(val).length })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/set-premium', adminAuth, async (req, res) => {
+  const { uid, packageId, adminUid } = req.body
+  if (!uid || !packageId || !firebaseDb) return res.status(400).json({ error: 'uid ve packageId gerekli' })
+  try {
+    await firebaseDb.ref(`users/${uid}/gameData/premium`).update({ ownedPackage: packageId })
+    await writeAdminLog('set_premium', adminUid || 'admin', { uid, packageId })
+    const socket = [...io.sockets.sockets.values()].find(s => {
+      for (const [, r] of rooms) for (const [, p] of r.players) if (p.id === uid && p.socketId === s.id) return true
+      return false
+    })
+    if (socket) socket.emit('premiumUpdated', { ownedPackage: packageId })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/add-cosmetic', adminAuth, async (req, res) => {
+  const { uid, type, itemId, adminUid } = req.body
+  if (!uid || !type || !itemId || !firebaseDb) return res.status(400).json({ error: 'uid, type, itemId gerekli' })
+  try {
+    const paths = { frame: 'ownedFrames', nameEffect: 'ownedNameEffects', trail: 'ownedTrailEffects', deathEffect: 'ownedDeathEffects', skin: 'ownedSkins' }
+    const path = paths[type]
+    if (!path) return res.status(400).json({ error: 'Gecersiz tür' })
+    const snap = await firebaseDb.ref(`users/${uid}/gameData/inventory/${path}`).once('value')
+    const arr = snap.val() || (type === 'skin' ? ['default'] : [])
+    if (!arr.includes(itemId)) {
+      arr.push(itemId)
+      await firebaseDb.ref(`users/${uid}/gameData/inventory/${path}`).set(arr)
+    }
+    await writeAdminLog('add_cosmetic', adminUid || 'admin', { uid, type, itemId })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/kick', adminAuth, (req, res) => {
+  const { uid, reason } = req.body
+  for (const [, room] of rooms) {
+    for (const [, p] of room.players) {
+      if (p.id === uid) {
+        io.to(p.socketId).emit('kicked', { reason: reason || 'Admin tarafından atıldınız.' })
+        room.players.delete(uid)
+        return res.json({ ok: true })
+      }
+    }
+  }
+  res.json({ ok: false, error: 'Oyuncu aktif değil' })
+})
+
+app.post('/api/admin/freeze', adminAuth, (req, res) => {
+  const { uid, freeze } = req.body
+  for (const [, room] of rooms) {
+    const p = room.players.get(uid)
+    if (p) { p.frozen = freeze ? 999999 : 0; return res.json({ ok: true }) }
+  }
+  res.json({ ok: false, error: 'Oyuncu aktif değil' })
+})
+
+app.post('/api/admin/announce', adminAuth, async (req, res) => {
+  const { message, targetUid, type, adminUid } = req.body
+  if (!message) return res.status(400).json({ error: 'message gerekli' })
+  const payload = { message, type: type || 'info', ts: Date.now() }
+  if (targetUid) {
+    for (const [, room] of rooms) {
+      for (const [, p] of room.players) {
+        if (p.id === targetUid) { io.to(p.socketId).emit('serverAnnouncement', payload); break }
+      }
+    }
+  } else {
+    io.emit('serverAnnouncement', payload)
+  }
+  if (firebaseDb) await firebaseDb.ref('announcements').push({ ...payload, adminUid: adminUid || 'admin' })
+  await writeAdminLog('announce', adminUid || 'admin', { message, targetUid })
+  res.json({ ok: true })
+})
+
+const gameConfigOverrides = {}
+
+app.get('/api/admin/config', adminAuth, (req, res) => {
+  res.json({ MERGE_TIME, MERGE_FADE, SPLIT_SPEED, ...gameConfigOverrides })
+})
+
+app.post('/api/admin/config', adminAuth, async (req, res) => {
+  const { key, value, adminUid } = req.body
+  const allowed = ['MERGE_TIME', 'MERGE_FADE', 'SPLIT_SPEED', 'MAX_CELLS', 'FOOD_COUNT', 'BOT_COUNT']
+  if (!allowed.includes(key)) return res.status(400).json({ error: 'Geçersiz config key' })
+  gameConfigOverrides[key] = Number(value)
+  await writeAdminLog('config_change', adminUid || 'admin', { key, value })
+  res.json({ ok: true, key, value })
+})
+
+app.get('/api/admin/logs', adminAuth, async (req, res) => {
+  if (!firebaseDb) return res.json({ logs: [] })
+  try {
+    const snap = await firebaseDb.ref('adminLogs').limitToLast(200).orderByChild('ts').once('value')
+    const val = snap.val() || {}
+    const logs = Object.entries(val).map(([id, l]) => ({ id, ...l })).sort((a, b) => b.ts - a.ts)
+    res.json({ logs })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/admin/announcements', adminAuth, async (req, res) => {
+  if (!firebaseDb) return res.json({ announcements: [] })
+  try {
+    const snap = await firebaseDb.ref('announcements').limitToLast(50).once('value')
+    const val = snap.val() || {}
+    const announcements = Object.entries(val).map(([id, a]) => ({ id, ...a })).sort((a, b) => b.ts - a.ts)
+    res.json({ announcements })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/set-role', adminAuth, async (req, res) => {
+  const { uid, role, adminUid } = req.body
+  if (!uid || !role || !firebaseDb) return res.status(400).json({ error: 'uid ve role gerekli' })
+  try {
+    await firebaseDb.ref(`adminRoles/${uid}`).set({ role, grantedAt: Date.now(), grantedBy: adminUid || 'admin' })
+    await writeAdminLog('set_role', adminUid || 'admin', { uid, role })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/admin/roles', adminAuth, async (req, res) => {
+  if (!firebaseDb) return res.json({ roles: {} })
+  try {
+    const snap = await firebaseDb.ref('adminRoles').once('value')
+    res.json({ roles: snap.val() || {} })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/admin/stats', adminAuth, async (req, res) => {
+  if (!firebaseDb) return res.json({ totalUsers: 0, bannedUsers: 0, premiumUsers: 0 })
+  try {
+    const snap = await firebaseDb.ref('users').once('value')
+    const val = snap.val() || {}
+    let totalUsers = 0, bannedUsers = 0, premiumUsers = 0, totalCoins = 0
+    for (const data of Object.values(val)) {
+      totalUsers++
+      if (data.banned) bannedUsers++
+      if (data.gameData?.premium?.ownedPackage && data.gameData.premium.ownedPackage !== 'free') premiumUsers++
+      totalCoins += data.gameData?.progress?.coins || 0
+    }
+    res.json({ totalUsers, bannedUsers, premiumUsers, totalCoins, activeRooms: rooms.size, activePlayers: Array.from(rooms.values()).reduce((s, r) => s + r.players.size, 0) })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 const PORT = process.env.PORT || 3001

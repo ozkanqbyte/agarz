@@ -103,6 +103,15 @@ export default function GameCanvas({ onLevelUp }) {
       onXPGain: handleXPGain,
       onKill: handleKill,
       onPlayerDoubleClick: (playerData) => setProfilePopup(playerData),
+      onKicked: (reason) => {
+        toast.error(`🚫 ${reason}`, { duration: 6000 })
+        setTimeout(() => navigate('/menu'), 3000)
+      },
+      onAnnouncement: (d) => {
+        const icons = { info: 'ℹ️', warning: '⚠️', success: '✅', event: '🎉', maintenance: '🔧' }
+        const icon = icons[d.type] || 'ℹ️'
+        toast(`${icon} ${d.message}`, { duration: 8000, style: { background: 'rgba(15,15,30,0.97)', color: '#e2e8f0', border: '1px solid rgba(99,102,241,0.4)' } })
+      },
     })
 
     engineRef.current = engine

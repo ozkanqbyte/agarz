@@ -1,5 +1,25 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { authRef } from './authRef'
+
+function _saveInventoryToFb(s) {
+  const uid = authRef?.uid
+  if (!uid || uid.startsWith('guest_')) return
+  import('../firebase/syncService').then(({ fbSaveInventory }) => {
+    fbSaveInventory(uid, {
+      ownedFrames: s.ownedFrames,
+      ownedNameEffects: s.ownedNameEffects,
+      ownedSkills: s.ownedSkills,
+      ownedSkins: s.ownedSkins || [],
+      activeNameEffect: s.activeNameEffect,
+      activeFrame: s.activeFrame,
+      ownedDeathEffects: s.ownedDeathEffects,
+      ownedTrailEffects: s.ownedTrailEffects,
+      activeDeathEffect: s.activeDeathEffect,
+      activeTrailEffect: s.activeTrailEffect,
+    }).catch(() => {})
+  }).catch(() => {})
+}
 
 export const XP_BOOST_HOURS = 24
 
@@ -57,12 +77,24 @@ const useProgressStore = create(
       addNameEffect: (effectId) => set(s => ({ ownedNameEffects: [...new Set([...s.ownedNameEffects, effectId])] })),
       addDeathEffect: (effectId) => set(s => ({ ownedDeathEffects: [...new Set([...s.ownedDeathEffects, effectId])] })),
       addTrailEffect: (effectId) => set(s => ({ ownedTrailEffects: [...new Set([...s.ownedTrailEffects, effectId])] })),
-      setActiveDeathEffect: (effectId) => set({ activeDeathEffect: effectId }),
-      setActiveTrailEffect: (effectId) => set({ activeTrailEffect: effectId }),
+      setActiveDeathEffect: (effectId) => {
+        set({ activeDeathEffect: effectId })
+        setTimeout(() => _saveInventoryToFb(get()), 200)
+      },
+      setActiveTrailEffect: (effectId) => {
+        set({ activeTrailEffect: effectId })
+        setTimeout(() => _saveInventoryToFb(get()), 200)
+      },
       addSkillUnlock: (skillId, uses = 2) => set(s => ({ ownedSkills: { ...s.ownedSkills, [skillId]: (s.ownedSkills[skillId] || 0) + uses } })),
       consumeSkillUses: (skillId, count = 1) => set(s => ({ ownedSkills: { ...s.ownedSkills, [skillId]: Math.max(0, (s.ownedSkills[skillId] || 0) - count) } })),
-      setActiveNameEffect: (effectId) => set({ activeNameEffect: effectId }),
-      setActiveFrame: (frameId) => set({ activeFrame: frameId }),
+      setActiveNameEffect: (effectId) => {
+        set({ activeNameEffect: effectId })
+        setTimeout(() => _saveInventoryToFb(get()), 200)
+      },
+      setActiveFrame: (frameId) => {
+        set({ activeFrame: frameId })
+        setTimeout(() => _saveInventoryToFb(get()), 200)
+      },
 
       claimDailyLogin: () => {
         const now = Date.now()

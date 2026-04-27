@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AnimatePresence } from 'framer-motion'
 import useAuthStore from './store/useAuthStore'
@@ -18,12 +18,19 @@ import PaymentResultPage from './components/Payment/PaymentResultPage'
 import ProfilePage from './components/Profile/ProfilePage'
 import GlobalTopBar from './components/UI/GlobalTopBar'
 import LobbyInviteNotifier from './components/Friends/LobbyInviteNotifier'
+import AdminApp from './admin/AdminApp'
 
 function ProtectedRoute({ children }) {
   const { user, profile, loading } = useAuthStore()
   if (loading) return <LoadingScreen />
   if (!user && !profile) return <Navigate to="/auth" replace />
   return children
+}
+
+function ConditionalUI() {
+  const loc = useLocation()
+  if (loc.pathname.startsWith('/admx-agarz-panel')) return null
+  return <GlobalTopBar />
 }
 
 function LoadingScreen() {
@@ -52,7 +59,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <GlobalTopBar />
+      <ConditionalUI />
       <LobbyInviteNotifier />
       <Toaster
         position="top-center"
@@ -113,6 +120,7 @@ export default function App() {
         } />
         <Route path="/payment/success" element={<PaymentResultPage success={true} />} />
         <Route path="/payment/fail" element={<PaymentResultPage success={false} />} />
+        <Route path="/admx-agarz-panel/*" element={<AdminApp />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

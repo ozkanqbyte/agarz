@@ -619,6 +619,13 @@ export class GameEngine {
       .on('anticheat:warn', (d) => {
         console.warn('[AntiCheat]', d.reason)
       })
+      .on('kicked', (d) => {
+        this.running = false
+        if (this.options?.onKicked) this.options.onKicked(d?.reason || 'Sunucudan atıldınız.')
+      })
+      .on('serverAnnouncement', (d) => {
+        if (this.options?.onAnnouncement) this.options.onAnnouncement(d)
+      })
       .on('world:state', (data) => {
         if (!data?.players) return
         if (data.modeData?.crystals) this.modeCrystals = data.modeData.crystals
