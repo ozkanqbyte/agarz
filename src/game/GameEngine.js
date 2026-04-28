@@ -660,11 +660,19 @@ export class GameEngine {
                   cell._srvX = sc.x; cell._srvY = sc.y; cell._srvMass = sc.mass
                   cell._mergeTimer = sc.mt
                 } else {
-                  const nc = new Cell(sc.x, sc.y, sc.mass, this.color)
+                  let startX = sc.x, startY = sc.y
+                  if (this.cells.length > 0) {
+                    let bestD = Infinity
+                    for (const ec of this.cells) {
+                      const dd = (ec.x - sc.x)**2 + (ec.y - sc.y)**2
+                      if (dd < bestD) { bestD = dd; startX = ec.x; startY = ec.y }
+                    }
+                  }
+                  const nc = new Cell(startX, startY, sc.mass, this.color)
                   nc.id = sc.id
                   nc._srvX = sc.x; nc._srvY = sc.y; nc._srvMass = sc.mass
                   nc._mergeTimer = sc.mt
-                  nc.x = sc.x; nc.y = sc.y; nc.mass = sc.mass
+                  nc.mass = sc.mass
                   nc._isNewCell = true
                   this.cells.push(nc)
                   updatedById.set(sc.id, nc)
@@ -1764,11 +1772,12 @@ export class GameEngine {
         if (cell._srvX !== undefined) {
           const ex = cell._srvX - cell.x, ey = cell._srvY - cell.y
           const ed = Math.sqrt(ex * ex + ey * ey)
-          if (ed > 350) {
+          if (ed > 1200) {
             cell.x = cell._srvX; cell.y = cell._srvY
-          } else if (ed > 80) {
-            cell.x = lerp(cell.x, cell._srvX, Math.min(1, dt * 2.5))
-            cell.y = lerp(cell.y, cell._srvY, Math.min(1, dt * 2.5))
+          } else if (ed > 8) {
+            const lerpT = ed > 300 ? Math.min(1, dt * 10) : Math.min(1, dt * 5)
+            cell.x = lerp(cell.x, cell._srvX, lerpT)
+            cell.y = lerp(cell.y, cell._srvY, lerpT)
           }
         }
         const dx = mouseX - cell.x, dy = mouseY - cell.y

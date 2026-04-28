@@ -588,7 +588,7 @@ class GameRoom {
       if (hasSplitVel) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        const decay = Math.pow(0.89, dt * 25)
+        const decay = Math.pow(0.72, dt * 25)
         cell.splitVx *= decay
         cell.splitVy *= decay
         if (Math.abs(cell.splitVx) < 0.08) { cell.splitVx = 0; cell.splitVy = 0 }
@@ -976,7 +976,7 @@ class GameRoom {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       cell.mass /= 2
       const nr = massToRadius(cell.mass)
-      const spd = nr * 2.2
+      const spd = nr * 0.22
       cell.mergeTimer = 0
       cell.collisionIgnore = 0.6
       newCells.push({
