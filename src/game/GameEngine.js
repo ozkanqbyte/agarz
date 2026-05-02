@@ -1775,24 +1775,22 @@ export class GameEngine {
           if (srvEd > 1200) {
             cell.x = cell._srvX; cell.y = cell._srvY
             cell._isNewCell = false
-          } else if (srvEd > 1) {
-            const lerpT = cell._isNewCell
-              ? Math.min(1, dt * 20)
-              : Math.min(1, dt * (srvEd > 100 ? 9 : 5))
+          } else if (cell._isNewCell && srvEd > 1) {
+            const lerpT = Math.min(1, dt * 18)
             cell.x = lerp(cell.x, cell._srvX, lerpT)
             cell.y = lerp(cell.y, cell._srvY, lerpT)
             if (srvEd < 6) cell._isNewCell = false
-          } else {
-            cell._isNewCell = false
+          } else if (srvEd > 80) {
+            cell.x = lerp(cell.x, cell._srvX, Math.min(1, dt * 3))
+            cell.y = lerp(cell.y, cell._srvY, Math.min(1, dt * 3))
           }
-        } else {
-          const dx = mouseX - cell.x, dy = mouseY - cell.y
-          const d = Math.sqrt(dx * dx + dy * dy)
-          if (d > 1) {
-            const speed = Math.max(1.5, 13.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60
-            const s = Math.min(speed * dt, d)
-            cell.x += (dx / d) * s; cell.y += (dy / d) * s
-          }
+        }
+        const dx = mouseX - cell.x, dy = mouseY - cell.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d > 1 && !cell._isNewCell) {
+          const speed = Math.max(1.5, 13.0 / Math.pow(Math.max(20, cell.mass), 0.3)) * 60
+          const s = Math.min(speed * dt, d)
+          cell.x += (dx / d) * s; cell.y += (dy / d) * s
         }
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
