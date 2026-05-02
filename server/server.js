@@ -976,7 +976,7 @@ class GameRoom {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       cell.mass /= 2
       const nr = massToRadius(cell.mass)
-      const spd = nr * 0.45
+      const spd = nr * 0.65
       cell.mergeTimer = 0
       cell.collisionIgnore = 0.6
       newCells.push({
