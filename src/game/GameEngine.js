@@ -1774,10 +1774,12 @@ export class GameEngine {
           const ed = Math.sqrt(ex * ex + ey * ey)
           if (ed > 1200) {
             cell.x = cell._srvX; cell.y = cell._srvY
-          } else if (ed > 8) {
-            const lerpT = ed > 300 ? Math.min(1, dt * 10) : Math.min(1, dt * 5)
+            cell._isNewCell = false
+          } else if (ed > 2) {
+            const lerpT = cell._isNewCell ? Math.min(1, dt * 22) : (ed > 200 ? Math.min(1, dt * 8) : Math.min(1, dt * 4))
             cell.x = lerp(cell.x, cell._srvX, lerpT)
             cell.y = lerp(cell.y, cell._srvY, lerpT)
+            if (ed < 10) cell._isNewCell = false
           }
         }
         const dx = mouseX - cell.x, dy = mouseY - cell.y
