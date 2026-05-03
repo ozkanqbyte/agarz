@@ -1776,13 +1776,13 @@ export class GameEngine {
             cell.x = cell._srvX; cell.y = cell._srvY
             cell._isNewCell = false
           } else if (cell._isNewCell && srvEd > 1) {
-            const lerpT = Math.min(1, dt * 18)
+            const lerpT = Math.min(1, dt * 20)
             cell.x = lerp(cell.x, cell._srvX, lerpT)
             cell.y = lerp(cell.y, cell._srvY, lerpT)
-            if (srvEd < 6) cell._isNewCell = false
-          } else if (srvEd > 80) {
-            cell.x = lerp(cell.x, cell._srvX, Math.min(1, dt * 3))
-            cell.y = lerp(cell.y, cell._srvY, Math.min(1, dt * 3))
+            if (srvEd < 5) cell._isNewCell = false
+          } else if (srvEd > 60) {
+            cell.x = lerp(cell.x, cell._srvX, Math.min(1, dt * 4))
+            cell.y = lerp(cell.y, cell._srvY, Math.min(1, dt * 4))
           }
         }
         const dx = mouseX - cell.x, dy = mouseY - cell.y
@@ -1794,6 +1794,33 @@ export class GameEngine {
         }
         cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius)
         cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius)
+      }
+
+      if (this.cells.length > 1) {
+        for (let iter = 0; iter < 3; iter++) {
+          for (let i = 0; i < this.cells.length; i++) {
+            for (let j = i + 1; j < this.cells.length; j++) {
+              const ca = this.cells[i], cb = this.cells[j]
+              if (ca._isNewCell || cb._isNewCell) continue
+              const adx = ca.x - cb.x, ady = ca.y - cb.y
+              const ad = Math.sqrt(adx * adx + ady * ady)
+              const minD = ca.radius + cb.radius
+              if (ad >= minD) continue
+              const overlap = (minD - ad) * 0.18
+              let nx, ny
+              if (ad < 0.5) {
+                const angle = (i * 2.399) + j
+                nx = Math.cos(angle); ny = Math.sin(angle)
+              } else {
+                nx = adx / ad; ny = ady / ad
+              }
+              ca.x = clamp(ca.x + nx * overlap, ca.radius, WORLD_SIZE - ca.radius)
+              ca.y = clamp(ca.y + ny * overlap, ca.radius, WORLD_SIZE - ca.radius)
+              cb.x = clamp(cb.x - nx * overlap, cb.radius, WORLD_SIZE - cb.radius)
+              cb.y = clamp(cb.y - ny * overlap, cb.radius, WORLD_SIZE - cb.radius)
+            }
+          }
+        }
       }
       return
     }
