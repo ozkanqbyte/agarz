@@ -67,6 +67,7 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
   const [deathScreen, setDeathScreen] = useState(null)
   const [respawnCountdown, setRespawnCountdown] = useState(5)
   const [newTeamCode, setNewTeamCode] = useState('')
+  const [cellMode, setCellModeState] = useState(() => localStorage.getItem('cellMode') || 'normal')
   const [showPlayerList, setShowPlayerList] = useState(false)
   const [spectateName, setSpectateName] = useState('?')
   const [spectateStats, setSpectateStats] = useState({ mass: 0, color: '#6366f1' })
@@ -668,6 +669,22 @@ export default function GameUI({ engineRef, onSplit, onEject, onLeave, onSpectat
                     <div className="text-xs text-gray-500">{stat.label}</div>
                   </div>
                 ))}
+              </div>
+              <div className="mb-4">
+                <div className="text-xs font-bold mb-2 text-left" style={{ color: theme.uiAccent }}>🎨 Hücre Modu</div>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {[{ id: 'normal', label: 'Normal', icon: '⚪' }, { id: 'glass', label: 'Kristal', icon: '💎' }, { id: 'neon', label: 'Neon', icon: '⚡' }].map(m => (
+                    <button key={m.id} onClick={() => {
+                      setCellModeState(m.id)
+                      localStorage.setItem('cellMode', m.id)
+                      if (engineRef.current?.setCellMode) engineRef.current.setCellMode(m.id)
+                    }}
+                      className="py-2 rounded-xl text-xs font-black transition-all"
+                      style={{ background: cellMode === m.id ? `linear-gradient(135deg,${theme.gradientA},${theme.gradientB})` : 'rgba(255,255,255,0.05)', border: `1px solid ${cellMode === m.id ? theme.gradientA : 'rgba(255,255,255,0.12)'}`, color: 'white', boxShadow: cellMode === m.id ? `0 0 12px rgba(${theme.glowColor},0.4)` : 'none' }}>
+                      {m.icon} {m.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="mb-4">
                 <div className="text-xs font-bold mb-1.5 text-left" style={{ color: theme.uiAccent }}>🛡️ Takım Kodu <span style={{ color: '#4b5563', fontWeight: 400 }}>(isteğe bağlı)</span></div>

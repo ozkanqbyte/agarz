@@ -1804,9 +1804,9 @@ export class GameEngine {
               if (ca._isNewCell || cb._isNewCell) continue
               const adx = ca.x - cb.x, ady = ca.y - cb.y
               const ad = Math.sqrt(adx * adx + ady * ady)
-              const minD = ca.radius + cb.radius
+              const minD = ca.radius + cb.radius + 3
               if (ad >= minD) continue
-              const overlap = (minD - ad) * 0.18
+              const push = (minD - ad) * 0.5
               let nx, ny
               if (ad < 0.5) {
                 const angle = (i * 2.399) + j
@@ -1814,10 +1814,10 @@ export class GameEngine {
               } else {
                 nx = adx / ad; ny = ady / ad
               }
-              ca.x = clamp(ca.x + nx * overlap, ca.radius, WORLD_SIZE - ca.radius)
-              ca.y = clamp(ca.y + ny * overlap, ca.radius, WORLD_SIZE - ca.radius)
-              cb.x = clamp(cb.x - nx * overlap, cb.radius, WORLD_SIZE - cb.radius)
-              cb.y = clamp(cb.y - ny * overlap, cb.radius, WORLD_SIZE - cb.radius)
+              ca.x = clamp(ca.x + nx * push, ca.radius, WORLD_SIZE - ca.radius)
+              ca.y = clamp(ca.y + ny * push, ca.radius, WORLD_SIZE - ca.radius)
+              cb.x = clamp(cb.x - nx * push, cb.radius, WORLD_SIZE - cb.radius)
+              cb.y = clamp(cb.y - ny * push, cb.radius, WORLD_SIZE - cb.radius)
             }
           }
         }
@@ -1939,6 +1939,7 @@ export class GameEngine {
           }
           eaten.push(food.id)
           eatenSet.add(food.id)
+          cell.eatPulse = 1.0
           this.lastEatTime = Date.now()
           if (this.qualityLevel !== 'low') this._spawnParticle(food.x, food.y, food.color, 2)
           soundSystem.eatFood()
@@ -2927,14 +2928,36 @@ export class GameEngine {
     }
 
     const TWO_PI = Math.PI * 2
-    for (const [col, items] of byColor) {
-      ctx.fillStyle = col
-      ctx.beginPath()
-      for (const f of items) {
-        ctx.moveTo(f.x + f.radius, f.y)
-        ctx.arc(f.x, f.y, f.radius, 0, TWO_PI)
+    const cellMode = this.options?.cellMode || 'normal'
+
+    if (cellMode === 'neon') {
+      for (const [col, items] of byColor) {
+        for (const f of items) {
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.radius, 0, TWO_PI)
+          ctx.fillStyle = 'rgba(4,4,16,0.7)'; ctx.fill()
+          ctx.shadowBlur = 10; ctx.shadowColor = col
+          ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); ctx.shadowBlur = 0
+        }
       }
-      ctx.fill()
+    } else if (cellMode === 'glass') {
+      for (const [col, items] of byColor) {
+        for (const f of items) {
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.radius, 0, TWO_PI)
+          ctx.fillStyle = hexAlpha(col, 0.25); ctx.fill()
+          ctx.shadowBlur = 8; ctx.shadowColor = col
+          ctx.strokeStyle = hexAlpha(col, 0.8); ctx.lineWidth = 1; ctx.stroke(); ctx.shadowBlur = 0
+        }
+      }
+    } else {
+      for (const [col, items] of byColor) {
+        ctx.fillStyle = col
+        ctx.beginPath()
+        for (const f of items) {
+          ctx.moveTo(f.x + f.radius, f.y)
+          ctx.arc(f.x, f.y, f.radius, 0, TWO_PI)
+        }
+        ctx.fill()
+      }
     }
 
     for (const f of poisonList) {
@@ -3299,76 +3322,99 @@ export class GameEngine {
     }
   }
 
+  setCellMode(mode) { this.options.cellMode = mode }
+
   _drawCell(x, y, radius, color, name, isGod, clan, isMe=false, poisoned=false, frozen=false, avatar='gradient', eatPulse=0, nameEffect=null, activeFrame=null, ownedPackage='free', overrideMass=null) {
     const { ctx } = this
     if (!radius || !isFinite(radius) || radius < 0.5 || isNaN(radius)) return
     if (!isFinite(x) || !isFinite(y) || isNaN(x) || isNaN(y)) return
 
-    const dr = Math.max(0.5, radius)
+    const squash = eatPulse > 0 ? 1 + 0.18 * Math.sin(eatPulse * Math.PI) : 1
+    const dr = Math.max(0.5, radius * squash)
     if (!isFinite(dr) || isNaN(dr)) return
 
-    ctx.save()
-    ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
-    ctx.clip()
-
+    const cellMode = this.options?.cellMode || 'normal'
     const sc = safeColor(color)
-    let cs = this._gradCache.get(sc)
-    if (!cs) {
-      cs = { l: lighten(sc, 55), m: hexAlpha(sc, 1), d: darken(sc, 35) }
-      if (this._gradCache.size > 120) this._gradCache.clear()
-      this._gradCache.set(sc, cs)
-    }
-    const gx1 = x - dr*0.35, gy1 = y - dr*0.35
-    if (!isFinite(gx1) || !isFinite(gy1)) { ctx.restore(); return }
-    const grad = ctx.createRadialGradient(gx1, gy1, Math.max(0.01, dr*0.05), x, y, Math.max(1, dr))
-    grad.addColorStop(0, cs.l)
-    grad.addColorStop(0.6, cs.m)
-    grad.addColorStop(1, cs.d)
-    ctx.fillStyle = grad; ctx.fill()
 
-    if (avatar === 'stripes' && dr > 10) {
-      const stripeW = Math.max(4, dr * 0.18)
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = stripeW
-      for (let sx = x - dr*2; sx < x + dr*2; sx += stripeW*2.5) {
-        ctx.beginPath(); ctx.moveTo(sx, y - dr); ctx.lineTo(sx + dr, y + dr); ctx.stroke()
-      }
-    } else if (avatar === 'dots' && dr > 12) {
-      const dotR = Math.max(2, dr * 0.1)
-      ctx.fillStyle = 'rgba(255,255,255,0.25)'
-      for (let i = 0; i < 8; i++) {
-        const angle = (i / 8) * Math.PI * 2
-        ctx.beginPath(); ctx.arc(x + Math.cos(angle)*dr*0.55, y + Math.sin(angle)*dr*0.55, dotR, 0, Math.PI*2); ctx.fill()
-      }
-    }
-
-    ctx.restore()
-
-    const speedActive = isMe && this.skills?.speed?.active
-    const shieldActive = isMe && this.skills?.shield?.active
-
-    ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
-    const needGlow = (isMe || isGod || frozen || poisoned || speedActive || shieldActive || dr > 40) && this.qualityLevel !== 'low'
-    if (needGlow) {
-      ctx.shadowBlur = speedActive ? 30 : shieldActive ? 30 : isMe ? 18 : (isGod ? 25 : 8)
-      ctx.shadowColor = shieldActive ? '#06b6d4' : speedActive ? '#fbbf24' : frozen ? '#38bdf8' : poisoned ? '#a855f7' : isGod ? '#fbbf24' : color
-    }
-
-    if (speedActive) {
-      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 4
-    } else if (shieldActive) {
-      ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 4
-    } else if (frozen) {
-      ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3
-    } else if (poisoned) {
-      ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 3
-    } else if (isGod) {
-      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 3.5
-    } else if (isMe) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2.5
+    if (cellMode === 'glass') {
+      ctx.save()
+      ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI * 2); ctx.clip()
+      const glassGrad = ctx.createRadialGradient(x - dr*0.3, y - dr*0.3, 0, x, y, dr)
+      glassGrad.addColorStop(0, hexAlpha(sc, 0.28))
+      glassGrad.addColorStop(0.6, hexAlpha(sc, 0.10))
+      glassGrad.addColorStop(1, hexAlpha(sc, 0.20))
+      ctx.fillStyle = glassGrad; ctx.fill()
+      ctx.beginPath(); ctx.arc(x - dr*0.28, y - dr*0.32, dr * 0.38, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fill()
+      ctx.beginPath(); ctx.arc(x - dr*0.28, y - dr*0.32, dr * 0.18, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.38)'; ctx.fill()
+      ctx.restore()
+      ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI * 2)
+      ctx.shadowBlur = 22; ctx.shadowColor = color
+      ctx.strokeStyle = hexAlpha(sc, 0.85); ctx.lineWidth = 2.5; ctx.stroke(); ctx.shadowBlur = 0
+      ctx.beginPath(); ctx.arc(x, y, dr - 3, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1; ctx.stroke()
+    } else if (cellMode === 'neon') {
+      ctx.save()
+      ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI * 2); ctx.clip()
+      ctx.fillStyle = 'rgba(4,4,16,0.88)'; ctx.fill()
+      const neonGrad = ctx.createRadialGradient(x, y, 0, x, y, dr)
+      neonGrad.addColorStop(0, hexAlpha(sc, 0.12))
+      neonGrad.addColorStop(0.7, hexAlpha(sc, 0.04))
+      neonGrad.addColorStop(1, hexAlpha(sc, 0.18))
+      ctx.fillStyle = neonGrad; ctx.fill()
+      ctx.restore()
+      ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI * 2)
+      ctx.shadowBlur = 32; ctx.shadowColor = color
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke(); ctx.shadowBlur = 0
+      ctx.beginPath(); ctx.arc(x, y, dr - 5, 0, Math.PI * 2)
+      ctx.strokeStyle = hexAlpha(sc, 0.35); ctx.lineWidth = 1.2; ctx.stroke()
     } else {
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2
+      ctx.save()
+      ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2); ctx.clip()
+      let cs = this._gradCache.get(sc)
+      if (!cs) {
+        cs = { l: lighten(sc, 55), m: hexAlpha(sc, 1), d: darken(sc, 35) }
+        if (this._gradCache.size > 120) this._gradCache.clear()
+        this._gradCache.set(sc, cs)
+      }
+      const gx1 = x - dr*0.35, gy1 = y - dr*0.35
+      if (!isFinite(gx1) || !isFinite(gy1)) { ctx.restore(); return }
+      const grad = ctx.createRadialGradient(gx1, gy1, Math.max(0.01, dr*0.05), x, y, Math.max(1, dr))
+      grad.addColorStop(0, cs.l); grad.addColorStop(0.6, cs.m); grad.addColorStop(1, cs.d)
+      ctx.fillStyle = grad; ctx.fill()
+      if (avatar === 'stripes' && dr > 10) {
+        const stripeW = Math.max(4, dr * 0.18)
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = stripeW
+        for (let sx = x - dr*2; sx < x + dr*2; sx += stripeW*2.5) {
+          ctx.beginPath(); ctx.moveTo(sx, y - dr); ctx.lineTo(sx + dr, y + dr); ctx.stroke()
+        }
+      } else if (avatar === 'dots' && dr > 12) {
+        const dotR = Math.max(2, dr * 0.1)
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'
+        for (let i = 0; i < 8; i++) {
+          const angle = (i / 8) * Math.PI * 2
+          ctx.beginPath(); ctx.arc(x + Math.cos(angle)*dr*0.55, y + Math.sin(angle)*dr*0.55, dotR, 0, Math.PI*2); ctx.fill()
+        }
+      }
+      ctx.restore()
+      const speedActive = isMe && this.skills?.speed?.active
+      const shieldActive = isMe && this.skills?.shield?.active
+      ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
+      const needGlow = (isMe || isGod || frozen || poisoned || speedActive || shieldActive || dr > 40) && this.qualityLevel !== 'low'
+      if (needGlow) {
+        ctx.shadowBlur = speedActive ? 30 : shieldActive ? 30 : isMe ? 18 : (isGod ? 25 : 8)
+        ctx.shadowColor = shieldActive ? '#06b6d4' : speedActive ? '#fbbf24' : frozen ? '#38bdf8' : poisoned ? '#a855f7' : isGod ? '#fbbf24' : color
+      }
+      if (speedActive) { ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 4
+      } else if (shieldActive) { ctx.strokeStyle = '#06b6d4'; ctx.lineWidth = 4
+      } else if (frozen) { ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3
+      } else if (poisoned) { ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 3
+      } else if (isGod) { ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 3.5
+      } else if (isMe) { ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2.5
+      } else { ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2 }
+      ctx.stroke(); ctx.shadowBlur = 0
     }
-    ctx.stroke(); ctx.shadowBlur = 0
 
     if (frozen) {
       ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
@@ -3378,6 +3424,9 @@ export class GameEngine {
       ctx.beginPath(); ctx.arc(x, y, dr, 0, Math.PI*2)
       ctx.fillStyle = 'rgba(168,85,247,0.15)'; ctx.fill()
     }
+
+    const speedActive = isMe && this.skills?.speed?.active
+    const shieldActive = isMe && this.skills?.shield?.active
     if (isMe && this.skills) {
       const t = Date.now() / 1000
       const ms = Date.now()
@@ -3966,7 +4015,7 @@ export class GameEngine {
           this._showFloat(`+${Math.floor(bot.mass)} 🤖`, '#4ade80')
           const killedMass = bot.mass
           cell.mass += killedMass
-          cell.eatPulse = 0
+          cell.eatPulse = 1.0
           this.lastEatTime = Date.now()
           bot.dead = true; bot.respawnTimer = 5 + Math.random() * 5; bot.mass = 20; botKilled = true
           this.onKill(killedMass)

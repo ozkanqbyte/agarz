@@ -77,6 +77,7 @@ export default function GameCanvas({ onLevelUp }) {
       roomId,
       gameMode: mode,
       theme: currentTheme,
+      cellMode: localStorage.getItem('cellMode') || 'normal',
       isGod: profile?.isGod || (pendingGodGames > 0 && usePendingGod()) || false,
       clan: profile?.clan || null,
       isPremium: ownedPackage !== 'free',
