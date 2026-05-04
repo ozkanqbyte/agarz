@@ -584,14 +584,14 @@ class GameRoom {
     for (const cell of player.cells) {
       if (cell.collisionIgnore > 0) cell.collisionIgnore = Math.max(0, cell.collisionIgnore - dt)
       const r = massToRadius(cell.mass)
-      const hasSplitVel = Math.abs(cell.splitVx || 0) > 0.08
+      const hasSplitVel = Math.abs(cell.splitVx || 0) > 0.05
       if (hasSplitVel) {
         cell.x = clamp(cell.x + cell.splitVx * dt * 60, r, WORLD_SIZE - r)
         cell.y = clamp(cell.y + cell.splitVy * dt * 60, r, WORLD_SIZE - r)
-        const decay = Math.pow(0.72, dt * 25)
+        const decay = Math.pow(0.78, dt * 25)
         cell.splitVx *= decay
         cell.splitVy *= decay
-        if (Math.abs(cell.splitVx) < 0.08) { cell.splitVx = 0; cell.splitVy = 0 }
+        if (Math.abs(cell.splitVx) < 0.05) { cell.splitVx = 0; cell.splitVy = 0 }
       }
       if (!frozen && !hasSplitVel) {
         const slowMult = player.skillSlowTimer > 0 ? 0.25 : 1
@@ -976,16 +976,18 @@ class GameRoom {
       if (cell.mass < MIN_MASS_SPLIT || player.cells.length + newCells.length >= MAX_CELLS) continue
       cell.mass /= 2
       const nr = massToRadius(cell.mass)
-      const spd = nr * 0.65
+      const spd = nr * 1.1
       cell.mergeTimer = 0
-      cell.collisionIgnore = 0.6
+      cell.collisionIgnore = 0.35
+      const startX = clamp(cell.x + nx * nr * 0.5, nr, WORLD_SIZE - nr)
+      const startY = clamp(cell.y + ny * nr * 0.5, nr, WORLD_SIZE - nr)
       newCells.push({
         id: rndId(),
-        x: clamp(cell.x, nr, WORLD_SIZE - nr),
-        y: clamp(cell.y, nr, WORLD_SIZE - nr),
+        x: startX,
+        y: startY,
         mass: cell.mass,
         mergeTimer: 0,
-        collisionIgnore: 0.6,
+        collisionIgnore: 0.35,
         splitVx: nx * spd,
         splitVy: ny * spd
       })
